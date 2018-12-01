@@ -39,6 +39,7 @@ jobfile = sys.argv[1]
 
 
 if os.path.isfile( jobfile ):
+    auto_resub=False
 
     # read jobfile
     with open(jobfile) as f:
@@ -50,14 +51,32 @@ if os.path.isfile( jobfile ):
                 cpuline = line
             elif "#MSUB -T" in line:
                 wtimeline = line
+            elif "INIFILE=" in line:
+                iniline = line
+            elif "MEMORY=" in line:
+                memline = line
+            elif "AUTO_RESUB=" in line:
+                line = line.replace('"','').replace('AUTO_RESUB=','')
+                if float(line) > 0:
+                    auto_resub=True
 
-    # now runline contains the actual run:
-    #       ccc_mprun ./wabbit suzuki.ini --memory=550.0GB
-    runlist = runline.split()
 
-    progfile   = runlist[1]
-    paramsfile = runlist[2]
-    memory     = float( runlist[3].replace('--memory=','').replace('GB','').replace('gb','') )
+
+    if "./wabbit" in runline:
+        # OLD STYLE: one line call
+        # now runline contains the actual run:
+        #       ccc_mprun ./wabbit suzuki.ini --memory=550.0GB
+        runlist = runline.split()
+
+        progfile   = runlist[1]
+        paramsfile = runlist[2]
+        memory     = float( runlist[3].replace('--memory=','').replace('GB','').replace('gb','') )
+    else:
+        # NEW STYLE: as on turing
+        progfile = ""
+        paramsfile = iniline.replace('INIFILE=','').replace('"','').replace('\n','')
+        memory = float( memline.replace('"','').replace('GB','').replace('MEMORY=','').replace('\n',''))
+
 
     cpulist = cpuline.split()
     ncpu = float(cpulist[2])
@@ -86,7 +105,8 @@ if os.path.isfile( jobfile ):
     wtime_ini *= 3600.0
     print("wtime (inifile)   = %s%i%s sec (%f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
 
-
+    if auto_resub:
+        warn('WARNING Automatic resubmission is active.')
 
     if memory >= 0.98*maxmem:
         err("Memory limit exceeded")
