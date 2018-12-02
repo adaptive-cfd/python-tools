@@ -5,6 +5,8 @@ Created on Thu Dec 28 15:41:48 2017
 
 @author: engels
 """
+import numpy as np
+
 class bcolors:
         HEADER = '\033[95m'
         OKBLUE = '\033[94m'
@@ -17,6 +19,7 @@ class bcolors:
 
 def warn( msg ):
     print( bcolors.FAIL + "WARNING! " + bcolors.ENDC + msg)
+
 
 
 #%%
@@ -349,9 +352,9 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode ):
     import h5py
     import numpy as np
 
-    if len(data.shape)==3:
+    if len(data.shape)==4:
         # 3d data
-        nx, ny, nz = data.shape
+        nb, nx, ny, nz = data.shape
         print( "Writing to file=%s max=%e min=%e size=%i %i %i " % (file, np.max(data), np.min(data), nx,ny,nz) )
 
     else:
@@ -1069,8 +1072,20 @@ def compare_two_grids( treecode1, treecode2 ):
 
 
 #%%
+def overwrite_block_data_with_level(treecode, data):
+    """On all blocks of the data array, replace any function values by the level of the block"""
+
+    N = treecode.shape[0]
+    for i in range(N):
+        level = treecode_level(treecode[i,:])
+        data[i,:,:,:] = float( level )
+
+    return data
+
+
+#%%
 def dense_matrix(  x0, dx, data, treecode, dim=2 ):
-    import numpy as np
+
     import math
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 

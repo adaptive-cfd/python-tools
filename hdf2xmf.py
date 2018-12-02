@@ -807,7 +807,7 @@ def main():
                 warn("File "+fname+ " NOT found!")
 
                 # if desired, remove the timestamp from the list:
-                if args.skip_incomplete_timestamps:
+                if args.skip_incomplete_timestamps and t not in timestamps_to_remove:
                     warn("removing timestamp "+t+ " completely!")
                     timestamps_to_remove.append(t)
 
