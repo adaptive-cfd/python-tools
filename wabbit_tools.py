@@ -73,6 +73,17 @@ def check_parameters_for_stupid_errors( file ):
                     if "=" in line and ";" not in line:
                         warn( ('It appears the line #%i ' % (linenumber)) + '\n'+line+bcolors.FAIL+'\n does not contain the semicolon' + bcolors.ENDC )
 
+    restart = get_ini_parameter( file, 'Physics', 'read_from_files', int)
+    print("read_from_files=%i" %(restart))
+
+    if restart is 1:
+        infiles = get_ini_parameter( file, 'Physics', 'input_files', str)
+        infiles = infiles.split()
+        for file in infiles:
+            print(file)
+            if not os.path.isfile(file):
+                raise ValueError("CRUTIAL: read_from_files=1 but infiles NOT found!.")
+
 #%%
 def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
     """ From a given ini file, read [Section]::keyword and return the value
@@ -769,7 +780,8 @@ def get_max_min_level( treecode ):
 
 # %%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
-                     gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',block_edge_alpha=0.5 , shading='flat',
+                     gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
+                     block_edge_alpha=0.5 , shading='flat',
                      gridonly_coloring='mpirank', flipud=False):
 
     """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
@@ -795,11 +807,13 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         b = fid['procs'][:]
         procs = np.array(b, dtype=float)
 
-        b = fid['refinement_status'][:]
-        ref_status = np.array(b, dtype=float)
+        if gridonly_coloring in ['refinement-status', 'refinement_status']:
+            b = fid['refinement_status'][:]
+            ref_status = np.array(b, dtype=float)
 
-        b = fid['lgt_ids'][:]
-        lgt_ids = np.array(b, dtype=float)
+        if gridonly_coloring is 'lgt_id':
+            b = fid['lgt_ids'][:]
+            lgt_ids = np.array(b, dtype=float)
 
         fid.close()
 
@@ -828,7 +842,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     jmin, jmax = get_max_min_level( treecode )
 
     for i in range(N):
-        if not gridonly_coloring is 'level':
+        if gridonly_coloring not in ['level', 'white']:
             if not flipud :
                 [X, Y] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0], np.arange(Bs)*dx[i,1]+x0[i,1])
             else:
@@ -878,7 +892,8 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
             if mark_blocks and not gridonly:
                 # empty rectangle
-                ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
+                ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0],
+                                                fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
 
             # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
             # that they all use the same.
@@ -900,8 +915,12 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             # if we color the blocks simply with grayscale depending on their level
             # well then just draw rectangles. note: you CAN do that with mpirank etc, but
             # then you do not have a colorbar.
-            level = treecode_level( treecode[i,:] )
-            color = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
+
+            if gridonly_coloring is 'level':
+                level = treecode_level( treecode[i,:] )
+                color = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
+            else:
+                color = 1.0
             ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], facecolor=[color,color,color], edgecolor=block_edge_color ))
 
 

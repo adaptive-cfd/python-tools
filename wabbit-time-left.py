@@ -102,4 +102,4 @@ if verbose:
 
 if not verbose:
     # when the -s option is active, just print the number of remaining hours
-    print(time_left/3600.0)
+    print( '%3.1f' % (time_left/3600.0) )

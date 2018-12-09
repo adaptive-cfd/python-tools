@@ -88,9 +88,9 @@ if os.path.isfile( jobfile ):
     maxmem = ncpu*3.75 #GB
 
     if not os.path.isfile(paramsfile):
-        err("Paramsfile %s not found!" % (paramsfile))
+        print('paramsfile check  : %snot found%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
-        print("Paramsfile %s is there." % (paramsfile))
+        print('paramsfile check  : %sfound%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
 
     print("program           = %s%s%s" % (bcolors.OKBLUE, progfile, bcolors.ENDC) )
@@ -106,23 +106,31 @@ if os.path.isfile( jobfile ):
     print("wtime (inifile)   = %s%i%s sec (%f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
 
     if auto_resub:
-        warn('WARNING Automatic resubmission is active.')
+        print('RESUBMISSION      : %sAutomatic resubmission is ACTIVE%s' % (bcolors.WARNING,bcolors.ENDC) )
+    else:
+        print('RESUBMISSION      : %sAutomatic resubmission is DEACTIVTÀTED!!%s' % (bcolors.WARNING,bcolors.ENDC) )
+
 
     if memory >= 0.98*maxmem:
-        err("Memory limit exceeded")
+        print('Memory check      : %sEXCEEDED%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
-        print("Memory okay.")
+        print('Memory check      : %sOKAY%s' % (bcolors.OKGREEN,bcolors.ENDC) )
+
+
 
     if abs(ncpu/core_per_node - float(round(ncpu/core_per_node))) > 0.0:
-        warn('You did not specify N*48 CPUS')
+        print('Complete node(s)  : %sYou did not specify N*48 CPUS%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
-        print('nCPU is multiple of cpu_per_node')
+        print('Complete node(s)  : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
+
 
 
     if wtime_ini > wtime:
-        err("Walltime in ini file greater than walltime in job file!")
+        print('walltime *.SH/INI : %Walltime in ini file greater than walltime in job file!%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
-        print('Walltime is okay')
+        print('walltime *.SH/INI : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
+
+
 
     Jmax = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
     L = wabbit_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)

@@ -78,10 +78,14 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False, verbos
     You can optionally interpolate it to a given time vector and return its header (if we find one).
     Optionally, use time_mask_before to hide the first times: useful if there is a startup singularity.
     """
-
+    import os
 
     if verbose:
         print('reading file %s' %fname)
+
+    # does the file exists?
+    if not os.path.isfile(fname):
+        raise ValueError('load_t_file: file=%s not found!' % (fname))
 
     # does the user want the header back?
     if return_header:
@@ -121,8 +125,13 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False, verbos
     data = np.copy( data_raw[unique_indices,:] )
 
     if T0 is not None:
-        i0 = np.argmin( np.abs(data[:,0]-T0) )
-        data = np.copy( data[i0:,:] )
+        if len(T0)==2:
+            i0 = np.argmin( np.abs(data[:,0]-T0[0]) )
+            i1 = np.argmin( np.abs(data[:,0]-T0[1]) )
+            data = np.copy( data[i0:i1,:] )
+        else:
+            i0 = np.argmin( np.abs(data[:,0]-T0) )
+            data = np.copy( data[i0:,:] )
 
 
     # info on data
@@ -999,7 +1008,7 @@ def integrated_L2_difference_signal( data1, data2, qty ):
     return err
 
 
-def suzuki_error( filename, component=None, reference='suzuki' ):
+def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
     """compute the error for suzukis test case"""
 
     import insect_tools
@@ -1020,7 +1029,7 @@ def suzuki_error( filename, component=None, reference='suzuki' ):
 #    dref_drag2 = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
 
     # read actual data
-    data = insect_tools.load_t_file( filename )
+    data = insect_tools.load_t_file( filename, T0=T0 )
 
     # Suzuki et al. eq. in appendix B.5.2
     L = 0.833
@@ -1068,10 +1077,8 @@ def suzuki_error( filename, component=None, reference='suzuki' ):
 
         return np.sqrt(err1**2 + err2**2)
 
-    elif reference is 'flusi':
-#        data_flusi = load_t_file('/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/level3_small/forces.t')
-        data_flusi = load_t_file('/home/engels/dev/WABBIT4-new-physics/suzuki_irene/flusi_ref1024_fixedmeanflow/forces.t')
-#        data_flusi = load_t_file('/home/engels/dev/WABBIT4-new-physics/suzuki_irene/flusi_ref512_fixedmeanflow/forces.t')
+    else:
+        data_flusi = load_t_file( reference, T0=T0 )
 
         data_flusi[:,1:3+1] /= fcoef
         data_flusi[:,1] = (data_flusi[:,1] + data_flusi[:,2]) / np.sqrt( 2.0 )
@@ -1103,5 +1110,4 @@ def suzuki_error( filename, component=None, reference='suzuki' ):
 
         # error is magnitude of all 3 components
         return np.sqrt(err1**2 + err2**2 + err3**2)
-    else:
-        raise ValueError("unknown reference")
+
