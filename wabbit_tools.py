@@ -107,7 +107,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
 
     # check if that worked
     if value_string is 'UNKNOWN':
-        raise ValueError("NOT FOUND! file=%s section=%s keyword=%" % (inifile, section, keyword) )
+        raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
 
     if not vector:
         # configparser returns "0.0;" so remove trailing ";"
