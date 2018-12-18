@@ -118,10 +118,37 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
             # return empty list
             header = []
 
-    #------------------------
+    #--------------------------------------------------------------------------
     # read the data from file
-    #------------------------
-    data_raw = np.loadtxt( fname, comments="%")
+    #--------------------------------------------------------------------------
+    # 18/12/2018: we no longer directly use np.loadtxt, because it sometimes fails
+    # if a run has been interrupted while writing the file. In those cases, a line
+    # sometimes contains less elements, trip-wiring the loadtxt function
+    #
+    # old call:
+    #
+    #    data_raw = np.loadtxt( fname, comments="%")
+
+
+    ncols = None
+    # initialize file as list (of lists)
+    dat = []
+    with open( fname, "r" ) as f:
+        # loop over all lines
+        for line in f:
+            if not '%' in line:
+                # turn line into list
+                tmp = line.split()
+                # did we already figure out how many cols the file has?
+                if ncols is None:
+                    ncols = len(tmp)
+
+                if len(tmp) == ncols:
+                    dat.append( tmp )
+
+    # convert list of lists into an numpy array
+    data_raw = np.array( dat, dtype=float )
+
     nt_raw, ncols = data_raw.shape
 
     # retain only unique values (judging by the time stamp, so if multiple rows
@@ -419,6 +446,16 @@ def Rmirror( x0, n):
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None ):
+    """ visualize the wing chord
+    visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
+                             x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
+                             draw_true_chord=False, meanflow=None ):
+    """
+    import os
+
+    if not os.path.isfile(fname):
+        raise ValueError("The file "+fname+" does not exist.")
+
     # read kinematics data:
     a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname )
 
