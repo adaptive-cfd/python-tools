@@ -158,6 +158,9 @@ if os.path.isfile( jobfile ):
     print( "K_eta            = %s%2.2f%s" % (bcolors.OKGREEN,keta,bcolors.ENDC))
     print( "C_sponge         = %2.2e" % (csponge))
 
+    if geometry == "Insect":
+        t =  wabbit_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float)
+        print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
 
     print('Launching wabbit_tools ini file check now:')
     wabbit_tools.check_parameters_for_stupid_errors( paramsfile )

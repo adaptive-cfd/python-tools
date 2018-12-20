@@ -128,11 +128,13 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
 
     if not vector:
         # configparser returns "0.0;" so remove trailing ";"
-        value_string = value_string.replace(';', '')
+        i = value_string.find(';')
+        value_string = value_string[:i]
         return dtype(value_string)
     else:
         # you can use the strip() to remove trailing and leading spaces.
-        value_string = value_string.replace(';', '')
+        i = value_string.find(';')
+        value_string = value_string[:i]
         value_string.strip()
         l = value_string.split()
         return np.asarray( [float(i) for i in l] )
