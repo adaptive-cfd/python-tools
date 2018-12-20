@@ -4,10 +4,8 @@ import numpy as np
 import wabbit_tools
 import insect_tools
 import glob
-import configparser
 import datetime
 import os
-import sys
 import argparse
 
 class bcolors:

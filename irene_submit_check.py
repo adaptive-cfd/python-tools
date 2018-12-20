@@ -95,15 +95,15 @@ if os.path.isfile( jobfile ):
 
     print("program           = %s%s%s" % (bcolors.OKBLUE, progfile, bcolors.ENDC) )
     print("paramsfile        = %s%s%s" % (bcolors.OKBLUE, paramsfile, bcolors.ENDC) )
-    print("memory in call    = %s%f%s GB" % (bcolors.OKBLUE, memory, bcolors.ENDC) )
+    print("memory in call    = %s%2.2f%s GB" % (bcolors.OKBLUE, memory, bcolors.ENDC) )
     print("max memory        = %s%i%s GB" % (bcolors.OKBLUE, maxmem, bcolors.ENDC) )
     print("max memory (safe) = %s%i%s GB" % (bcolors.OKBLUE, maxmem-5.0, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )
-    print("wtime (jobfile)   = %s%i%s sec (%f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
+    print("wtime (jobfile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
     wtime_ini = wabbit_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
     # hours to seconds
     wtime_ini *= 3600.0
-    print("wtime (inifile)   = %s%i%s sec (%f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
+    print("wtime (inifile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
 
     if auto_resub:
         print('RESUBMISSION      : %sAutomatic resubmission is ACTIVE%s' % (bcolors.WARNING,bcolors.ENDC) )
@@ -114,7 +114,7 @@ if os.path.isfile( jobfile ):
     if memory >= 0.98*maxmem:
         print('Memory check      : %sEXCEEDED%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
-        print('Memory check      : %sOKAY%s' % (bcolors.OKGREEN,bcolors.ENDC) )
+        print('Memory check      : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
 
 
@@ -132,23 +132,32 @@ if os.path.isfile( jobfile ):
 
 
 
+
+
     Jmax = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
     L = wabbit_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
     Bs = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int)
     CFL = wabbit_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
+
     c0 =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
+    nu =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
     ceta =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float)
+    penalized = wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
+    csponge =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float)
+    sponged =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
+
+    geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str)
 
     dx = L[0]*(2**-Jmax)/(Bs-1)
 
-    # this is an assumption:
-    umax = 1.0
-    u_eigen = abs(umax) + np.sqrt( umax**2 + c0**2 )
-    dt_c0 = CFL*dx / u_eigen
-    dt_ceta = 0.99*ceta
+    keta = np.sqrt(ceta*nu)/dx
 
-    print( "dt_c0   = %e" % (dt_c0))
-    print( "dt_ceta = %e" % (dt_ceta))
+
+    print( "c0               = %2.2f" % (c0))
+    print( "C_eta            = %2.2e" % (ceta))
+    print( "K_eta            = %s%2.2f%s" % (bcolors.OKGREEN,keta,bcolors.ENDC))
+    print( "C_sponge         = %2.2e" % (csponge))
+
 
     print('Launching wabbit_tools ini file check now:')
     wabbit_tools.check_parameters_for_stupid_errors( paramsfile )

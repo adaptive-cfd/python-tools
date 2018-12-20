@@ -18,9 +18,13 @@ class bcolors:
         UNDERLINE = '\033[4m'
 
 def warn( msg ):
-    print( bcolors.FAIL + "WARNING! " + bcolors.ENDC + msg)
+    print( bcolors.WARNING + "WARNING! " + bcolors.ENDC + msg)
 
+def err( msg ):
+    print( bcolors.FAIL + "CRITICAL! " + bcolors.ENDC + msg)
 
+def info( msg ):
+    print( bcolors.OKBLUE + "Information:  " + bcolors.ENDC + msg)
 
 #%%
 def check_parameters_for_stupid_errors( file ):
@@ -60,6 +64,15 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "Time", "time_step_calc" ) :
         warn('Found deprecated parameter: [Time]::time_step_calc')
 
+    ceta = get_ini_parameter( file, 'VPM', 'C_eta', float)
+    csponge = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
+    penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
+    sponged = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
+
+    if penalized and sponged:
+        if abs(ceta-csponge) > 1.0e-7:
+            warn( 'Sponge and penalization parameter are different: C_eta=%e C_sponge=%e' % (ceta,csponge))
+
     # loop over ini file and check that each non-commented line with a "=" contains the trailing semicolon ";"
     with open(file) as f:
         # loop over all lines
@@ -71,18 +84,22 @@ def check_parameters_for_stupid_errors( file ):
             if line is not "" :
                 if line[0] is not "!" and line[0] is not "#" and line[0] is not ";" :
                     if "=" in line and ";" not in line:
-                        warn( ('It appears the line #%i ' % (linenumber)) + '\n'+line+bcolors.FAIL+'\n does not contain the semicolon' + bcolors.ENDC )
+                        warn('It appears the line #%i does not contain the semicolon' % (linenumber) )
 
     restart = get_ini_parameter( file, 'Physics', 'read_from_files', int)
     print("read_from_files=%i" %(restart))
 
     if restart is 1:
+        info("This simulation is being resumed from file")
+
         infiles = get_ini_parameter( file, 'Physics', 'input_files', str)
         infiles = infiles.split()
         for file in infiles:
             print(file)
             if not os.path.isfile(file):
                 raise ValueError("CRUTIAL: read_from_files=1 but infiles NOT found!.")
+    else:
+        info("This simulation is being started from initial condition (and not from file)")
 
 #%%
 def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
