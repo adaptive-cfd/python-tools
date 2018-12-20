@@ -72,11 +72,24 @@ if verbose:
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
 
+# old files lack the information about the number of CPU
+ncpu_now = 0
+cpuh_now = 0
+runtime = sum(d[:,1])/3600
+
+if d.shape[1] >= 7:
+    cpuh_now = int( np.sum(d[:,1]*d[:,6])/3600 )
+    # this is a recent file (>20/12/2018) it contains the number of procs in every line
+    ncpu_now = d[-1,6]
+    # we can weight past time steps by the current number of CPUS in order to improve
+    # the estimate how much time remains. We assume, of course, perfect scaling with #CPU
+    d[:,1] *= d[:,6] / ncpu_now
+
 # how many time steps did we already do?
 nt_now = d.shape[0]
 
-# avg CPU second for this run
-tcpu_avg = np.mean( d[:,1] )
+# avg walltime second for this run
+twall_avg = np.mean( d[:,1] )
 
 # avg time step until now
 dt = d[-1,0] / nt_now
@@ -85,18 +98,22 @@ dt = d[-1,0] / nt_now
 nt_left = (T-d[-1,0]) / dt
 
 # this is what we have to wait still
-time_left = round(nt_left * tcpu_avg)
+time_left = round(nt_left * twall_avg)
 
 if verbose:
-    print("Time to reach: T=%e. Now: we did nt=%i to reach T=%e and the remaing time is: %s%s%s"
-          % (T, nt_now, d[-1,0], bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC ) )
+    print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
+    print("Already consumed %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
+    print("Runtime %s%2.1f%s h" % (bcolors.OKGREEN, runtime, bcolors.ENDC))
+    print("Time to reach: T=%2.3f. Now: we did nt=%i to reach T=%2.1e" % (T, nt_now, d[-1,0]) )
+    print( "%s%s%s   [%i CPUH] (remaining time based on all past time steps)"  %
+          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, int(ncpu_now*time_left/3600)) )
 
-if verbose:
+    # second estimate
     nt = min( 20, nt_now )
     dt = ( d[-1,0]-d[-nt,0] ) / nt
-    time_left = np.mean( d[-nt:,1] ) * (T-d[-1,0]) / (dt)
-    print("Based on last %i time steps, the remaing time is: %s%s%s"
-          % (nt, bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC ) )
+    time_left = round(np.mean( d[-nt:,1] ) * (T-d[-1,0]) / (dt) )
+    print("%s%s%s   [%i CPUH] (remaining time based on last %i time steps)"
+          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, int(ncpu_now*time_left/3600), nt ) )
 
 if not verbose:
     # when the -s option is active, just print the number of remaining hours
