@@ -71,6 +71,9 @@ def read_pointcloud(file):
 def write_pointcloud(file, data, header):
     write_csv_file( file, data, header=header, sep=' ')
 
+def reset_colorcycle():
+    # reset color cycle
+    plt.gca().set_prop_cycle(None)
 
 # Read in a t-file, optionally interpolate to equidistant time vector
 def load_t_file( fname, interp=False, time_out=None, return_header=False,
@@ -148,6 +151,7 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
 
     # convert list of lists into an numpy array
     data_raw = np.array( dat, dtype=float )
+
 
     nt_raw, ncols = data_raw.shape
 
@@ -1055,10 +1059,32 @@ def integrated_L2_difference_signal( data1, data2, qty ):
     return err
 
 
+def forces_L2_error( data, data_ref, idx_data, idx_ref, normalized=True):
+    """ Similar to suzuki_error, but more general. compute integrated L2 difference
+    wrt a reference data set """
+    import numpy as np
+
+    # interpolate reference data (assumed to be high-precision) to
+    # the time vector of the actual data
+    data_ref = interp_matrix(data_ref, data[:,0])
+
+    err = []
+    for IDX_DATA, IDX_REF in zip(idx_data, idx_ref):
+        if normalized:
+            err.append( np.trapz( abs(data[:,IDX_DATA]-data_ref[:,IDX_REF]), x=data[:,0] ) /
+                        np.trapz( abs(data_ref[:,IDX_REF]), x=data[:,0]) )
+        else:
+            err.append( np.trapz( abs(data[:,IDX_DATA]), x=data[:,0] ) )
+
+    err = np.asarray(err)
+
+#    return np.linalg.norm(err)
+    return np.mean(err)
+
 def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
     """compute the error for suzukis test case"""
 
-    import insect_tools
+
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -1157,4 +1183,3 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
 
         # error is magnitude of all 3 components
         return np.sqrt(err1**2 + err2**2 + err3**2)
-

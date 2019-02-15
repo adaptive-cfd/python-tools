@@ -66,11 +66,14 @@ if not os.path.isfile(dir + 'timesteps_info.t'):
 
 # load the data file
 d = insect_tools.load_t_file(dir + 'timesteps_info.t', verbose=verbose)
+tstart = d[0,0]
+tnow = d[-1,0]
 
 if verbose:
     print("We found and extract the final time in the simulation from: "+inifile)
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
+bs = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int)
 
 # old files lack the information about the number of CPU
 ncpu_now = 0
@@ -78,6 +81,9 @@ cpuh_now = 0
 runtime = sum(d[:,1])/3600
 
 if d.shape[1] >= 7:
+    # compute mean cost per grid point per time step
+    mean_cost = np.mean( d[:,1]*d[:,6] / (8.0*d[:,3]*(bs-1)**3 ) )
+
     cpuh_now = int( np.sum(d[:,1]*d[:,6])/3600 )
     # this is a recent file (>20/12/2018) it contains the number of procs in every line
     ncpu_now = d[-1,6]
@@ -92,10 +98,10 @@ nt_now = d.shape[0]
 twall_avg = np.mean( d[:,1] )
 
 # avg time step until now
-dt = d[-1,0] / nt_now
+dt = (tnow-tstart) / nt_now
 
 # how many time steps are left
-nt_left = (T-d[-1,0]) / dt
+nt_left = (T-tnow) / dt
 
 # this is what we have to wait still
 time_left = round(nt_left * twall_avg)
@@ -104,6 +110,7 @@ if verbose:
     print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
     print("Already consumed %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
     print("Runtime %s%2.1f%s h" % (bcolors.OKGREEN, runtime, bcolors.ENDC))
+    print("mean cost %s%8.3e%s [CPUs / N / Nt]" % (bcolors.OKGREEN, mean_cost, bcolors.ENDC))
     print("Time to reach: T=%2.3f. Now: we did nt=%i to reach T=%2.1e" % (T, nt_now, d[-1,0]) )
     print( "%s%s%s   [%i CPUH] (remaining time based on all past time steps)"  %
           (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, int(ncpu_now*time_left/3600)) )

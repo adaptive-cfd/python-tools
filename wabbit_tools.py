@@ -758,6 +758,25 @@ def convergence_order(N, err):
 
     return x[0]
 
+def logfit(N, err):
+    """ This is a small function that returns the logfit, i.e. the least
+    squares fit to the log of the two passed lists.
+    """
+    import numpy as np
+
+    if len(N) != len(err):
+        raise ValueError('Convergence order args do not have same length')
+
+    A = np.ones([len(err), 2])
+    B = np.ones([len(err), 1])
+    # ERR = A*N + B
+    for i in range( len(N) ) :
+        A[i,0] = np.log10(N[i])
+        B[i] = np.log10(err[i])
+
+    x, residuals, rank, singval  = np.linalg.lstsq(A,B)
+
+    return x
 
 
 def plot_wabbit_dir(d, savepng=False):
