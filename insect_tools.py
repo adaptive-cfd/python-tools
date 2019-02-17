@@ -8,9 +8,7 @@ Created on Wed Oct 11 09:11:47 2017
 
 
 import numpy as np
-import matplotlib.pyplot as plt
 import numpy.ma as ma
-import matplotlib
 import glob
 
 
