@@ -126,7 +126,7 @@ if os.path.isfile( jobfile ):
 
 
     if wtime_ini > wtime:
-        print('walltime *.SH/INI : %Walltime in ini file greater than walltime in job file!%s' % (bcolors.FAIL,bcolors.ENDC) )
+        print('walltime *.SH/INI : %s Walltime in ini file greater than walltime in job file!%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
         print('walltime *.SH/INI : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 

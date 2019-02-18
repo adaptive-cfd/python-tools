@@ -49,6 +49,7 @@ else:
 
 blocks_per_rank = d[:,3] / ncpu
 tcpu_per_block = ncpu*d[:,1] / d[:,3]
+tcpu = ncpu*d[:,1]
 
 plt.figure()
 plt.semilogy(d[:,0], tcpu_per_block, '.')
@@ -64,3 +65,17 @@ plt.ylabel('$t_{CPU}/N_{b}$ (s)')
 plt.savefig(root+'/performance_vs_blocks-per-rank.png')
 
 
+
+plt.figure()
+plt.semilogy( d[:,0], tcpu, '-' )
+plt.xlabel('$t/T$')
+plt.ylabel('$t_{CPU}$ (s)')
+plt.savefig(root+'/performance_vs_time_abs.png')
+
+
+
+plt.figure()
+plt.semilogy( d[:,0], d[:,3], '-' )
+plt.xlabel('$t/T$')
+plt.ylabel('$N_b$')
+plt.savefig(root+'/blocks_vs_time.png')
