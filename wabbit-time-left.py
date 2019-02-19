@@ -74,6 +74,7 @@ if verbose:
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
 bs = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int)
+dim = wabbit_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 
 # old files lack the information about the number of CPU
 ncpu_now = 0
@@ -82,7 +83,7 @@ runtime = sum(d[:,1])/3600
 
 if d.shape[1] >= 7:
     # compute mean cost per grid point per time step
-    mean_cost = np.mean( d[:,1]*d[:,6] / (8.0*d[:,3]*(bs-1)**3 ) )
+    mean_cost = np.mean( d[:,1]*d[:,6] / (8.0*d[:,3]*(bs-1)**dim ) )
 
     cpuh_now = int( np.sum(d[:,1]*d[:,6])/3600 )
     # this is a recent file (>20/12/2018) it contains the number of procs in every line

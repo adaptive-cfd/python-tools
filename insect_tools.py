@@ -70,6 +70,7 @@ def write_pointcloud(file, data, header):
     write_csv_file( file, data, header=header, sep=' ')
 
 def reset_colorcycle():
+    import matplotlib.pyplot as plt
     # reset color cycle
     plt.gca().set_prop_cycle(None)
 
@@ -684,6 +685,7 @@ def get_timestamp_name( fname ):
 def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.0, ax=None ):
     from matplotlib.collections import PatchCollection
     from matplotlib.patches import Rectangle
+    import matplotlib.pyplot as plt
 
     if ifig == None:
         # get current axis
