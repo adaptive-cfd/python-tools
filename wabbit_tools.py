@@ -382,7 +382,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0,  
     import h5py
     import numpy as np
 
-    
+
     Level = np.size(treecode,1)
     if len(data.shape)==4:
         Bs=[0]*3
@@ -392,7 +392,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0,  
 
     else:
         # 2d data
-        Bs=[0]*2        
+        Bs=[0]*2
         N, Bs[0], Bs[1] = data.shape
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Writing file %s" % (file) )
@@ -1254,14 +1254,14 @@ def blockindex2treecode(ix, dim, treeN):
         # sum up treecodes
         lt = np.size(binary)
         treecode[:lt] = treecode[:lt] + binary *2**d
-    
+
     # flip again befor returning array
     return treecode[::-1]
-    
+
 #%%
-    
+
 def dense_to_wabbit_hdf5(data, name , Bs, box_size = None, time = 0, iteration = 0):
-    
+
     """
     This function creates a <name>_<time>.h5 file with the wabbit
     block structure from a given dense data matrix.
@@ -1280,41 +1280,44 @@ def dense_to_wabbit_hdf5(data, name , Bs, box_size = None, time = 0, iteration =
                         - time    ... time of the data
                         - iteration ... iteration of the time snappshot
 
-    """    
+    """
 
     Ndim = data.ndim
-    Nsize = data.shape  
-    level = 0    
-    
-    
+    Nsize = data.shape
+    level = 0
+
+
     if box_size is None:
         box = np.ones(Ndim)
+    else:
+        box = box_size
+
     if (type(Bs) is int):
         Bs = [Bs]*Ndim
-    
+
     # construct filename in the same style as wabbit does
     fname = name + "_%12.12d" % int(time*1e6) + ".h5"
 
- 
 
-    # loop over all dimensions    
+
+    # loop over all dimensions
     for d in range(Ndim):
     # check if Block is devidable by Bs
-        if (np.remainder(Nsize[d],Bs[d]) == 0):
-            if( is_power2(Nsize[d]//Bs[d]) ):
+        if (np.remainder(Nsize[d],(Bs[d]-1)) == 0):
+            if( is_power2(Nsize[d]//(Bs[d]-1)) ):
                 level = max(level,int(np.log2(Nsize[d]/Bs[d])))
             else:
                 err("Error Number of Intervals must be a power of 2!")
         else:
             err("Error datasize must be multiple of Bs!")
-            
+
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim # note [val]*3 means [val, val , val]
     Lintervals = box/Nintervals
     x0 = []
     treecode = []
     dx = []
-    bdata = []    
+    bdata = []
     if Ndim == 3:
         for ibx in range(Nintervals[0]):
             for iby in range(Nintervals[1]):
@@ -1333,16 +1336,15 @@ def dense_to_wabbit_hdf5(data, name , Bs, box_size = None, time = 0, iteration =
     else:
         print ("Error!!!, something wrong with number of dimensions")
         exit
-                                    
+
     x0 = np.asarray(x0)
     dx = np.asarray(dx)
     treecode = np.asarray(treecode)
     block_data = np.asarray(bdata)
 
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration )
-    
+
 #%%
 def is_power2(num):
     'states if a number is a power of two'
     return num != 0 and ((num & (num - 1)) == 0)
-    
