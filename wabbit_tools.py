@@ -1286,14 +1286,14 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Ndim = ddata.ndim
     Nsize = np.asarray(ddata.shape)
     level = 0
-
+    Bs = np.asarray(Bs)  # make sure Bs is a numpy array
     #########################################################
     # do some initial checks on the input data
     # 1) check if the size of the domain is given
     if box_size is None:
         box = np.ones(Ndim)
     else:
-        box = box_size
+        box = np.asarray(box_size)
 
     if (type(Bs) is int):
         Bs = [Bs]*Ndim
