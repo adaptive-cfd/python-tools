@@ -825,7 +825,8 @@ def get_max_min_level( treecode ):
 
     return min_level, max_level
 
-
+            
+        
 # %%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
@@ -943,22 +944,6 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                 ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0],
                                                 fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
 
-            # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
-            # that they all use the same.
-            if caxis is None:
-                if not caxis_symmetric:
-                    # automatic colorbar, using min and max throughout all patches
-                    for hplots in h:
-                        hplots.set_clim( (min(c1),max(c2))  )
-                else:
-                    # automatic colorbar, but symmetric, using the SMALLER of both absolute values
-                    c= min( [abs(min(c1)), max(c2)] )
-                    for hplots in h:
-                        hplots.set_clim( (-c,c)  )
-            else:
-                # set fixed (user defined) colorbar for all patches
-                for hplots in h:
-                    hplots.set_clim( (min(caxis),max(caxis))  )
         else:
             # if we color the blocks simply with grayscale depending on their level
             # well then just draw rectangles. note: you CAN do that with mpirank etc, but
@@ -971,7 +956,23 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                 color = 1.0
             ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], facecolor=[color,color,color], edgecolor=block_edge_color ))
 
-
+    # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
+    # that they all use the same.
+    if caxis is None:
+        if not caxis_symmetric:
+            # automatic colorbar, using min and max throughout all patches
+            for hplots in h:
+                hplots.set_clim( (min(c1),max(c2))  )
+        else:
+                # automatic colorbar, but symmetric, using the SMALLER of both absolute values
+                c= min( [abs(min(c1)), max(c2)] )
+                for hplots in h:
+                    hplots.set_clim( (-c,c)  )
+    else:
+        # set fixed (user defined) colorbar for all patches
+        for hplots in h:
+            hplots.set_clim( (min(caxis),max(caxis))  )
+            
     if colorbar:
         plt.colorbar(h[0], ax=ax)
 
@@ -1279,6 +1280,8 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                         - box_size... 2D/3D array of the size of your box
                         - time    ... time of the data
                         - iteration ... iteration of the time snappshot
+    Output:
+        - filename of the hdf5 output
 
     """
     # concatenate filename in the same style as wabbit does
@@ -1303,7 +1306,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
         # check if Block is devidable by Bs
         if (np.remainder(Nsize[d], Bs[d]-1) == 0):
             if(is_power2(Nsize[d]//(Bs[d]-1))):
-                level = max(level, int(np.log2(Nsize[d]/(Bs[d]-1))))
+                level = int(max(level, np.log2(Nsize[d]/(Bs[d]-1))))
             else:
                 err("Number of Intervals must be a power of 2!")
         else:
@@ -1340,7 +1343,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                 for ibz in range(Nintervals[2]):
                     x0.append([ibx, iby, ibz]*Lintervals)
                     dx.append(Lintervals/(Bs-1))
-                    lower = x0[-1]/dx[-1]
+                    lower = x0[-1]//dx[-1]
                     upper = lower + Bs
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
@@ -1349,7 +1352,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
-                lower = x0[-1]/dx[-1]
+                lower = x0[-1]//dx[-1]
                 upper = lower + Bs
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
@@ -1360,7 +1363,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     block_data = np.asarray(bdata)
 
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration )
-
+    return fname
 
 # %%
 def is_power2(num):
