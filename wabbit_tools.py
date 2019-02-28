@@ -764,7 +764,7 @@ def convergence_order(N, err):
         A[i,0] = np.log(N[i])
         B[i] = np.log(err[i])
 
-    x, residuals, rank, singval  = np.linalg.lstsq(A,B)
+    x, residuals, rank, singval  = np.linalg.lstsq(A, B, rcond=None)
 
     return x[0]
 
