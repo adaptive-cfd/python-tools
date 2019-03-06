@@ -377,7 +377,7 @@ def read_treecode_hdf5(file):
     return treecode
 
 #%%
-def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0,  ):
+def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, dtype=np.float32  ):
     """ Write data from wabbit to an HDF5 file """
     import h5py
     import numpy as np
@@ -402,10 +402,10 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0,  
 
     fid = h5py.File( file, 'w')
 
-    fid.create_dataset( 'coords_origin', data=x0, dtype=np.float32 )
-    fid.create_dataset( 'coords_spacing', data=dx, dtype=np.float32 )
-    fid.create_dataset( 'blocks', data=data, dtype=np.float32 )
-    fid.create_dataset( 'block_treecode', data=treecode, dtype=np.float32 )
+    fid.create_dataset( 'coords_origin', data=x0, dtype=dtype )
+    fid.create_dataset( 'coords_spacing', data=dx, dtype=dtype )
+    fid.create_dataset( 'blocks', data=data, dtype=dtype )
+    fid.create_dataset( 'block_treecode', data=treecode, dtype=dtype )
 
     fid.close()
 
@@ -825,8 +825,8 @@ def get_max_min_level( treecode ):
 
     return min_level, max_level
 
-            
-        
+
+
 # %%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
@@ -972,7 +972,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         # set fixed (user defined) colorbar for all patches
         for hplots in h:
             hplots.set_clim( (min(caxis),max(caxis))  )
-            
+
     if colorbar:
         plt.colorbar(h[0], ax=ax)
 
@@ -1026,6 +1026,10 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     import insect_tools
     import matplotlib.pyplot as plt
 
+    if dim==3:
+        print('I think due to fft2usapmle, this routine works only in 2D')
+        raise ValueError
+
     # read in flusi's reference solution
     time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi )
     ny = data_ref.shape[1]
@@ -1051,7 +1055,9 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
         raise ValueError("ERROR! Both fields are not a the same resolutionn")
 
     if data_dense.shape[0] > data_ref.shape[0]:
-        raise ValueError("ERROR! The reference solution is not fine enough for the comparison")
+        warn("WARNING! The reference solution is not fine enough for the comparison! UPSAMPLING!")
+        import fourier_tools
+        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[0] )
 
     # we need to transpose the flusi data...
     data_ref = data_ref.transpose()
@@ -1261,7 +1267,7 @@ def blockindex2treecode(ix, dim, treeN):
     return treecode[::-1]
 
 #%%
-def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0):
+def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0, dtype=np.float32):
 
     """
     This function creates a <name>_<time>.h5 file with the wabbit
@@ -1343,8 +1349,11 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                 for ibz in range(Nintervals[2]):
                     x0.append([ibx, iby, ibz]*Lintervals)
                     dx.append(Lintervals/(Bs-1))
+
                     lower = x0[-1]//dx[-1]
+                    lower = np.asarray(lower, dtype=int)
                     upper = lower + Bs
+
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
     else:
@@ -1352,8 +1361,11 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
+
                 lower = x0[-1]//dx[-1]
+                lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
+
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
 
@@ -1362,7 +1374,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     treecode = np.asarray(treecode)
     block_data = np.asarray(bdata)
 
-    write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration )
+    write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration, dtype )
     return fname
 
 # %%
