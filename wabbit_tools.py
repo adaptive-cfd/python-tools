@@ -198,7 +198,7 @@ def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p']
     import numpy as np
     import os
     import glob
-    import insect_tools
+    import flusi_tools
 
     # does the ini file exist?
     if not os.path.isfile(inifile):
@@ -214,7 +214,7 @@ def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p']
         raise ValueError( "Something is wrong: no h5 files found for resuming" )
 
     print('Latest file is:           ' + files[-1])
-    timestamp = insect_tools.get_timestamp_name( files[-1] )
+    timestamp = flusi_tools.get_timestamp_name( files[-1] )
     t0 = float(timestamp) / 1e6
     print('Latest file is at time:   %f' % (t0))
 
