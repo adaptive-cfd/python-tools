@@ -789,14 +789,14 @@ def logfit(N, err):
     return x
 
 
-def plot_wabbit_dir(d, savepng=False):
+def plot_wabbit_dir(d, *args ,**kwargs):
     import glob
 
     files = glob.glob(d+'/*.h5')
     files.sort()
 
     for file in files:
-        plot_wabbit_file(file, savepng)
+        plot_wabbit_file(file, args, kwargs)
 
 
 # given a treecode tc, return its level
