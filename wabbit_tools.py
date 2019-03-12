@@ -789,14 +789,14 @@ def logfit(N, err):
     return x
 
 
-def plot_wabbit_dir(d, *args ,**kwargs):
+def plot_wabbit_dir(d, **kwargs):
     import glob
 
     files = glob.glob(d+'/*.h5')
     files.sort()
 
     for file in files:
-        plot_wabbit_file(file, args, kwargs)
+        plot_wabbit_file(file, kwargs)
 
 
 # given a treecode tc, return its level
@@ -828,7 +828,7 @@ def get_max_min_level( treecode ):
 
 
 # %%
-def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
+def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
                      block_edge_alpha=0.5 , shading='flat',
                      gridonly_coloring='mpirank', flipud=False):
