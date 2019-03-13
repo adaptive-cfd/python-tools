@@ -190,7 +190,7 @@ def get_inifile_dir( dir ):
         return inifile[0]
 
 #%%
-def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p'] ):
+def prepare_resuming_backup( inifile ):
     """ we look for the latest *.h5 files
         to resume the simulation, and prepare the INI file accordingly.
         Some errors are caught.
@@ -205,10 +205,23 @@ def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p']
         raise ValueError("Inifile not found!")
 
     Tmax = get_ini_parameter(inifile, "Time", "time_max", float)
+    dim = get_ini_parameter(inifile, "Domain", "dim", int)
+
+    physics_type = get_ini_parameter(inifile, "Physics", "physics_type", str)
+
+    if physics_type != "ACM-new":
+        raise ValueError("ERROR! backup resuming is available only for ACM")
+
+    if dim == 2:
+        state_vector_prefixes = ['ux', 'uy', 'p']
+    else:
+        state_vector_prefixes = ['ux', 'uy', 'uz', 'p']
 
     # find list of H5 files for first prefix.
     files = glob.glob( state_vector_prefixes[0] + "*.h5" )
     files.sort()
+
+    print(state_vector_prefixes)
 
     if not files:
         raise ValueError( "Something is wrong: no h5 files found for resuming" )
