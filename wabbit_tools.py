@@ -190,7 +190,7 @@ def get_inifile_dir( dir ):
         return inifile[0]
 
 #%%
-def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p'] ):
+def prepare_resuming_backup( inifile ):
     """ we look for the latest *.h5 files
         to resume the simulation, and prepare the INI file accordingly.
         Some errors are caught.
@@ -205,10 +205,23 @@ def prepare_resuming_backup( inifile, state_vector_prefixes=['ux','uy','uz','p']
         raise ValueError("Inifile not found!")
 
     Tmax = get_ini_parameter(inifile, "Time", "time_max", float)
+    dim = get_ini_parameter(inifile, "Domain", "dim", int)
+
+    physics_type = get_ini_parameter(inifile, "Physics", "physics_type", str)
+
+    if physics_type != "ACM-new":
+        raise ValueError("ERROR! backup resuming is available only for ACM")
+
+    if dim == 2:
+        state_vector_prefixes = ['ux', 'uy', 'p']
+    else:
+        state_vector_prefixes = ['ux', 'uy', 'uz', 'p']
 
     # find list of H5 files for first prefix.
     files = glob.glob( state_vector_prefixes[0] + "*.h5" )
     files.sort()
+
+    print(state_vector_prefixes)
 
     if not files:
         raise ValueError( "Something is wrong: no h5 files found for resuming" )
@@ -316,7 +329,7 @@ def block_level_distribution_file( file ):
     return counter
 
 #%%
-def read_wabbit_hdf5(file):
+def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     """ Read a wabbit-type HDF5 of block-structured data.
 
     Return time, x0, dx, box, data, treecode.
@@ -326,6 +339,10 @@ def read_wabbit_hdf5(file):
     """
     import h5py
     import numpy as np
+
+    if verbose:
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("Reading file %s" % (file) )
 
     fid = h5py.File(file,'r')
     b = fid['coords_origin'][:]
@@ -354,12 +371,14 @@ def read_wabbit_hdf5(file):
     N = data.shape[0]
     Bs = data.shape[1]
 
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~")
-    print("Reading file %s" % (file) )
-    print("Time=%e it=%i N=%i Bs=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs, jmin, jmax) )
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~")
+    if verbose:
+        print("Time=%e it=%i N=%i Bs=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs, jmin, jmax) )
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-    return time, x0, dx, box, data, treecode
+    if return_iteration:
+        return time, x0, dx, box, data, treecode, iteration
+    else:
+        return time, x0, dx, box, data, treecode
 
 #%%
 def read_treecode_hdf5(file):
@@ -747,6 +766,16 @@ def fetch_compression_rate_dir(dir):
 
     return( compression )
 
+def add_convergence_labels(dx, er):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    for i in range(len(dx)-1):
+        x = 10**( 0.5 * ( np.log10(dx[i]) + np.log10(dx[i+1]) ) )
+        y = 10**( 0.5 * ( np.log10(er[i]) + np.log10(er[i+1]) ) )
+        order = "%2.1f" % ( convergence_order(dx[i:i+1+1],er[i:i+1+1]) )
+        plt.text(x, y, order, horizontalalignment='center', verticalalignment='center',
+                 bbox=dict(facecolor='w', alpha=0.75, edgecolor='none'), fontsize=7 )
 
 def convergence_order(N, err):
     """ This is a small function that returns the convergence order, i.e. the least
@@ -1157,7 +1186,7 @@ def overwrite_block_data_with_level(treecode, data):
 
 
 #%%
-def dense_matrix(  x0, dx, data, treecode, dim=2 ):
+def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
 
     import math
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
@@ -1188,19 +1217,22 @@ def dense_matrix(  x0, dx, data, treecode, dim=2 ):
     # all spacings should be the same - it does not matter which one we use.
     ddx = dx[0,0]
 
-    print("Number of blocks %i" % (N))
-    print("Spacing %e domain %e" % (ddx, ddx*nx))
+    if verbose:
+        print("Number of blocks %i" % (N))
+        print("Spacing %e domain %e" % (ddx, ddx*nx))
 
     if dim==2:
         # allocate target field
         field = np.zeros([nx,nx])
-        print("Dense field resolution %i x %i" % (nx, nx) )
+        if verbose:
+            print("Dense field resolution %i x %i" % (nx, nx) )
         # domain size
         box = [dx[0,0]*nx, dx[0,1]*nx]
     else:
         # allocate target field
         field = np.zeros([nx,nx,nx])
-        print("Dense field resolution %i x %i x %i" % (nx, nx, nx) )
+        if verbose:
+            print("Dense field resolution %i x %i x %i" % (nx, nx, nx) )
         # domain size
         box = [dx[0,0]*nx, dx[0,1]*nx, dx[0,2]*nx]
 
