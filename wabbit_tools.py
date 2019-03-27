@@ -1297,7 +1297,28 @@ def blockindex2treecode(ix, dim, treeN):
     # flip again befor returning array
     return treecode[::-1]
 
+#%%
+def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
+    """
+    Convert directory with flusi *h5 files to wabbit *h5 files
+    """
+    import re
+    import os
+    import glob
+    
+    if not os.path.exists(dir_wabbit):
+        os.makedirs(dir_wabbit)
+    if not os.path.exists(dir_flusi):
+        err("The given directory does not exist!")
+    
+    files = glob.glob(dir_flusi+'/*.h5')
+    files.sort()
+    for file in files:
+        
+        fname_wabbit = dir_wabbit + "/" + re.split("_\d+.h5",os.path.basename(file))[0]
 
+        flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
+    
 #%%
 def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
 
@@ -1311,7 +1332,6 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
     if dim==3:
         print('I think due to fft2usapmle, this routine works only in 2D')
         raise ValueError
-
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
     box = np.flip(box)
