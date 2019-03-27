@@ -1298,6 +1298,32 @@ def blockindex2treecode(ix, dim, treeN):
     return treecode[::-1]
 
 #%%
+def command_on_each_hdf5_file(directory, command):
+    """
+    This routine performs a shell command on each *.h5 file in a given directory!
+    
+    Input:
+        directory - directory with h5 files
+        command - a shell command which specifies the location of the file with %s
+                    Example command = "touch %s"
+                    
+    Example:
+    command_on_each_hdf5_file("/path/to/my/data", "/path/to/wabbit/wabbit-post --dense-to-sparse --eps=0.02 %s")
+    """
+    import re
+    import os
+    import glob
+    
+    if not os.path.exists(directory):
+        err("The given directory does not exist!")
+    
+    files = glob.glob(directory+'/*.h5')
+    files.sort()
+    for file in files:  
+        c = command  % file
+        os.system(c)
+
+#%%
 def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
     """
     Convert directory with flusi *h5 files to wabbit *h5 files
@@ -1334,7 +1360,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
         raise ValueError
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
-    box = np.flip(box)
+    box = box[1:]
     data_flusi = np.squeeze(data_flusi).transpose()
     n = np.asarray(data_flusi.shape)
     for d in range(n.ndim):
@@ -1343,7 +1369,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
             err("Number of Grid points has to be a power of 2!")
             
     Bs = n//2**level + 1
-    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box[:n.ndim+1], time)
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
 
 
 #%%
