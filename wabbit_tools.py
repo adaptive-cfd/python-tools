@@ -823,9 +823,8 @@ def plot_wabbit_dir(d, **kwargs):
 
     files = glob.glob(d+'/*.h5')
     files.sort()
-
     for file in files:
-        plot_wabbit_file(file, kwargs)
+        plot_wabbit_file(file, **kwargs)
 
 
 # given a treecode tc, return its level
@@ -857,9 +856,9 @@ def get_max_min_level( treecode ):
 
 
 # %%
-def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
+def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
-                     block_edge_alpha=0.5 , shading='flat',
+                     block_edge_alpha=0.3 , shading='flat',
                      gridonly_coloring='mpirank', flipud=False):
 
     """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
@@ -898,7 +897,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
     # read data
     time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
     # get number of blocks and blocksize
-    N, Bs = data.shape[0], data.shape[1]
+    N, Bs = data.shape[0], data.shape[1:]
 
     # we need these lists to modify the colorscale, as each block usually gets its own
     # and we would rather like to have a global one.
@@ -922,9 +921,9 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
     for i in range(N):
         if gridonly_coloring not in ['level', 'white']:
             if not flipud :
-                [X, Y] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0], np.arange(Bs)*dx[i,1]+x0[i,1])
+                [X, Y] = np.meshgrid( np.arange(Bs[0])*dx[i,0]+x0[i,0], np.arange(Bs[1])*dx[i,1]+x0[i,1])
             else:
-                [X, Y] = np.meshgrid( box[0]-np.arange(Bs)*dx[i,0]+x0[i,0], np.arange(Bs)*dx[i,1]+x0[i,1])
+                [X, Y] = np.meshgrid( box[0]-np.arange(Bs[0])*dx[i,0]+x0[i,0], np.arange(Bs[1])*dx[i,1]+x0[i,1])
 
             block = data[i,:,:].copy().transpose()
 
@@ -940,11 +939,11 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
                     elif gridonly_coloring == 'lgt_id':
                         block[:,:] = lgt_ids[i]
                         tag = "%i" % (lgt_ids[i])
-                        x = Bs/2*dx[i,1]+x0[i,1]
+                        x = Bs[1]/2*dx[i,1]+x0[i,1]
                         if not flipud:
-                            y = Bs/2*dx[i,0]+x0[i,0]
+                            y = Bs[0]/2*dx[i,0]+x0[i,0]
                         else:
-                            y = box[0] - Bs/2*dx[i,0]+x0[i,0]
+                            y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
                         plt.text( x, y, tag, fontsize=6, horizontalalignment='center',
                                  verticalalignment='center')
 
@@ -970,7 +969,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
 
             if mark_blocks and not gridonly:
                 # empty rectangle
-                ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0],
+                ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
                                                 fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
 
         else:
@@ -983,7 +982,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
                 color = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
             else:
                 color = 1.0
-            ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], facecolor=[color,color,color], edgecolor=block_edge_color ))
+            ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0], facecolor=[color,color,color], edgecolor=block_edge_color ))
 
     # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
     # that they all use the same.
@@ -1006,7 +1005,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
         plt.colorbar(h[0], ax=ax)
 
     if title:
-        plt.title( "t=%f Nb=%i Bs=%i" % (time,N,Bs) )
+        plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[0],Bs[1]) )
 
 
     if not ticks:
@@ -1299,6 +1298,81 @@ def blockindex2treecode(ix, dim, treeN):
     return treecode[::-1]
 
 #%%
+def command_on_each_hdf5_file(directory, command):
+    """
+    This routine performs a shell command on each *.h5 file in a given directory!
+    
+    Input:
+        directory - directory with h5 files
+        command - a shell command which specifies the location of the file with %s
+                    Example command = "touch %s"
+                    
+    Example:
+    command_on_each_hdf5_file("/path/to/my/data", "/path/to/wabbit/wabbit-post --dense-to-sparse --eps=0.02 %s")
+    """
+    import re
+    import os
+    import glob
+    
+    if not os.path.exists(directory):
+        err("The given directory does not exist!")
+    
+    files = glob.glob(directory+'/*.h5')
+    files.sort()
+    for file in files:  
+        c = command  % file
+        os.system(c)
+
+#%%
+def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
+    """
+    Convert directory with flusi *h5 files to wabbit *h5 files
+    """
+    import re
+    import os
+    import glob
+    
+    if not os.path.exists(dir_wabbit):
+        os.makedirs(dir_wabbit)
+    if not os.path.exists(dir_flusi):
+        err("The given directory does not exist!")
+    
+    files = glob.glob(dir_flusi+'/*.h5')
+    files.sort()
+    for file in files:
+        
+        fname_wabbit = dir_wabbit + "/" + re.split("_\d+.h5",os.path.basename(file))[0]
+
+        flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
+    
+#%%
+def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
+
+    """
+    Convert flusi data file to wabbit data file. 
+    """
+    import numpy as np
+    import insect_tools
+    import matplotlib.pyplot as plt
+
+    if dim==3:
+        print('I think due to fft2usapmle, this routine works only in 2D')
+        raise ValueError
+    # read in flusi's reference solution
+    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
+    box = box[1:]
+    data_flusi = np.squeeze(data_flusi).transpose()
+    n = np.asarray(data_flusi.shape)
+    for d in range(n.ndim):
+        # check if Block is devidable by Bs
+        if (np.remainder(n[d], 2**level) != 0):
+            err("Number of Grid points has to be a power of 2!")
+            
+    Bs = n//2**level + 1
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
+
+
+#%%
 def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0, dtype=np.float32):
 
     """
@@ -1309,7 +1383,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
      Input:
          - ddata... 2d/3D array of the data you want to write to a file
-         - name ... prefix name of the datafile
+         - name ... prefix of the name of the datafile (e.g. "rho", "p", "Ux")
          - Bs   ... number of grid points per block
                     is a 2D/3D dimensional array with Bs[0] being the number of
                     grid points in x direction etc.
@@ -1370,7 +1444,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
-    Lintervals = box/Nintervals
+    Lintervals = box[:Ndim]/Nintervals
     x0 = []
     treecode = []
     dx = []
