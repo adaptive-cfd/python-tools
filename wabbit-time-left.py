@@ -79,6 +79,7 @@ dim = wabbit_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 # old files lack the information about the number of CPU
 ncpu_now = 0
 cpuh_now = 0
+mean_cost = 0
 runtime = sum(d[:,1])/3600
 
 if d.shape[1] >= 7:

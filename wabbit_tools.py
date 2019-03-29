@@ -372,11 +372,11 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     Bs = data.shape[1]
 
     if verbose:
-        print("Time=%e it=%i N=%i Bs=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs, jmin, jmax) )
+        print("Time=%e it=%i Nb=%i Bs=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs, jmin, jmax) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     if return_iteration:
-        return time, x0, dx, box, data, treecode, iteration
+        return time, x0, dx, box, data, treecode, iteration[0]
     else:
         return time, x0, dx, box, data, treecode
 
@@ -889,7 +889,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
             b = fid['refinement_status'][:]
             ref_status = np.array(b, dtype=float)
 
-        if gridonly_coloring is 'lgt_id':
+        if gridonly_coloring == 'lgt_id':
             b = fid['lgt_ids'][:]
             lgt_ids = np.array(b, dtype=float)
 
@@ -937,7 +937,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
                     elif gridonly_coloring in ['refinement-status', 'refinement_status']:
                         block[:,:] = ref_status[i]
 
-                    elif gridonly_coloring is 'lgt_id':
+                    elif gridonly_coloring == 'lgt_id':
                         block[:,:] = lgt_ids[i]
                         tag = "%i" % (lgt_ids[i])
                         x = Bs/2*dx[i,1]+x0[i,1]
@@ -978,7 +978,7 @@ def plot_wabbit_file( file, savepng=True, savepdf=False, cmap='rainbow', caxis=N
             # well then just draw rectangles. note: you CAN do that with mpirank etc, but
             # then you do not have a colorbar.
 
-            if gridonly_coloring is 'level':
+            if gridonly_coloring == 'level':
                 level = treecode_level( treecode[i,:] )
                 color = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
             else:
