@@ -369,11 +369,11 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
 
     jmin, jmax = get_max_min_level( treecode )
     N = data.shape[0]
-    Bs = data.shape[1]
+    Bs = data.shape[1:]
 
     if verbose:
-        print("Time=%e it=%i N=%i Bs=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs, jmin, jmax) )
-        print("~~~~~~~~~~~~~~~~~~~~~~~~~")
+            print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
+            print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     if return_iteration:
         return time, x0, dx, box, data, treecode, iteration
@@ -1360,8 +1360,8 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
         raise ValueError
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
-    box = box[1:]
-    data_flusi = np.squeeze(data_flusi).transpose()
+    box = np.flip(box[1:])
+    data_flusi = np.squeeze(data_flusi).T
     n = np.asarray(data_flusi.shape)
     for d in range(n.ndim):
         # check if Block is devidable by Bs

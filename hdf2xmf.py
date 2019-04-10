@@ -91,8 +91,8 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
         # ------------------------------------------------------
         # 2d data
         # ------------------------------------------------------
-        Nb, Bs = res[0:1+1]
-
+        Nb = res[0]
+        Bs = res[1:]
         # header
         fid.write('<?xml version="1.0" ?>\n')
         fid.write('<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>\n')
@@ -129,7 +129,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             for b  in range(Nb):
                 fid.write('          <!-- ***************************************************************** -->\n')
                 fid.write('          <Grid Name="block%i" GridType="Uniform">\n' % (b))
-                fid.write('            <Topology TopologyType="2DCoRectMesh" NumberOfElements="%i %i"/>\n' % (Bs,Bs) )
+                fid.write('            <Topology TopologyType="2DCoRectMesh" NumberOfElements="%i %i"/>\n' % (Bs[0],Bs[1]) )
                 fid.write('            <Geometry GeometryType="ORIGIN_DXDY">\n')
                 fid.write('\n')
                 fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
@@ -160,13 +160,13 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
                     fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
-                    fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs,Bs) )
+                    fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs[0],Bs[1]) )
                     fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
                     fid.write('                  %i 0 0\n' % (b) )
                     fid.write('                  1 1 1\n')
-                    fid.write('                  1 %i %i\n' % (Bs,Bs) )
+                    fid.write('                  1 %i %i\n' % (Bs[0],Bs[1]) )
                     fid.write('              </DataItem>\n')
-                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs,Bs) )
+                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs[0],Bs[1]) )
                     fid.write('                  %s:/blocks\n' % (directory + prefix + '_' + timestamps[i] + '.h5') )
                     fid.write('                </DataItem>\n')
                     fid.write('              </DataItem>\n')
@@ -176,25 +176,25 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # for the moment, we just deactivate vectors...
 #                for prefix in vectors:
 #                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Node">\n' % (prefix) )
-#                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs, Bs) )
-#                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs,Bs) )
+#                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs[0], Bs[1]) )
+#                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
 #                    fid.write('                  %i 0 0\n' % (b) )
 #                    fid.write('                  1 1 1\n')
-#                    fid.write('                  1 %i %i\n' % (Bs,Bs) )
+#                    fid.write('                  1 %i %i\n' % (Bs[0], Bs[1]) )
 #                    fid.write('                </DataItem>\n')
-#                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i">\n' % (Nb,Bs,Bs) )
+#                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i">\n' % (Nb,Bs[0], Bs[1]) )
 #                    fid.write('                  %s:/blocks\n' % (directory + prefix + 'x' + '_' + timestamps[i] + '.h5') )
 #                    fid.write('                </DataItem>\n')
 #                    fid.write('         </DataItem>\n')
 #
-#                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs,Bs) )
+#                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
 #                    fid.write('                  %i 0 0\n' % (b) )
 #                    fid.write('                  1 1 1\n')
-#                    fid.write('                  1 %i %i\n' % (Bs,Bs) )
+#                    fid.write('                  1 %i %i\n' % (Bs[0], Bs[1]) )
 #                    fid.write('                </DataItem>\n')
-#                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i">\n' % (Nb,Bs,Bs) )
+#                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i">\n' % (Nb,Bs[0], Bs[1]) )
 #                    fid.write('                  %s:/blocks\n' % (directory + prefix + 'y' + '_' + timestamps[i] + '.h5') )
 #                    fid.write('                </DataItem>\n')
 #                    fid.write('         </DataItem>\n')
@@ -212,7 +212,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
     elif (len(res)==4):
         # 3d data
         Nb, Bs = res[0:1+1]
-        print('File %s contains Nb=%i blocks of size %i x %i x %i)' % (file, Nb, Bs, Bs, Bs) )
+        print('File %s contains Nb=%i blocks of size %i x %i x %i)' % (file, Nb, Bs[0], Bs[1], Bs[2]) )
 
         # header
         fid.write('<?xml version="1.0" ?>\n')
@@ -250,7 +250,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             for b  in range(Nb):
                 fid.write('          <!-- ***************************************************************** -->\n')
                 fid.write('          <Grid Name="block%i" GridType="Uniform">\n' % (b))
-                fid.write('            <Topology TopologyType="3DCoRectMesh" NumberOfElements="%i %i %i"/>\n' % (Bs,Bs,Bs) )
+                fid.write('            <Topology TopologyType="3DCoRectMesh" NumberOfElements="%i %i %i"/>\n' % (Bs[0], Bs[1], Bs[2]) )
                 fid.write('            <Geometry GeometryType="ORIGIN_DXDYDZ">\n')
                 fid.write('\n')
                 fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
@@ -281,13 +281,13 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
                     fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
-                    fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i %i" Type="HyperSlab">\n' % (Bs,Bs,Bs) )
+                    fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i %i" Type="HyperSlab">\n' % (Bs[0], Bs[1], Bs[2]) )
                     fid.write('                <DataItem Dimensions="3 4" Format="XML">\n')
                     fid.write('                  %i 0 0 0\n' % (b) )
                     fid.write('                  1 1 1 1 \n')
-                    fid.write('                  1 %i %i %i\n' % (Bs,Bs,Bs) )
+                    fid.write('                  1 %i %i %i\n' % (Bs[0], Bs[1], Bs[2]) )
                     fid.write('              </DataItem>\n')
-                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs,Bs,Bs) )
+                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs[0], Bs[1], Bs[2]) )
                     fid.write('                  %s:/blocks\n' % (directory + prefix + '_' + timestamps[i] + '.h5') )
                     fid.write('                </DataItem>\n')
                     fid.write('              </DataItem>\n')
@@ -297,7 +297,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # for the moment, we just deactivate vectors...
 #                for prefix in vectors:
 #                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Node">\n' % (prefix) )
-#                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs, Bs) )
+#                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs,Bs) )
 #                    fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
 #                    fid.write('                  %i 0 0\n' % (b) )
