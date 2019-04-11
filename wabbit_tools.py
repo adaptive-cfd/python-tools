@@ -369,7 +369,8 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
 
     jmin, jmax = get_max_min_level( treecode )
     N = data.shape[0]
-    Bs = np.flip(data.shape[1:]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
+    Bs = data.shape[1:]
+    Bs = Bs[::-1] # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
 
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
@@ -411,14 +412,14 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
         # 3d data
         Bs=np.zeros([3,1])
         N, Bs[0], Bs[1], Bs[2] = data.shape
-        Bs = np.flip(Bs)
+        Bs = Bs[::-1]
         print( "Writing to file=%s max=%e min=%e size=%i %i %i " % (file, np.max(data), np.min(data), Bs[0], Bs[1], Bs[2]) )
 
     else:
         # 2d data
         Bs = np.zeros([2,1])
         N, Bs[0], Bs[1] = data.shape
-        Bs = np.flip(Bs)
+        Bs = Bs[::-1]
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Writing file %s" % (file) )
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Level=%i" % (time, iteration, N, Bs[0], Bs[1],Level) )
@@ -1378,7 +1379,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
             err("Number of Grid points has to be a power of 2!")
     # Note we have to flip  n here because Bs = [BsX, BsY] 
     # The order of Bs is choosen like it is in WABBIT. 
-    Bs = np.flip(n)//2**level + 1
+    Bs = n[::-1]//2**level + 1
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
 
 
@@ -1413,7 +1414,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Nsize = np.asarray(ddata.shape)
     level = 0
     Bs = np.asarray(Bs)# make sure Bs is a numpy array
-    Bs = np.flip(Bs) # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]  
+    Bs = Bs[::-1] # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]  
     #########################################################
     # do some initial checks on the input data
     # 1) check if the size of the domain is given
@@ -1457,7 +1458,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
     Lintervals = box[:Ndim]/Nintervals
-    Lintervals = np.flip(Lintervals)
+    Lintervals = Lintervals[::-1]
     x0 = []
     treecode = []
     dx = []
