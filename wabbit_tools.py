@@ -369,7 +369,7 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
 
     jmin, jmax = get_max_min_level( treecode )
     N = data.shape[0]
-    Bs = data.shape[1:]
+    Bs = np.flip(data.shape[1:]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
 
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
@@ -398,28 +398,33 @@ def read_treecode_hdf5(file):
 
 #%%
 def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, dtype=np.float32  ):
-    """ Write data from wabbit to an HDF5 file """
+    """ Write data from wabbit to an HDF5 file
+        Note: hdf5 saves the arrays in [Nz, Ny, Nx] order!
+        So: data.shape = Nblocks, Bs[3], Bs[2], Bs[1]
+    """
     import h5py
     import numpy as np
-
+    
 
     Level = np.size(treecode,1)
     if len(data.shape)==4:
-        Bs=[0]*3
         # 3d data
+        Bs=np.zeros([3,1])
         N, Bs[0], Bs[1], Bs[2] = data.shape
+        Bs = np.flip(Bs)
         print( "Writing to file=%s max=%e min=%e size=%i %i %i " % (file, np.max(data), np.min(data), Bs[0], Bs[1], Bs[2]) )
 
     else:
         # 2d data
-        Bs=[0]*2
+        Bs = np.zeros([2,1])
         N, Bs[0], Bs[1] = data.shape
+        Bs = np.flip(Bs)
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Writing file %s" % (file) )
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Level=%i" % (time, iteration, N, Bs[0], Bs[1],Level) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-
+    
     fid = h5py.File( file, 'w')
 
     fid.create_dataset( 'coords_origin', data=x0, dtype=dtype )
@@ -899,7 +904,6 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
     # get number of blocks and blocksize
     N, Bs = data.shape[0], data.shape[1:]
-
     # we need these lists to modify the colorscale, as each block usually gets its own
     # and we would rather like to have a global one.
     h = []
@@ -1006,7 +1010,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         plt.colorbar(h[0], ax=ax)
 
     if title:
-        plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[0],Bs[1]) )
+        plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[1],Bs[0]) )
 
 
     if not ticks:
@@ -1040,6 +1044,9 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
         if savepdf:
             plt.savefig( file.replace('.h5','-grid.pdf'), bbox_inches='tight' )
+
+
+
 
 #%%
 def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
@@ -1201,8 +1208,8 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
     # number of blocks
     N = data.shape[0]
     # size of each block
-    Bs = data.shape[1]
-
+    Bs = data.shape[1:]
+   
     # check if all blocks are on the same level or not
     jmin, jmax = get_max_min_level( treecode )
     if jmin != jmax:
@@ -1211,24 +1218,25 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
 
     # note skipping of redundant points, hence the -1
     if dim==2:
-        nx = int( np.sqrt(N)*(Bs-1) )
+        nx = [int( np.sqrt(N)*(Bs[d]-1) ) for d in range(np.size(Bs))]
     else:
         nx = int( math.pow(N,1.0/dim)*(Bs-1)) +1
 
+   
     # all spacings should be the same - it does not matter which one we use.
-    ddx = dx[0,0]
-
+    ddx = dx[0,:]
     if verbose:
-        print("Number of blocks %i" % (N))
-        print("Spacing %e domain %e" % (ddx, ddx*nx))
+        print("Nblocks :" , (N))
+        print("Spacing :",ddx)
+        print("Domain  :", ddx*nx)
 
     if dim==2:
         # allocate target field
-        field = np.zeros([nx,nx])
+        field = np.zeros(nx)
         if verbose:
-            print("Dense field resolution %i x %i" % (nx, nx) )
+            print("Resolution :", nx )
         # domain size
-        box = [dx[0,0]*nx, dx[0,1]*nx]
+        box = ddx*nx
     else:
         # allocate target field
         field = np.zeros([nx,nx,nx])
@@ -1249,7 +1257,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
         else:
             # copy block content to data field. Note we skip the last points, which
             # are the redundant nodes.
-            field[ ix0:ix0+Bs-1, iy0:iy0+Bs-1 ] = data[i,0:-1,0:-1]
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1 ] = data[i,0:-1,0:-1]
 
     return(field, box)
 
@@ -1361,15 +1369,16 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
         raise ValueError
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
-    box = np.flip(box[1:])
+    box = box[1:]
     data_flusi = np.squeeze(data_flusi).T
     n = np.asarray(data_flusi.shape)
     for d in range(n.ndim):
         # check if Block is devidable by Bs
         if (np.remainder(n[d], 2**level) != 0):
             err("Number of Grid points has to be a power of 2!")
-            
-    Bs = n//2**level + 1
+    # Note we have to flip  n here because Bs = [BsX, BsY] 
+    # The order of Bs is choosen like it is in WABBIT. 
+    Bs = np.flip(n)//2**level + 1
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
 
 
@@ -1384,13 +1393,14 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
      Input:
          - ddata... 2d/3D array of the data you want to write to a file
+                     Note ddata.shape=[Ny,Nx] !!
          - name ... prefix of the name of the datafile (e.g. "rho", "p", "Ux")
          - Bs   ... number of grid points per block
                     is a 2D/3D dimensional array with Bs[0] being the number of
                     grid points in x direction etc.
                     The data size in each dimension has to be dividable by Bs.
                     Optional Input:
-                        - box_size... 2D/3D array of the size of your box
+                        - box_size... 2D/3D array of the size of your box [Lx, Ly, Lz]
                         - time    ... time of the data
                         - iteration ... iteration of the time snappshot
     Output:
@@ -1402,7 +1412,8 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Ndim = ddata.ndim
     Nsize = np.asarray(ddata.shape)
     level = 0
-    Bs = np.asarray(Bs)  # make sure Bs is a numpy array
+    Bs = np.asarray(Bs)# make sure Bs is a numpy array
+    Bs = np.flip(Bs) # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]  
     #########################################################
     # do some initial checks on the input data
     # 1) check if the size of the domain is given
@@ -1446,6 +1457,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
     Lintervals = box[:Ndim]/Nintervals
+    Lintervals = np.flip(Lintervals)
     x0 = []
     treecode = []
     dx = []
