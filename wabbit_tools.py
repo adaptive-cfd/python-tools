@@ -865,7 +865,7 @@ def get_max_min_level( treecode ):
 # %%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
-                     block_edge_alpha=0.3 , shading='flat',
+                     block_edge_alpha=0.3 , shading='flat', colorbar_orientation="vertical",
                      gridonly_coloring='mpirank', flipud=False):
 
     """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
@@ -973,7 +973,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             c1.append(a[0])
             c2.append(a[1])
 
-            if mark_blocks and not gridonly:
+            if mark_blocks:
                 # empty rectangle
                 ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
                                                 fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
@@ -1006,10 +1006,10 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         # set fixed (user defined) colorbar for all patches
         for hplots in h:
             hplots.set_clim( (min(caxis),max(caxis))  )
-
+    cb= None
     if colorbar:
-        plt.colorbar(h[0], ax=ax)
-
+        cb=plt.colorbar(h[0], ax=ax, orientation=colorbar_orientation)
+        
     if title:
         plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[1],Bs[0]) )
 
@@ -1045,8 +1045,8 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
         if savepdf:
             plt.savefig( file.replace('.h5','-grid.pdf'), bbox_inches='tight' )
-
-
+    
+    return ax,cb
 
 
 #%%
@@ -1356,7 +1356,7 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
     
 #%%
-def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
+def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2 ):
 
     """
     Convert flusi data file to wabbit data file. 
@@ -1455,6 +1455,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
         data[:, -1, :] = data[:, 0, :]
         data[:, :, -1] = data[:, :, 0]
 
+   
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
     Lintervals = box[:Ndim]/Nintervals
