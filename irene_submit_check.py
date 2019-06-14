@@ -130,9 +130,9 @@ if os.path.isfile( jobfile ):
     else:
         print('walltime *.SH/INI : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
+    print("----------------------------------------")
 
-
-
+    eps  = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'eps',float )
 
     Jmax = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
     L = wabbit_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
@@ -152,7 +152,8 @@ if os.path.isfile( jobfile ):
 
     keta = np.sqrt(ceta*nu)/dx
 
-
+    print( "Jmax             = %i" % (Jmax))
+    print( "eps              = %2.2e" % (eps))
     print( "c0               = %2.2f" % (c0))
     print( "C_eta            = %2.2e" % (ceta))
     print( "K_eta            = %s%2.2f%s" % (bcolors.OKGREEN,keta,bcolors.ENDC))
@@ -162,7 +163,9 @@ if os.path.isfile( jobfile ):
         t =  wabbit_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float)
         print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
 
+    print("----------------------------------------")
     print('Launching wabbit_tools ini file check now:')
+    print("----------------------------------------")
     wabbit_tools.check_parameters_for_stupid_errors( paramsfile )
 
 

@@ -985,6 +985,11 @@ def integrated_L2_difference_signal( data1, data2, qty ):
     sig2 = np.interp( data1[:,0], data2[:,0], data2[:,qty])
     sig1 = data1[:,qty]
 
+#    import matplotlib.pyplot as plt
+#    plt.figure()
+#    plt.plot( sig1 , label='ref')
+#    plt.plot( sig2 , label='this')
+
     err = np.sqrt(np.trapz( (sig2-sig1)**2, x=data1[:,0] ) ) / np.sqrt(np.trapz( sig1**2, x=data1[:,0] ))
 #    err = np.linalg.norm( sig2-sig1 ) / np.linalg.norm(sig1)
 

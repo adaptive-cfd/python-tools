@@ -231,7 +231,7 @@ def prepare_resuming_backup( inifile ):
     t0 = float(timestamp) / 1e6
     print('Latest file is at time:   %f' % (t0))
 
-    d = np.loadtxt('timesteps_info.t')
+    d = np.loadtxt('dt.t')
     t1 = d[-1,0]
     print('Last time stamp in logs is: %f' % (t1))
 
@@ -405,7 +405,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     """
     import h5py
     import numpy as np
-    
+
 
     Level = np.size(treecode,1)
     if len(data.shape)==4:
@@ -425,7 +425,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Level=%i" % (time, iteration, N, Bs[0], Bs[1],Level) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-    
+
     fid = h5py.File( file, 'w')
 
     fid.create_dataset( 'coords_origin', data=x0, dtype=dtype )
@@ -865,7 +865,7 @@ def get_max_min_level( treecode ):
 # %%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
-                     block_edge_alpha=0.3 , shading='flat',
+                     block_edge_alpha=1.0 , shading='flat',
                      gridonly_coloring='mpirank', flipud=False):
 
     """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
@@ -903,17 +903,19 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
     # read data
     time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
+
     # get number of blocks and blocksize
     N, Bs = data.shape[0], data.shape[1:]
+
     # we need these lists to modify the colorscale, as each block usually gets its own
     # and we would rather like to have a global one.
-    h = []
-    c1 = []
-    c2 = []
+    h, c1, c2 = [], [], []
+
 
     if fig is None:
         fig = plt.gcf()
         fig.clf()
+
     if ax is None:
         ax = fig.gca()
 
@@ -924,47 +926,73 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     # proper scaling we need to know the max/min level in the grid
     jmin, jmax = get_max_min_level( treecode )
 
-    for i in range(N):
-        if gridonly_coloring not in ['level', 'white']:
+
+
+    if gridonly:
+        #----------------------------------------------------------------------
+        # Grid data only (CPU distribution, level, or grid only)
+        #----------------------------------------------------------------------
+        cm = plt.cm.get_cmap(cmap)
+
+        # loop over blocks and plot them individually
+        for i in range(N):
+            # draw some other qtys (mpirank, lgt_id or refinement-status)
+            if gridonly_coloring in ['mpirank', 'cpu']:
+                color = cm( procs[i]/max(procs) )
+
+            elif gridonly_coloring in ['refinement-status', 'refinement_status']:
+                color = cm((ref_status[i]+1.0) / 2.0)
+
+            elif gridonly_coloring == 'level':
+                level = treecode_level( treecode[i,:] )
+                c = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
+                color = [c,c,c]
+
+            elif gridonly_coloring == 'lgt_id':
+                color = cm( lgt_ids[i]/max(lgt_ids) )
+
+                tag = "%i" % (lgt_ids[i])
+                x = Bs[1]/2*dx[i,1]+x0[i,1]
+                if not flipud:
+                    y = Bs[0]/2*dx[i,0]+x0[i,0]
+                else:
+                    y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
+                plt.text( x, y, tag, fontsize=6, horizontalalignment='center',
+                         verticalalignment='center')
+
+            else:
+                raise ValueError("ERROR! The value for gridonly_coloring is unkown")
+
+            # draw colored rectangles for the blocks
+            ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
+                                            fill=True, edgecolor=block_edge_color, alpha=block_edge_alpha,
+                                            facecolor=color))
+
+    else:
+        #----------------------------------------------------------------------
+        # Plot real data.
+        #----------------------------------------------------------------------
+        # loop over blocks and plot them individually
+        for i in range(N):
+
             if not flipud :
                 [X, Y] = np.meshgrid( np.arange(Bs[0])*dx[i,0]+x0[i,0], np.arange(Bs[1])*dx[i,1]+x0[i,1])
             else:
                 [X, Y] = np.meshgrid( box[0]-np.arange(Bs[0])*dx[i,0]+x0[i,0], np.arange(Bs[1])*dx[i,1]+x0[i,1])
 
+            # copy block data
             block = data[i,:,:].copy().transpose()
 
-            if not contour:
-                if gridonly:
-                    # draw some other qtys (mpirank, lgt_id or refinement-status)
-                    if gridonly_coloring in ['mpirank', 'cpu']:
-                        block[:,:] = np.round( procs[i] )
-
-                    elif gridonly_coloring in ['refinement-status', 'refinement_status']:
-                        block[:,:] = ref_status[i]
-
-                    elif gridonly_coloring == 'lgt_id':
-                        block[:,:] = lgt_ids[i]
-                        tag = "%i" % (lgt_ids[i])
-                        x = Bs[1]/2*dx[i,1]+x0[i,1]
-                        if not flipud:
-                            y = Bs[0]/2*dx[i,0]+x0[i,0]
-                        else:
-                            y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
-                        plt.text( x, y, tag, fontsize=6, horizontalalignment='center',
-                                 verticalalignment='center')
-
-                    else:
-                        raise ValueError("ERROR! The value for gridonly_coloring is unkown")
-
-                # actual plotting of patch
-                hplot = ax.pcolormesh( Y, X, block, cmap=cmap, shading=shading )
-
-            else:
-                # contour plot only with actual data
+            if contour:
+                # --- contour plot ----
                 hplot = ax.contour( Y, X, block, [0.1, 0.2, 0.5, 0.75] )
 
-            # use rasterization for the patch we just draw
-            hplot.set_rasterized(True)
+            else:
+                # --- pseudocolor plot ----
+                hplot = ax.pcolormesh( Y, X, block, cmap=cmap, shading=shading )
+
+                # use rasterization for the patch we just draw
+                hplot.set_rasterized(True)
 
             # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
             # that they all use the same.
@@ -973,42 +1001,30 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             c1.append(a[0])
             c2.append(a[1])
 
-            if mark_blocks and not gridonly:
+            if mark_blocks:
                 # empty rectangle
                 ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
                                                 fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
 
-        else:
-            # if we color the blocks simply with grayscale depending on their level
-            # well then just draw rectangles. note: you CAN do that with mpirank etc, but
-            # then you do not have a colorbar.
-
-            if gridonly_coloring == 'level':
-                level = treecode_level( treecode[i,:] )
-                color = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
-            else:
-                color = 1.0
-            ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0], facecolor=[color,color,color], edgecolor=block_edge_color ))
-
-    # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
-    # that they all use the same.
-    if caxis is None:
-        if not caxis_symmetric:
-            # automatic colorbar, using min and max throughout all patches
-            for hplots in h:
-                hplots.set_clim( (min(c1),max(c2))  )
-        else:
-                # automatic colorbar, but symmetric, using the SMALLER of both absolute values
-                c= min( [abs(min(c1)), max(c2)] )
+        # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
+        # that they all use the same.
+        if caxis is None:
+            if not caxis_symmetric:
+                # automatic colorbar, using min and max throughout all patches
                 for hplots in h:
-                    hplots.set_clim( (-c,c)  )
-    else:
-        # set fixed (user defined) colorbar for all patches
-        for hplots in h:
-            hplots.set_clim( (min(caxis),max(caxis))  )
+                    hplots.set_clim( (min(c1),max(c2))  )
+            else:
+                    # automatic colorbar, but symmetric, using the SMALLER of both absolute values
+                    c= min( [abs(min(c1)), max(c2)] )
+                    for hplots in h:
+                        hplots.set_clim( (-c,c)  )
+        else:
+            # set fixed (user defined) colorbar for all patches
+            for hplots in h:
+                hplots.set_clim( (min(caxis),max(caxis))  )
 
-    if colorbar:
-        plt.colorbar(h[0], ax=ax)
+        if colorbar:
+            plt.colorbar(h[0], ax=ax)
 
     if title:
         plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[1],Bs[0]) )
@@ -1210,7 +1226,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
     N = data.shape[0]
     # size of each block
     Bs = data.shape[1:]
-   
+
     # check if all blocks are on the same level or not
     jmin, jmax = get_max_min_level( treecode )
     if jmin != jmax:
@@ -1223,7 +1239,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
     else:
         nx = int( math.pow(N,1.0/dim)*(Bs-1)) +1
 
-   
+
     # all spacings should be the same - it does not matter which one we use.
     ddx = dx[0,:]
     if verbose:
@@ -1311,25 +1327,25 @@ def blockindex2treecode(ix, dim, treeN):
 def command_on_each_hdf5_file(directory, command):
     """
     This routine performs a shell command on each *.h5 file in a given directory!
-    
+
     Input:
         directory - directory with h5 files
         command - a shell command which specifies the location of the file with %s
                     Example command = "touch %s"
-                    
+
     Example:
     command_on_each_hdf5_file("/path/to/my/data", "/path/to/wabbit/wabbit-post --dense-to-sparse --eps=0.02 %s")
     """
     import re
     import os
     import glob
-    
+
     if not os.path.exists(directory):
         err("The given directory does not exist!")
-    
+
     files = glob.glob(directory+'/*.h5')
     files.sort()
-    for file in files:  
+    for file in files:
         c = command  % file
         os.system(c)
 
@@ -1341,25 +1357,25 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
     import re
     import os
     import glob
-    
+
     if not os.path.exists(dir_wabbit):
         os.makedirs(dir_wabbit)
     if not os.path.exists(dir_flusi):
         err("The given directory does not exist!")
-    
+
     files = glob.glob(dir_flusi+'/*.h5')
     files.sort()
     for file in files:
-        
+
         fname_wabbit = dir_wabbit + "/" + re.split("_\d+.h5",os.path.basename(file))[0]
 
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
-    
+
 #%%
 def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
 
     """
-    Convert flusi data file to wabbit data file. 
+    Convert flusi data file to wabbit data file.
     """
     import numpy as np
     import insect_tools
@@ -1377,8 +1393,8 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, ):
         # check if Block is devidable by Bs
         if (np.remainder(n[d], 2**level) != 0):
             err("Number of Grid points has to be a power of 2!")
-    # Note we have to flip  n here because Bs = [BsX, BsY] 
-    # The order of Bs is choosen like it is in WABBIT. 
+    # Note we have to flip  n here because Bs = [BsX, BsY]
+    # The order of Bs is choosen like it is in WABBIT.
     Bs = n[::-1]//2**level + 1
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
 
@@ -1414,7 +1430,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Nsize = np.asarray(ddata.shape)
     level = 0
     Bs = np.asarray(Bs)# make sure Bs is a numpy array
-    Bs = Bs[::-1] # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]  
+    Bs = Bs[::-1] # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]
     #########################################################
     # do some initial checks on the input data
     # 1) check if the size of the domain is given

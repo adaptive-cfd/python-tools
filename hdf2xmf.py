@@ -211,7 +211,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
 
     elif (len(res)==4):
         # 3d data
-        Nb, Bs = res[0:1+1]
+        Nb = res[0]
+        Bs = res[1:]
+
         print('File %s contains Nb=%i blocks of size %i x %i x %i)' % (file, Nb, Bs[0], Bs[1], Bs[2]) )
 
         # header
