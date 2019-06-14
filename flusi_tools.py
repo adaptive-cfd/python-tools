@@ -76,6 +76,7 @@ def read_flusi_HDF5( fname, dtype=np.float32, twoD=False):
 
 
 
+
 def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.0,0.0,0.0]), dtype=np.float32 ):
     import h5py
 
@@ -110,3 +111,37 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
     dset_id.attrs.create('nxyz', nxyz )
 
     fid.close()
+    
+    
+    
+def crop_flusi_HDF5(file, Nxcut=[0, 0], Nycut=[0, 0], Nzcut=[0, 0]):
+    """
+        Crop the data matrix.
+        
+            Input:
+            N[x|y|t]_cut: 1d-array of size 2
+            Array will be croped from Nx_cut[0]:-Nx_cut[1] in x dimension,
+                                      Ny_cut[0]:-Ny_cut[1] in y dimension,
+                                      Nz_cut[0]:-Nz_cut[1] in z dimension
+    """
+    time, box, origin, data = read_flusi_HDF5( file )
+    data = np.squeeze(data)
+    
+    if len(data.shape)==2:
+        # this is the lazy variant:
+        y = np.linspace(0,box[-1],np.size(data,-1)) + origin[-1]
+        x = np.linspace(0,box[-2],np.size(data,-2)) + origin[-2]
+        x_cut= x[Nxcut[0]:-Nxcut[1]] - x[Nxcut[0]]
+        y_cut= y[Nycut[0]:-Nycut[1]] - y[Nycut[0]]
+        box[-2] = max(x_cut)- min(x_cut)
+        box[-1] = max(y_cut)- min(y_cut)
+        origin[-2] = x_cut[0]
+        origin[-1] = y_cut[0]
+        data_cut = data[ Nxcut[0] : -Nxcut[1], Nycut[0] : -Nycut[1]]
+        data = np.expand_dims(data_cut,2) # we have to add the z dimension again
+
+    else:
+        print("crop_flusi_hdf5: 3d not implemented")
+        return 
+    
+    write_flusi_HDF5( file, time, box, data, origin )
