@@ -69,6 +69,12 @@ def check_parameters_for_stupid_errors( file ):
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
     sponged = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
 
+    jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
+
+    if jmax > 18:
+        warn('WABBIT can compute at most 18 refinement levels, you set more!')
+
+
     if penalized and sponged:
         if abs(ceta-csponge) > 1.0e-7:
             warn( 'Sponge and penalization parameter are different: C_eta=%e C_sponge=%e' % (ceta,csponge))
@@ -1203,10 +1209,18 @@ def compare_two_grids( treecode1, treecode2 ):
 def overwrite_block_data_with_level(treecode, data):
     """On all blocks of the data array, replace any function values by the level of the block"""
 
-    N = treecode.shape[0]
-    for i in range(N):
-        level = treecode_level(treecode[i,:])
-        data[i,:,:,:] = float( level )
+    if len(data.shape) == 4:
+        N = treecode.shape[0]
+        for i in range(N):
+            level = treecode_level(treecode[i,:])
+            data[i,:,:,:] = float( level )
+
+    elif len(data.shape) == 3:
+
+        N = treecode.shape[0]
+        for i in range(N):
+            level = treecode_level(treecode[i,:])
+            data[i,:,:] = float( level )
 
     return data
 
