@@ -148,7 +148,7 @@ elif os.path.isfile(dir + 'performance.t'):
     runtime = sum(d[:,2])/3600
 
     # compute mean cost per grid point per time step
-    mean_cost = np.mean( d[:,2]*d[:,7] / (8.0*d[:,3]*(bs-1)**dim ) )
+    mean_cost = np.mean( d[:,2]*d[:,7] / (d[:,3]*(bs-1)**dim ) )
 
     cpuh_now = int( np.sum(d[:,2]*d[:,7])/3600 )
     # this is a recent file (>20/12/2018) it contains the number of procs in every line
