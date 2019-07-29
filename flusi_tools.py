@@ -69,7 +69,7 @@ def read_flusi_HDF5( fname, dtype=np.float32, twoD=False):
             data = data[0,:,:].copy()
             data = data.transpose()
 
-    print("We read FLUSI file %s at time=%f" % (fname, time) )
+    print("We read FLUSI file %s at time=%f \nResolution :" % (fname, time), data.shape)
 
 
     return time, box, origin, data
@@ -89,13 +89,13 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
         # i dont really know why, but there is a messup in fortran vs c ordering, so here we have to swap
         # axis
         data = np.swapaxes(data, 0, 2)
-        nxyz = np.array([nx,ny,nz])
+        nxyz = np.array([nz,nx,ny])
     else:
         #2d data
         nx, ny = data.shape
         print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i" % (fname, dset_name, np.max(data), np.min(data), nx,ny) )
         data = np.swapaxes(data, 0, 1)
-        nxyz = np.array([nx,ny])
+        nxyz = np.array([1, nx,ny])
 
     fid = h5py.File( fname, 'w')
 

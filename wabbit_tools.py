@@ -404,7 +404,7 @@ def read_treecode_hdf5(file):
     return treecode
 
 #%%
-def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, dtype=np.float32  ):
+def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, dtype=np.float64  ):
     """ Write data from wabbit to an HDF5 file
         Note: hdf5 saves the arrays in [Nz, Ny, Nx] order!
         So: data.shape = Nblocks, Bs[3], Bs[2], Bs[1]
@@ -443,9 +443,9 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
-    dset_id.attrs.create('time', time)
+    dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
-    dset_id.attrs.create('domain-size', box )
+    dset_id.attrs.create('domain-size', box, dtype=dtype )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -887,7 +887,8 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     import matplotlib.patches as patches
     import matplotlib.pyplot as plt
     import h5py
-
+    
+    cb = []
     # read procs table, if we want to draw the grid only
     if gridonly:
         fid = h5py.File(file,'r')
@@ -1102,7 +1103,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
 
     if dim==2:
         # squeeze 3D flusi field (where dim0 == 1) to true 2d data
-        data_ref = data_ref[0,:,:].copy()
+        data_ref = data_ref[:,:,0].copy().transpose()
         box_ref = box_ref[1:2].copy()
 
     # convert wabbit to dense field
@@ -1119,10 +1120,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
         import fourier_tools
         data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[0] )
 
-    # we need to transpose the flusi data...
-    data_ref = data_ref.transpose()
-
-    err = np.ndarray.flatten(data_dense-data_ref)
+    err = np.ndarray.flatten(data_ref-data_dense)
     exc = np.ndarray.flatten(data_ref)
 
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
@@ -1148,6 +1146,29 @@ def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
 
     err = np.ndarray.flatten(data_dense-data_ref)
     exc = np.ndarray.flatten(data_ref)
+
+    err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
+
+    print( "error was e=%e" % (err) )
+
+    return err
+
+def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
+    """ compute error given two wabbit dense fields
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import insect_tools
+
+    time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
+    time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
+    data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
+    data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+    if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
+       raise ValueError("ERROR! Both fields are not a the same resolutionn")
+
+    err = np.ndarray.flatten(data1-data2)
+    exc = np.ndarray.flatten(data1)
 
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
 
@@ -1285,7 +1306,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
             iz0 = int(round(x0[i,2]/dx[i,2]))
             # copy block content to data field. Note we skip the last points, which
             # are the redundant nodes.
-            field[ ix0:ix0+Bs-1, iy0:iy0+Bs-1, iz0:iz0+Bs-1 ] = data[i,0:-1,0:-1, 0:-1]
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1, iz0:iz0+Bs[2]-1 ] = data[i,0:-1,0:-1, 0:-1]
         else:
             # copy block content to data field. Note we skip the last points, which
             # are the redundant nodes.
@@ -1387,7 +1408,7 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
 
 #%%
-def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2 ):
+def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 ):
 
     """
     Convert flusi data file to wabbit data file.
@@ -1400,7 +1421,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2 ):
         print('I think due to fft2usapmle, this routine works only in 2D')
         raise ValueError
     # read in flusi's reference solution
-    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi )
+    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi,dtype=dtype )
     box = box[1:]
     data_flusi = np.squeeze(data_flusi).T
     n = np.asarray(data_flusi.shape)
@@ -1411,11 +1432,11 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2 ):
     # Note we have to flip  n here because Bs = [BsX, BsY]
     # The order of Bs is choosen like it is in WABBIT.
     Bs = n[::-1]//2**level + 1
-    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time)
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time,dtype=dtype)
 
 
 #%%
-def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0, dtype=np.float32):
+def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0, dtype=np.float64):
 
     """
     This function creates a <name>_<time>.h5 file with the wabbit
@@ -1473,7 +1494,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     #########################################################
 
     # assume periodicity:
-    data = np.zeros(Nsize+1)
+    data = np.zeros(Nsize+1,dtype=dtype)
     if Ndim == 2:
         data[:-1, :-1] = ddata
         # copy first row and column for periodicity
@@ -1488,8 +1509,10 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     # number of intervals in each dimension
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
-    Lintervals = box[:Ndim]/Nintervals
+    Lintervals = box[:Ndim]/np.asarray(Nintervals)
     Lintervals = Lintervals[::-1]
+   # dx_val = 2**(-level) *box[:Ndim]/(Bs-1)
+    #print(dx_val)
     x0 = []
     treecode = []
     dx = []
@@ -1501,9 +1524,9 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     x0.append([ibx, iby, ibz]*Lintervals)
                     dx.append(Lintervals/(Bs-1))
 
-                    lower = x0[-1]//dx[-1]
-                    lower = np.asarray(lower, dtype=int)
-                    upper = lower + Bs
+                    lower = [ibx, iby, ibz]* (Bs - 1)
+                    lower = np.asarray(lower, dtype=int) 
+                    upper = lower + Bs 
 
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
@@ -1512,23 +1535,24 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
-
-                lower = x0[-1]//dx[-1]
+                
+                lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
-                upper = lower + Bs
-
+                upper = lower + Bs 
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
-
-    x0 = np.asarray(x0)
-    dx = np.asarray(dx)
-    treecode = np.asarray(treecode)
-    block_data = np.asarray(bdata)
-
+                
+    
+    x0 = np.asarray(x0,dtype=dtype)
+    dx = np.asarray(dx,dtype=dtype)
+    treecode = np.asarray(treecode, dtype=dtype)
+    block_data = np.asarray(bdata, dtype=dtype)
+    
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration, dtype )
     return fname
 
 # %%
+
 def is_power2(num):
     'states if a number is a power of two'
     return num != 0 and ((num & (num - 1)) == 0)
