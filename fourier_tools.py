@@ -71,8 +71,10 @@ def fft2_resample(u, res):
          and converted to double precision, very large upsampling can amplify the noise
          that comes from the missing precision In that case, better use single precision.
     """
-
-    if (res > u.shape[0]):
+    import numpy as np
+    nold = np.asarray(u.shape)
+    
+    if (np.all(res > nold)):
         u = fft2_upsample(u, res)
     elif (res < u.shape[0]):
         u = fft2_downsample(u, res)
@@ -81,20 +83,33 @@ def fft2_resample(u, res):
 
 
 
-def fft2_upsample(u, res):
+def fft2_upsample(u, resolution):
+    """
+    u is a 2d field
+    resolution of the upsampled field [nx,ny] or just n 
+
+    """
     import numpy as np
 #    import matplotlib.pyplot as plt
+    
 
+    if not isinstance(resolution, (list, tuple)):
+       res = [resolution]
+    else:
+        res = resolution
+    res=np.asarray(res)
+    
     E_in = np.sum(u**2)/np.float64(u.size)
 
     uk = np.fft.fft2(u)
     uk = np.fft.fftshift( uk )
-
-    nold = u.shape[0]
+    
+    nold = u.shape
 
     # zero-pad
-    n = int ( (res - nold) / 2 )
-    uk = np.pad( uk, ((n,n),(n,n)), 'constant')
+    n = np.asarray ( (res - nold) / 2, dtype=np.dtype(int) )
+    
+    uk = np.pad( uk, ((n[0],n[0]),(n[1],n[1])), 'constant')
 
     uk = np.fft.ifftshift( uk )
 
@@ -138,7 +153,9 @@ def fft2_upsample(u, res):
 #
 #    raise ValueError
 
-    print( " fft: upsampling: energy was=%20.15e is now=%20.15e (from %i to %i points)" % (E_in, E_out, nold, res) )
+    print( " fft: upsampling: energy was=%20.15e is now=%20.15e " % (E_in, E_out) )
+    print(" New Resolution:", u2.shape)
+    print(" Old Resolution:", nold)
     print( " delta_E=%20.15e" % (E_in - E_out) )
     print( " delta_E=%20.15e" % ((E_in - E_out)/E_in) )
 #    print( "rfft: upsampling: energy was=%20.15e is now=%20.15e (from %i to %i points)" % (np.sum(u**2)/u.size, np.sum(u22**2)/u2.size, nold, res))

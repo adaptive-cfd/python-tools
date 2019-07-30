@@ -144,4 +144,27 @@ def crop_flusi_HDF5(file, Nxcut=[0, 0], Nycut=[0, 0], Nzcut=[0, 0]):
         print("crop_flusi_hdf5: 3d not implemented")
         return 
     
+    
+    write_flusi_HDF5( file, time, box, data, origin )
+    
+def resample_flusi_HDF5(file, N):
+    """
+        Sample the data matrix up
+        
+            Input:
+            shape
+            
+    """
+    import fourier_tools
+    time, box, origin, data = read_flusi_HDF5( file )
+    data = np.squeeze(data)
+    
+    if len(data.shape)==2:
+        data = fourier_tools.fft2_resample( data, N  )
+        data = np.expand_dims(data,2) # we have to add the z dimension again
+    
+    else:
+        print("crop_flusi_hdf5: 3d not implemented")
+        return 
+    
     write_flusi_HDF5( file, time, box, data, origin )
