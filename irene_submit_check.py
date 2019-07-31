@@ -95,7 +95,7 @@ if os.path.isfile( jobfile ):
 
     print("program           = %s%s%s" % (bcolors.OKBLUE, progfile, bcolors.ENDC) )
     print("paramsfile        = %s%s%s" % (bcolors.OKBLUE, paramsfile, bcolors.ENDC) )
-    print("memory in call    = %s%2.2f%s GB" % (bcolors.OKBLUE, memory, bcolors.ENDC) )
+    print("memory in call    = %s%2.2f%s GB (%s%2.2f%s GB/core)" % (bcolors.OKBLUE, memory, bcolors.ENDC, bcolors.OKBLUE, memory/ncpu, bcolors.ENDC) )
     print("max memory        = %s%i%s GB" % (bcolors.OKBLUE, maxmem, bcolors.ENDC) )
     print("max memory (safe) = %s%i%s GB" % (bcolors.OKBLUE, maxmem-5.0, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )

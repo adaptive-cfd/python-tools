@@ -868,9 +868,12 @@ def get_max_min_level( treecode ):
 
 
 
-def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None, caxis_symmetric=False, title=True, mark_blocks=True,
-                     gridonly=False, contour=False, ax=None, fig=None, ticks=True, colorbar=True, dpi=300, block_edge_color='k',
-                     block_edge_alpha=1.0, shading='flat', colorbar_orientation="vertical",
+def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
+                     caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
+                     gridonly=False, contour=False, ax=None, fig=None, ticks=True,
+                     colorbar=True, dpi=300, block_edge_color='k',
+                     block_edge_alpha=1.0, shading='flat',
+                     colorbar_orientation="vertical",
                      gridonly_coloring='mpirank', flipud=False):
 
     """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
@@ -972,6 +975,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
                                             fill=True, edgecolor=block_edge_color, alpha=block_edge_alpha,
                                             facecolor=color))
+            cb = None
 
     else:
         #----------------------------------------------------------------------
@@ -1009,7 +1013,8 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             if mark_blocks:
                 # empty rectangle to mark the blocks border
                 ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
-                                                fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha ))
+                                                fill=False, edgecolor=block_edge_color, alpha=block_edge_alpha,
+                                                linewidth=block_linewidth))
 
         # unfortunately, each patch of pcolor has its own colorbar, so we have to take care
         # that they all use the same.
@@ -1048,9 +1053,12 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         plt.tick_params(
         axis='y',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
-        bottom='left',      # ticks along the bottom edge are off
-        top='right',         # ticks along the top edge are off
+        right=False,      # ticks along the bottom edge are off
+        left=False,         # ticks along the top edge are off
         labelleft=False) # labels along the bottom edge are off
+
+#    plt.xlim([0.0, box[0]])
+#    plt.ylim([0.0, box[1]])
 
     plt.axis('tight')
     plt.axes().set_aspect('equal')
@@ -1061,7 +1069,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             plt.savefig( file.replace('h5','png'), dpi=dpi, transparent=True, bbox_inches='tight' )
 
         if savepdf:
-            plt.savefig( file.replace('h5','pdf'), bbox_inches='tight' )
+            plt.savefig( file.replace('h5','pdf'), bbox_inches='tight', dpi=dpi )
     else:
         if savepng:
             plt.savefig( file.replace('.h5','-grid.png'), dpi=dpi, transparent=True, bbox_inches='tight' )

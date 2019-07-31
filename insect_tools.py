@@ -961,6 +961,8 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
         data = load_image(files[0])
         nx, ny = data.shape
 
+        print( "Data dimension is %i %i %i" % (nx,ny,nz))
+
         # allocate (single precision) data
         data = np.zeros([nx,ny,nz], dtype=np.float32)
 
@@ -968,7 +970,6 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
         # out of memory, and not after waiting a long time...
         data = data + 1.0
 
-        print( "Data dimension is %i %i %i" % (nx,ny,nz))
 
         for i in range(nz):
             sheet = load_image( files[i] )
