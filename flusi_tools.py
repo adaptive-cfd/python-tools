@@ -69,7 +69,7 @@ def read_flusi_HDF5( fname, dtype=np.float32, twoD=False):
             data = data[0,:,:].copy()
             data = data.transpose()
 
-    print("We read FLUSI file %s at time=%f" % (fname, time) )
+    print("We read FLUSI file %s at time=%f \nResolution :" % (fname, time), data.shape)
 
 
     return time, box, origin, data
@@ -89,13 +89,13 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
         # i dont really know why, but there is a messup in fortran vs c ordering, so here we have to swap
         # axis
         data = np.swapaxes(data, 0, 2)
-        nxyz = np.array([nx,ny,nz])
+        nxyz = np.array([nz,nx,ny])
     else:
         #2d data
         nx, ny = data.shape
         print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i" % (fname, dset_name, np.max(data), np.min(data), nx,ny) )
         data = np.swapaxes(data, 0, 1)
-        nxyz = np.array([nx,ny])
+        nxyz = np.array([1, nx,ny])
 
     fid = h5py.File( fname, 'w')
 
@@ -140,6 +140,29 @@ def crop_flusi_HDF5(file, Nxcut=[0, 0], Nycut=[0, 0], Nzcut=[0, 0]):
         data_cut = data[ Nxcut[0] : -Nxcut[1], Nycut[0] : -Nycut[1]]
         data = np.expand_dims(data_cut,2) # we have to add the z dimension again
 
+    else:
+        print("crop_flusi_hdf5: 3d not implemented")
+        return 
+    
+    
+    write_flusi_HDF5( file, time, box, data, origin )
+    
+def resample_flusi_HDF5(file, N):
+    """
+        Sample the data matrix up
+        
+            Input:
+            shape
+            
+    """
+    import fourier_tools
+    time, box, origin, data = read_flusi_HDF5( file )
+    data = np.squeeze(data)
+    
+    if len(data.shape)==2:
+        data = fourier_tools.fft2_resample( data, N  )
+        data = np.expand_dims(data,2) # we have to add the z dimension again
+    
     else:
         print("crop_flusi_hdf5: 3d not implemented")
         return 
