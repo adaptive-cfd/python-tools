@@ -69,3 +69,19 @@ def farge_colormaps_to_dat():
 
         for i in range(colors.shape[0]):
             fid.write('%f %f %f\n' % (colors[i,0],colors[i,1],colors[i,2]) )
+
+# this function writes Marie's colormaps to *.xmf files, for usage in paraview
+def farge_colormaps_to_paraview():
+
+    for cmap in ['vorticity','pressure','streamfunction','velocity']:
+        colors = farge_colormap_multi(taille=256, limite_faible_fort=0.2, etalement_du_zero=0.02, blackmargin=0.25, type=cmap, return_vctor=True)
+
+        fid = open( 'colors_'+cmap+'.xml', 'w')
+        fid.write('<ColorMaps>\n')
+        fid.write('  <ColorMap space="RGB" indexedLookup="false" name="marie-%s">\n' % (cmap))
+
+        for i in range(colors.shape[0]):
+            fid.write('<Point x="%f" o="1" r="%f" g="%f" b="%f"/>\n' % (i/(colors.shape[0]-1), colors[i,0],colors[i,1],colors[i,2]) )
+
+        fid.write('  </ColorMap>\n')
+        fid.write('</ColorMaps>\n')
