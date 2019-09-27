@@ -1070,6 +1070,8 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         plt.tick_params(
         axis='y',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,         # ticks along the top edge are off
         right=False,      # ticks along the bottom edge are off
         left=False,         # ticks along the top edge are off
         labelleft=False) # labels along the bottom edge are off
@@ -1448,14 +1450,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi,dtype=dtype )
     box = box[1:]
     data_flusi = np.squeeze(data_flusi).T
-    n = np.asarray(data_flusi.shape)
-    for d in range(n.ndim):
-        # check if Block is devidable by Bs
-        if (np.remainder(n[d], 2**level) != 0):
-            err("Number of Grid points has to be a power of 2!")
-    # Note we have to flip  n here because Bs = [BsX, BsY]
-    # The order of Bs is choosen like it is in WABBIT.
-    Bs = n[::-1]//2**level + 1
+    Bs = field_shape_to_bs(data_flusi.shape,level)
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time,dtype=dtype)
 
 
@@ -1580,3 +1575,19 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 def is_power2(num):
     'states if a number is a power of two'
     return num != 0 and ((num & (num - 1)) == 0)
+
+###
+def field_shape_to_bs(Nshape,level):
+    """
+     For a given shape of a dense field and maxtreelevel return the 
+     number of points per block wabbit uses
+    """
+    
+    n = np.asarray(Nshape)
+    for d in range(n.ndim):
+        # check if Block is devidable by Bs
+        if (np.remainder(n[d], 2**level) != 0):
+            err("Number of Grid points has to be a power of 2!")
+    # Note we have to flip  n here because Bs = [BsX, BsY]
+    # The order of Bs is choosen like it is in WABBIT.
+    return n[::-1]//2**level + 1
