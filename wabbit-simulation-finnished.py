@@ -6,14 +6,10 @@ Created on Sun Dec  2 18:15:19 2018
 @author: engels
 """
 
-#!/usr/bin/env python3
-
 import numpy as np
 import wabbit_tools
 import insect_tools
 import glob
-import configparser
-import datetime
 import os
 import sys
 import argparse
@@ -38,23 +34,31 @@ if args.directory is None:
 else:
     dir = args.directory
 
-if dir[-1] is not '/':
+if dir[-1] != '/':
     dir = dir+'/'
 
 #------------------------------------------------------------------------------
 # look for the ini file, this gives us the information at what time the run is done
 if args.paramsfile is None:
     l = glob.glob( dir+'*.ini' )
-    inifile = l[0]
+
+    right_inifile = False
+    i = 0
+
+    while right_inifile != True:
+        inifile = l[i]
+        right_inifile = wabbit_tools.exists_ini_parameter( inifile, "Time", "time_max" )
+        i += 1
 else:
     inifile = args.paramsfile
 
 #------------------------------------------------------------------------------
-if not os.path.isfile(dir + 'timesteps_info.t'):
-    raise ValueError("The file timesteps_info.t has not been found here.")
+
+if not os.path.isfile(dir + 'performance.t'):
+    raise ValueError("The file performance.t has not been found here.")
 
 # load the data file
-d = insect_tools.load_t_file(dir + 'timesteps_info.t', verbose=False)
+d = insect_tools.load_t_file(dir + 'performance.t', verbose=False)
 
 # final time to reach according to paramsfile
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)

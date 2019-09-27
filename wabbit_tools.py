@@ -108,7 +108,7 @@ def check_parameters_for_stupid_errors( file ):
         info("This simulation is being started from initial condition (and not from file)")
 
 #%%
-def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
+def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None ):
     """ From a given ini file, read [Section]::keyword and return the value
         If the value is not found, an error is raised
     """
@@ -129,8 +129,12 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False ):
     value_string = config.get( section, keyword, fallback='UNKNOWN')
 
     # check if that worked
-    if value_string is 'UNKNOWN':
+    if value_string == 'UNKNOWN' and default is None:
         raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
+
+    if value_string == 'UNKNOWN' and default is not None:
+        return dtype(default)
+
 
     if not vector:
         # configparser returns "0.0;" so remove trailing ";"
@@ -222,6 +226,18 @@ def prepare_resuming_backup( inifile ):
         state_vector_prefixes = ['ux', 'uy', 'p']
     else:
         state_vector_prefixes = ['ux', 'uy', 'uz', 'p']
+
+
+    # if used, take care of passive scalar as well
+    if exists_ini_parameter( inifile, 'ACM-new', 'use_passive_scalar' ):
+        scalar = get_ini_parameter(inifile, 'ACM-new', 'use_passive_scalar', bool, default=False)
+        if scalar:
+            n_scalars = get_ini_parameter(inifile, 'ConvectionDiffusion', 'N_scalars', int, default=0)
+
+            for i in range(n_scalars):
+                state_vector_prefixes.append( "scalar%i" % (i+1) )
+
+
 
     # find list of H5 files for first prefix.
     files = glob.glob( state_vector_prefixes[0] + "*.h5" )
@@ -890,7 +906,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     import matplotlib.patches as patches
     import matplotlib.pyplot as plt
     import h5py
-    
+
     cb = []
     # read procs table, if we want to draw the grid only
     if gridonly:
@@ -1533,8 +1549,8 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     dx.append(Lintervals/(Bs-1))
 
                     lower = [ibx, iby, ibz]* (Bs - 1)
-                    lower = np.asarray(lower, dtype=int) 
-                    upper = lower + Bs 
+                    lower = np.asarray(lower, dtype=int)
+                    upper = lower + Bs
 
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
@@ -1543,19 +1559,19 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
-                
+
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
-                upper = lower + Bs 
+                upper = lower + Bs
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
-                
-    
+
+
     x0 = np.asarray(x0,dtype=dtype)
     dx = np.asarray(dx,dtype=dtype)
     treecode = np.asarray(treecode, dtype=dtype)
     block_data = np.asarray(bdata, dtype=dtype)
-    
+
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration, dtype )
     return fname
 
