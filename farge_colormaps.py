@@ -5,6 +5,7 @@ Created on Fri May 18 19:42:20 2018
 
 @author: engels
 """
+import numpy as np
 
 def farge_colormap_multi(taille=256, limite_faible_fort=0.3, etalement_du_zero=0.02, blackmargin=0.25, type='vorticity', return_vctor=False):
     import numpy as np
@@ -85,3 +86,16 @@ def farge_colormaps_to_paraview():
 
         fid.write('  </ColorMap>\n')
         fid.write('</ColorMaps>\n')
+
+def random_colormap_for_paraview(n=256):
+    colors = np.random.rand(n,3)
+
+    fid = open( 'colors_random.xml', 'w')
+    fid.write('<ColorMaps>\n')
+    fid.write('  <ColorMap space="RGB" indexedLookup="false" name="%i_random_colors">\n' % (n))
+
+    for i in range(colors.shape[0]):
+        fid.write('<Point x="%f" o="1" r="%f" g="%f" b="%f"/>\n' % (i/(colors.shape[0]-1), colors[i,0],colors[i,1],colors[i,2]) )
+
+    fid.write('  </ColorMap>\n')
+    fid.write('</ColorMaps>\n')

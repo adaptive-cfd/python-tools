@@ -65,7 +65,6 @@ if args.paramsfile is None:
         right_inifile = wabbit_tools.exists_ini_parameter( inifile, "Time", "time_max" )
         i += 1
 
-
 else:
     inifile = args.paramsfile
 
@@ -79,20 +78,25 @@ tnow = d[-1,0]
 nt_now = d.shape[0]
 nt = min( 20, nt_now )
 
+
 if verbose:
     print("We found and extract the final time in the simulation from: "+inifile)
+
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
 bs = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int, vector=True)
 dim = wabbit_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
+
 
 if len(bs) == 1:
     npoints = (bs-1)**dim
 else:
     npoints = np.product(bs)
 
+
 # how long did this run run already
 runtime = sum(d[:,2])/3600
+
 
 # compute mean cost per grid point per time step, avg over all time steps
 mean_cost = np.mean( d[:,2]*d[:,7] / (d[:,3]*npoints) )
@@ -127,6 +131,9 @@ nt_left = (T-tnow) / dt
 # this is what we have to wait still
 time_left = round(nt_left * twall_avg)
 
+# remaining cpu time
+cpuh_left = int(ncpu_now*time_left/3600)
+
 if verbose:
     print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
     print("Already consumed %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
@@ -147,15 +154,17 @@ if verbose:
     print("Time to reach: T=%s%2.3f%s" % (bcolors.OKGREEN, T, bcolors.ENDC) )
     print("Now: t=%s%2.3f%s (it=%s%i%s)" % (bcolors.OKGREEN, d[-1,0], bcolors.ENDC, bcolors.OKGREEN, nt_now, bcolors.ENDC) )
     print("%s%s%s   [%i CPUH] (remaining time based on all past time steps)"  %
-          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, int(ncpu_now*time_left/3600)) )
+          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left) )
 
     # second estimate
 
     dt = ( d[-1,0]-d[-nt,0] ) / nt
     time_left = round(np.mean( d[-nt:,2] ) * (T-d[-1,0]) / (dt) )
+    cpuh_left = int(ncpu_now*time_left/3600)
     print("%s%s%s   [%i CPUH] (remaining time based on last %i time steps)"
-          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, int(ncpu_now*time_left/3600), nt ) )
+          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, nt ) )
 
 if not verbose:
     # when the -s option is active, just print the number of remaining hours
-    print( '%3.1f' % (time_left/3600.0) )
+#    print( '%3.1f' % (time_left/3600.0) )
+    print( '%3.1f h %i CPUh (=%i CPUh total)' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )

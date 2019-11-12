@@ -1204,7 +1204,7 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
 
 
 #%%
-def to_dense_grid( fname_in, fname_out):
+def to_dense_grid( fname_in, fname_out, dim=2 ):
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 
     We asssume here that interpolation has already been performed, i.e. all
@@ -1218,12 +1218,7 @@ def to_dense_grid( fname_in, fname_out):
     time, x0, dx, box, data, treecode = read_wabbit_hdf5( fname_in )
 
     # convert blocks to complete matrix
-    field, box = dense_matrix(  x0, dx, data, treecode )
-
-    plt.figure()
-    plt.pcolormesh(field)
-    plt.axis('equal')
-    plt.colorbar()
+    field, box = dense_matrix(  x0, dx, data, treecode, dim=dim )
 
     # write data to FLUSI-type hdf file
     insect_tools.write_flusi_HDF5( fname_out, time, box, field)
@@ -1299,44 +1294,51 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
     if dim==2:
         nx = [int( np.sqrt(N)*(Bs[d]-1) ) for d in range(np.size(Bs))]
     else:
-        nx = int( math.pow(N,1.0/dim)*(Bs-1)) +1
+        nx = [int( round( (N)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
 
 
     # all spacings should be the same - it does not matter which one we use.
     ddx = dx[0,:]
     if verbose:
         print("Nblocks :" , (N))
-        print("Spacing :",ddx)
-        print("Domain  :", ddx*nx)
+        print("Bs      :" , Bs)
+        print("Spacing :" , ddx)
+        print("Domain  :" , ddx*nx)
+        print("Dense field resolution :", nx )
 
     if dim==2:
         # allocate target field
         field = np.zeros(nx)
-        if verbose:
-            print("Resolution :", nx )
+
         # domain size
         box = ddx*nx
+
+        for i in range(N):
+            # get starting index of block
+            ix0 = int( round(x0[i,0]/dx[i,0]) )
+            iy0 = int( round(x0[i,1]/dx[i,1]) )
+
+            # copy block content to data field. Note we skip the last points, which
+            # are the redundant nodes.
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1 ] = data[i, 0:-1 ,0:-1]
+
     else:
         # allocate target field
-        field = np.zeros([nx,nx,nx])
-        if verbose:
-            print("Dense field resolution %i x %i x %i" % (nx, nx, nx) )
-        # domain size
-        box = [dx[0,0]*nx, dx[0,1]*nx, dx[0,2]*nx]
+        field = np.zeros([nx[0],nx[1],nx[2]])
 
-    for i in range(N):
-        # get starting index of block
-        ix0 = int(round(x0[i,0]/dx[i,0]))
-        iy0 = int(round(x0[i,1]/dx[i,1]))
-        if dim==3:
-            iz0 = int(round(x0[i,2]/dx[i,2]))
+
+        # domain size
+        box = [ddx[0]*nx[0], ddx[1]*nx[1], ddx[2]*nx[2]]
+
+        for i in range(N):
+            # get starting index of block
+            ix0 = int( round(x0[i,0]/dx[i,0]) )
+            iy0 = int( round(x0[i,1]/dx[i,1]) )
+            iz0 = int( round(x0[i,2]/dx[i,2]) )
+
             # copy block content to data field. Note we skip the last points, which
             # are the redundant nodes.
-            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1, iz0:iz0+Bs[2]-1 ] = data[i,0:-1,0:-1, 0:-1]
-        else:
-            # copy block content to data field. Note we skip the last points, which
-            # are the redundant nodes.
-            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1 ] = data[i,0:-1,0:-1]
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1, iz0:iz0+Bs[2]-1 ] = data[i, 0:-1, 0:-1, 0:-1]
 
     return(field, box)
 
@@ -1579,10 +1581,10 @@ def is_power2(num):
 ###
 def field_shape_to_bs(Nshape,level):
     """
-     For a given shape of a dense field and maxtreelevel return the 
+     For a given shape of a dense field and maxtreelevel return the
      number of points per block wabbit uses
     """
-    
+
     n = np.asarray(Nshape)
     for d in range(n.ndim):
         # check if Block is devidable by Bs
