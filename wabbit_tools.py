@@ -40,7 +40,9 @@ def check_parameters_for_stupid_errors( file ):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
 
-    bs = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int)
+    bs = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
+    if len(bs) > 1:
+        bs = bs[0]
     if bs % 2 == 0:
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
     if bs < 3:
@@ -64,6 +66,7 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "Time", "time_step_calc" ) :
         warn('Found deprecated parameter: [Time]::time_step_calc')
 
+    c0 = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     ceta = get_ini_parameter( file, 'VPM', 'C_eta', float)
     csponge = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
@@ -74,10 +77,18 @@ def check_parameters_for_stupid_errors( file ):
     if jmax > 18:
         warn('WABBIT can compute at most 18 refinement levels, you set more!')
 
+    if sponged:
+        # default value is TRUE so if not found, all is well
+        mask_time_dependent = get_ini_parameter( file, 'VPM', 'mask_time_dependent_part', int, default=1)
 
-    if penalized and sponged:
-        if abs(ceta-csponge) > 1.0e-7:
-            warn( 'Sponge and penalization parameter are different: C_eta=%e C_sponge=%e' % (ceta,csponge))
+        if mask_time_dependent != 1:
+            warn("""you use sponge, but mask_time_dependent_part=0! The sponge
+            is treated as if it were time dependent because it does not have
+            to be at the maximum refinement level.""")
+
+        L_sponge = get_ini_parameter( file, 'Sponge', 'L_sponge', float)
+        print("INFO: C_sponge=%e, L_sponge=%f ==> tau_sponge=%f" % (csponge, L_sponge, L_sponge/(c0*csponge)))
+
 
     # loop over ini file and check that each non-commented line with a "=" contains the trailing semicolon ";"
     with open(file) as f:
@@ -87,15 +98,15 @@ def check_parameters_for_stupid_errors( file ):
             # remove trailing & leading spaces
             line = line.strip()
             linenumber += 1
-            if line is not "" :
-                if line[0] is not "!" and line[0] is not "#" and line[0] is not ";" :
+            if line != "" :
+                if line[0] != "!" and line[0] != "#" and line[0] != ";" :
                     if "=" in line and ";" not in line:
                         warn('It appears the line #%i does not contain the semicolon' % (linenumber) )
 
     restart = get_ini_parameter( file, 'Physics', 'read_from_files', int)
     print("read_from_files=%i" %(restart))
 
-    if restart is 1:
+    if restart == 1:
         info("This simulation is being resumed from file")
 
         infiles = get_ini_parameter( file, 'Physics', 'input_files', str)
