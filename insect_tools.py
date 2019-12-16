@@ -12,6 +12,20 @@ import numpy.ma as ma
 import glob
 
 
+# return the coefficients ai and bi from a truncated Fourier series of signal y
+# with n coefficients. Used for kinematics analysis.
+def fseries(y, n):
+    # perform fft
+    yk = np.fft.fft(y)
+
+    # data length, for normalization
+    N = y.shape[0]
+
+    # return first n values, normalized (note factor 2.0 from hermite symmetry)
+    ai = 2.0*np.real( yk[0:n] ) / float(N)
+    bi = 2.0*np.imag( yk[0:n] ) / float(N)
+
+    return( ai, bi)
 
 
 # chunk a string, regardless of whatever delimiter, after length characters,
@@ -59,6 +73,8 @@ def axis_equal_keepbox( fig, ax ):
         l_new = (y2-y1) * w/h
         plt.xlim([ x1-(l_new-l_old)/2.0, x2+(l_new-l_old)/2.0])
 
+
+
 # read pointcloudfile
 def read_pointcloud(file):
     data = np.loadtxt(file, skiprows=1, delimiter=' ')
@@ -70,10 +86,12 @@ def read_pointcloud(file):
 def write_pointcloud(file, data, header):
     write_csv_file( file, data, header=header, sep=' ')
 
+
 def reset_colorcycle():
     import matplotlib.pyplot as plt
     # reset color cycle
     plt.gca().set_prop_cycle(None)
+
 
 # Read in a t-file, optionally interpolate to equidistant time vector
 def load_t_file( fname, interp=False, time_out=None, return_header=False,
@@ -381,6 +399,9 @@ def read_kinematics_file( fname ):
 def visualize_kinematics_file( fname ):
     """ Read an INI file with wingbeat kinematics and plot the 3 angles over the period. Output written to a PDF and PNG file.
     """
+
+    import matplotlib.pyplot as plt
+
     a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname )
 
     # time vector for plotting
@@ -396,7 +417,7 @@ def visualize_kinematics_file( fname ):
         theta[i]=Fserieseval(a0_theta, ai_theta, bi_theta, t[i])
 
     plt.rcParams["text.usetex"] = True
-    plt.close('all')
+
     plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
     plt.subplots_adjust(bottom=0.16, left=0.14)
 
@@ -1121,3 +1142,55 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
 
         # error is magnitude of all 3 components
         return np.sqrt(err1**2 + err2**2 + err3**2)
+
+
+def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
+    """
+     given the angles alpha, phi and theta and a vector of numbers, perform
+     Fourier series approximation and save result to INI file.
+
+     Input:
+         - fname: filename
+         - alpha, phi, theta: angles for kinematics approximation
+         - nfft=[n1,n2,n3]: number of fourier coefficients for each angle
+    """
+
+    if len(nfft) != 3:
+        raise ValueError("not the right number of fourier coefficients!")
+
+    # open file, erase existing
+    f = open( fname, 'w' )
+
+    f.write('[kinematics]\n')
+
+    f.write('; if the format changes in the future\n')
+    f.write('format=2015-10-09; currently unused\n')
+    f.write('convention=flusi;\n')
+    f.write('; what units, radiant or degree?\n')
+    f.write('units=degree;\n')
+    f.write('; is this hermite or Fourier coefficients?\n')
+    f.write('type=fourier;\n')
+
+    i = 0
+    for data, name in zip( [alpha,phi,theta], ['alpha','phi','theta']):
+
+        ai, bi = fseries( data, nfft[i] )
+
+        f.write('; %s\n' % (name))
+        f.write('nfft_%s=%i;\n' % (name, nfft[i]-1 )) # note -1 because 0 mode is separate
+
+        f.write('a0_%s=%e;\n' % (name, ai[0]) )
+        f.write('ai_%s=' % (name))
+        for k in range(nfft[i]-2):
+            f.write('%e ' % (ai[k+1]))
+        f.write('%e;\n' % (ai[nfft[i]-1]))
+
+
+        f.write('bi_%s=' % (name) )
+        for k in range(nfft[i]-2):
+            f.write('%e ' % (bi[k+1]))
+        f.write('%e;\n' % (bi[nfft[i]-1]))
+
+        i += 1
+
+    f.close()
