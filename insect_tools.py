@@ -22,9 +22,11 @@ def fseries(y, n):
     N = y.shape[0]
 
     # return first n values, normalized (note factor 2.0 from hermite symmetry)
-    ai = 2.0*np.real( yk[0:n] ) / float(N)
-    bi = 2.0*np.imag( yk[0:n] ) / float(N)
-
+    ai = +2.0*np.real( yk[0:n] ) / float(N)
+    bi = -2.0*np.imag( yk[0:n] ) / float(N)
+    # I was not aware the the bi coefficients need to switch signs, but it seems they
+    # do have to indeed. this is related to the minus sign in the basis function (exp-i....)
+    # see: https://pages.mtu.edu/~tbco/cm416/fft1.pdf
     return( ai, bi)
 
 
@@ -378,16 +380,18 @@ def read_kinematics_file( fname ):
         nfft_alpha = int(read_param(config,'kinematics','nfft_alpha'))
         nfft_theta = int(read_param(config,'kinematics','nfft_theta'))
 
-        a0_phi = float(read_param(config,'kinematics','a0_phi'))
+        a0_phi   = float(read_param(config,'kinematics','a0_phi'))
         a0_alpha = float(read_param(config,'kinematics','a0_alpha'))
         a0_theta = float(read_param(config,'kinematics','a0_theta'))
 
         ai_alpha = read_param_vct(config,'kinematics','ai_alpha')
         bi_alpha = read_param_vct(config,'kinematics','bi_alpha')
+
         ai_theta = read_param_vct(config,'kinematics','ai_theta')
         bi_theta = read_param_vct(config,'kinematics','bi_theta')
-        ai_phi = read_param_vct(config,'kinematics','ai_phi')
-        bi_phi = read_param_vct(config,'kinematics','bi_phi')
+
+        ai_phi   = read_param_vct(config,'kinematics','ai_phi')
+        bi_phi   = read_param_vct(config,'kinematics','bi_phi')
 
 
         return a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta
@@ -406,15 +410,16 @@ def visualize_kinematics_file( fname ):
 
     # time vector for plotting
     t = np.linspace(0,1,1000,endpoint=True)
+
     # allocate the lazy way
     alpha = 0.0*t.copy()
-    phi = 0.0*t.copy()
+    phi   = 0.0*t.copy()
     theta = 0.0*t.copy()
 
     for i in range(t.size):
-        alpha[i]=Fserieseval(a0_alpha, ai_alpha, bi_alpha, t[i])
-        phi[i]=Fserieseval(a0_phi, ai_phi, bi_phi, t[i])
-        theta[i]=Fserieseval(a0_theta, ai_theta, bi_theta, t[i])
+        alpha[i] = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t[i])
+        phi[i]   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , t[i])
+        theta[i] = Fserieseval(a0_theta, ai_theta, bi_theta, t[i])
 
     plt.rcParams["text.usetex"] = True
 
