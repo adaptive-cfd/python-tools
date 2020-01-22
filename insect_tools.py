@@ -329,8 +329,10 @@ def write_csv_file( fname, d, header=None, sep=';'):
     nt, ncols = d.shape
 
     for it in range(nt):
-        for icol in range(ncols):
+        for icol in range(ncols-1):
             f.write( '%e%s' % (d[it,icol], sep) )
+        # last column
+        f.write( '%e' % (d[it,-1]) )
         # new line
         f.write('\n')
     f.close()

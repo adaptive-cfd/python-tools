@@ -233,10 +233,12 @@ def prepare_resuming_backup( inifile ):
     if physics_type != "ACM-new":
         raise ValueError("ERROR! backup resuming is available only for ACM")
 
+
     if dim == 2:
         state_vector_prefixes = ['ux', 'uy', 'p']
     else:
         state_vector_prefixes = ['ux', 'uy', 'uz', 'p']
+    print(state_vector_prefixes)
 
 
     # if used, take care of passive scalar as well
@@ -254,8 +256,6 @@ def prepare_resuming_backup( inifile ):
     files = glob.glob( state_vector_prefixes[0] + "*.h5" )
     files.sort()
 
-    print(state_vector_prefixes)
-
     if not files:
         raise ValueError( "Something is wrong: no h5 files found for resuming" )
 
@@ -264,25 +264,29 @@ def prepare_resuming_backup( inifile ):
     t0 = float(timestamp) / 1e6
     print('Latest file is at time:   %f' % (t0))
 
-    d = np.loadtxt('dt.t')
-    t1 = d[-1,0]
-    print('Last time stamp in logs is: %f' % (t1))
+    # if we find the dt.t file, we now at what time the job ended.
+    # otherwise, just resume the latest H5 files
+    if os.path.isfile('dt.t'):
 
-    # time check when resuming a backup
-    if t0 > t1:
-        print( "Something is wrong: the latest H5 file is at LATER time than the log files. Is this the right data?" )
+        d = np.loadtxt('dt.t')
+        t1 = d[-1,0]
+        print('Last time stamp in logs is: %f' % (t1))
 
-    if t0 < 1.0e-6:
-        print("Something is wrong: the latest H5 file is almost at t=0. That means no backup has been saved?" )
+        # time check when resuming a backup
+        if t0 > t1:
+            print( "Something is wrong: the latest H5 file is at LATER time than the log files. Is this the right data?" )
 
-    if t1 > t0:
-        print('Warning: the latest H5 file is younger than the last entry in the log: we will have to compute some times twice.')
+        if t0 < 1.0e-6:
+            print("Something is wrong: the latest H5 file is almost at t=0. That means no backup has been saved?" )
 
-    if abs(t1-t0) < 1.0e-4:
-        print('Good news: timestamp in H5 file and time in log file match!')
+        if t1 > t0:
+            print('Warning: the latest H5 file is younger than the last entry in the log: we will have to compute some times twice.')
 
-    if t1 >= 0.99*Tmax or t0 >= 0.99*Tmax:
-        raise ValueError( "Something is wrong: the run seems to be already finnished!" )
+        if abs(t1-t0) < 1.0e-4:
+            print('Good news: timestamp in H5 file and time in log file match!')
+
+        if t1 >= 0.99*Tmax or t0 >= 0.99*Tmax:
+            raise ValueError( "Something is wrong: the run seems to be already finnished!" )
 
     # check if all required input files exist
     for prefix in state_vector_prefixes:
@@ -313,11 +317,11 @@ def prepare_resuming_backup( inifile ):
         if '[Physics]' in line_cpy:
             found = True
 
-        if 'read_from_files=' in line_cpy and found and line_cpy[0] is not ";":
+        if 'read_from_files=' in line_cpy and found and line_cpy[0] != ";":
             line = "read_from_files=1;\n"
             okay1 = True
 
-        if 'input_files=' in line_cpy and found and line_cpy[0] is not ";":
+        if 'input_files=' in line_cpy and found and line_cpy[0] != ";":
             line = "input_files=" + infiles_string + "\n"
             okay2 = True
 

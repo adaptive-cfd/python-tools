@@ -12,7 +12,7 @@ def spectrum(u):
 #    X,Y = np.meshgrid(x,x)
 #    u = np.sin(10.0*X) + np.sin(10.0*Y)
 
-    if (len(u.shape) is not 2):
+    if (len(u.shape) != 2):
         print(u.shape)
         raise ValueError('wrong dimension: Spectrum is currently for 2D data only.')
 
@@ -52,6 +52,37 @@ def spectrum(u):
 
     return k, EK
 
+def spectrum1(u):
+    import numpy as np
+#    x = np.linspace(0, 2*np.pi, 128, endpoint=False)
+#    X,Y = np.meshgrid(x,x)
+#    u = np.sin(10.0*X) + np.sin(10.0*Y)
+
+    if (len(u.shape) != 1):
+        print(u.shape)
+        raise ValueError('wrong dimension: Spectrum is currently for 2D data only.')
+
+    uk = np.fft.fft(u)
+
+    N = u.size
+
+    ek = np.abs( uk/N )**2.0
+    ek = 0.5 * ek
+
+    dimMax = np.max( u.shape )
+    k = np.fft.fftfreq(dimMax) * dimMax
+
+
+    # Only consider one half of spectrum (due to symmetry)
+    halfDim = int( np.floor(dimMax/2) + 1 )
+
+    k = np.asarray( range(0, halfDim ), dtype=np.float )
+    ek = ek[0:halfDim]
+
+
+    return k, ek
+
+
 def fft2_resample(u, res):
     """
     Resampling of 2D data field in Fourier space.
@@ -73,7 +104,7 @@ def fft2_resample(u, res):
     """
     import numpy as np
     nold = np.asarray(u.shape)
-    
+
     if (np.all(res > nold)):
         u = fft2_upsample(u, res)
     elif (res < u.shape[0]):
@@ -86,29 +117,29 @@ def fft2_resample(u, res):
 def fft2_upsample(u, resolution):
     """
     u is a 2d field
-    resolution of the upsampled field [nx,ny] or just n 
+    resolution of the upsampled field [nx,ny] or just n
 
     """
     import numpy as np
 #    import matplotlib.pyplot as plt
-    
+
 
     if not isinstance(resolution, (list, tuple)):
        res = [resolution]
     else:
         res = resolution
     res=np.asarray(res)
-    
+
     E_in = np.sum(u**2)/np.float64(u.size)
 
     uk = np.fft.fft2(u)
     uk = np.fft.fftshift( uk )
-    
+
     nold = u.shape
 
     # zero-pad
     n = np.asarray ( (res - nold) / 2, dtype=np.dtype(int) )
-    
+
     uk = np.pad( uk, ((n[0],n[0]),(n[1],n[1])), 'constant')
 
     uk = np.fft.ifftshift( uk )
@@ -193,5 +224,29 @@ def fft2_downsample(u, res):
     return u2
 
 
+
+def fft1_downsample(u, res):
+    import numpy as np
+
+    uk = np.fft.fft(u)
+    uk = np.fft.fftshift( uk )
+
+    nold = u.shape[0]
+
+    # cropping
+    n = int ( (nold - res) / 2 )
+    uk = uk[n:-n]
+
+    uk = np.fft.ifftshift( uk )
+
+    # renormalize (array.size is nx*ny)
+    uk = uk * ( float(uk.size)/float(u.size) )
+
+    # goback to x-space
+    u2 =  np.real( np.fft.ifft( uk ) )
+
+    print( "downsampling1d: energy was=%15.10e is now=%15.10e (loss is desired!)" % (np.sum(u**2)/u.size, np.sum(u2**2)/u2.size))
+
+    return u2
 
 
