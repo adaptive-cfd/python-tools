@@ -55,9 +55,14 @@ def read_flusi_HDF5( fname, dtype=np.float32, twoD=False):
 
         b = f[dset_name][:]
         data = np.array(b, dtype=dtype)
-        # its a funny flusi convention that we have to swap axes here, and I
-        # never understood why it is this way.
-        data = np.swapaxes(data, 0, 2)
+        
+        if len(data.shape) == 3:
+            # its a funny flusi convention that we have to swap axes here, and I
+            # never understood why it is this way.
+            # NB: this applies to 3D data only (even though if running in 2D mode,
+            # flusi stores 3d array with 1 index length 1, but other softwares
+            # such as UP2D produce real 2D arrays)
+            data = np.swapaxes(data, 0, 2)
 
         if (np.max(res-data.shape)>0):
             print('WARNING!!!!!!')

@@ -65,8 +65,17 @@ if args.paramsfile is None:
         right_inifile = wabbit_tools.exists_ini_parameter( inifile, "Time", "time_max" )
         i += 1
 
+    if not right_inifile:
+        raise ValueError("We did not find an inifile which tells us what the target time is.")
+
 else:
     inifile = args.paramsfile
+
+if verbose:
+    print("We found and extract the final time in the simulation from: "+inifile)
+
+
+
 
 
 # load the data file
@@ -79,8 +88,7 @@ nt_now = d.shape[0]
 nt = min( 20, nt_now )
 
 
-if verbose:
-    print("We found and extract the final time in the simulation from: "+inifile)
+
 
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
@@ -91,7 +99,7 @@ dim = wabbit_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 if len(bs) == 1:
     npoints = (bs-1)**dim
 else:
-    npoints = np.product(bs)
+    npoints = np.product(bs-1)
 
 
 # how long did this run run already
@@ -149,20 +157,20 @@ if verbose:
           min_cost2, 100.0*min_cost/mean_cost2,
           std_cost2, 100.0*std_cost/mean_cost2, bcolors.ENDC))
     print("-----------------")
-    print("mean blocks-per-rank (rhs) %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]/d[:,7]), bcolors.ENDC))
-    print("now  blocks-per-rank (rhs) %s%i%s" % (bcolors.OKGREEN, np.mean(d[-nt:,3]/d[-nt:,7]), bcolors.ENDC))
+    print("blocks-per-rank [mean over entire run ] (rhs) %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]/d[:,7]), bcolors.ENDC))
+    print("blocks-per-rank [mean over last it=%i ] (rhs) %s%i%s" % (nt, bcolors.OKGREEN, np.mean(d[-nt:,3]/d[-nt:,7]), bcolors.ENDC))
     print("Time to reach: T=%s%2.3f%s" % (bcolors.OKGREEN, T, bcolors.ENDC) )
-    print("Now: t=%s%2.3f%s (it=%s%i%s)" % (bcolors.OKGREEN, d[-1,0], bcolors.ENDC, bcolors.OKGREEN, nt_now, bcolors.ENDC) )
-    print("%s%s%s   [%i CPUH] (remaining time based on all past time steps)"  %
-          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left) )
+    print("Current time: t=%s%2.3f%s (it=%s%i%s)" % (bcolors.OKGREEN, d[-1,0], bcolors.ENDC, bcolors.OKGREEN, nt_now, bcolors.ENDC) )
+    print("%s%s%s   [%i CPUH left] = [%i CPUH total] (remaining time based on all past time steps)"  %
+          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, cpuh_left+cpuh_now) )
 
     # second estimate
 
     dt = ( d[-1,0]-d[-nt,0] ) / nt
     time_left = round(np.mean( d[-nt:,2] ) * (T-d[-1,0]) / (dt) )
     cpuh_left = int(ncpu_now*time_left/3600)
-    print("%s%s%s   [%i CPUH] (remaining time based on last %i time steps)"
-          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, nt ) )
+    print("%s%s%s   [%i CPUH left] = [%i CPUH total] (remaining time based on last %i time steps)"
+          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, cpuh_left+cpuh_now, nt ) )
 
 if not verbose:
     # when the -s option is active, just print the number of remaining hours

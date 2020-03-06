@@ -136,7 +136,7 @@ if os.path.isfile( jobfile ):
 
     Jmax = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
     L = wabbit_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
-    Bs = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int)
+    Bs = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int, vector=True)
     CFL = wabbit_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
 
     c0 =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
@@ -148,7 +148,7 @@ if os.path.isfile( jobfile ):
 
     geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str)
 
-    dx = L[0]*(2**-Jmax)/(Bs-1)
+    dx = L[0]*(2**-Jmax)/(Bs[0]-1)
 
     keta = np.sqrt(ceta*nu)/dx
 

@@ -11,6 +11,62 @@ import numpy as np
 import numpy.ma as ma
 import glob
 
+def get_next_color():
+    import matplotlib.pyplot as plt
+    return next(plt.gca()._get_lines.prop_cycler)['color']
+
+def get_next_marker():
+    import itertools
+    marker = itertools.cycle(('o', '+', 's', '>', '*', 'd', 'p'))
+    return next(marker)
+
+def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):
+    """ Assuming a one-period (normalized time!), take all full strokes present in the
+    data, sample them in on the same grid, and compute average and stddev.
+    """
+    import matplotlib.pyplot as plt
+    
+    time = np.linspace(0, 1, num=1000, endpoint=False)
+    
+    # start and end time of data
+    t0, t1 = t[0], t[-1]
+    tstroke = 1.0
+    nstrokes = int( np.round( (t1-t0) / tstroke) )
+    
+    y_interp = np.zeros( (nstrokes-1, time.shape[0]) )
+    for i in range(nstrokes-1):
+        y_interp[i,:] = np.interp( time+float(i), t, y)
+        if plot_indiv_strokes:
+            plt.plot(time, y_interp[i,:], color=[0.6, 0.6, 0.6], linewidth=0.1)
+    
+    y_avg = np.mean(y_interp, axis=0)
+    y_std = np.std(y_interp, axis=0)
+    
+    return time, y_avg, y_std
+
+def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-'):
+    """
+    Plot the data y(x) with a shaded area for error (e.g., standard deviation.)
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+    yerr = np.asarray(yerr)
+
+    if color is None:
+        color = next(plt.gca()._get_lines.prop_cycler)['color']
+    color = np.asarray( matplotlib.colors.to_rgba(color) )
+
+    # first, draw shaded area for dev
+    color[3] = alpha
+    plt.fill_between( x, y-yerr, y+yerr, color=color )
+
+    # then, avg data
+    color[3] = 1.00
+    plt.plot( x, y, fmt, label=label, color=color, mfc='none' )
+
 
 # return the coefficients ai and bi from a truncated Fourier series of signal y
 # with n coefficients. Used for kinematics analysis.
@@ -182,6 +238,8 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
     # convert list of lists into an numpy array
     data_raw = np.array( dat, dtype=float )
 
+    if len(data_raw.shape) == 1:
+        return None
 
     nt_raw, ncols = data_raw.shape
 
@@ -241,6 +299,26 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
 
 
 def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None ):
+    """
+    Return a matrix of cycle-averaged values from a array from a  *.t file.
+    
+    Input:
+    ------
+    
+        d : np.ndarray, float
+            Data. we assume d[:,0] to be time.
+        tstroke : scalar, float
+            length of a cycle
+        t1 : scalar, float
+            first time instant to begin averaging from
+        t2 : scalar, float
+            last time instant to and averaging at. This can be useful if the very last
+            time step is not precisely the end of a stroke (say 2.9999 instead of 3.000)
+    
+    Output:
+    -------
+        D
+    """
     # start time of data
     if t1 is None:
         t1 = d[0,0]
@@ -411,7 +489,7 @@ def visualize_kinematics_file( fname ):
     a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname )
 
     # time vector for plotting
-    t = np.linspace(0,1,1000,endpoint=True)
+    t = np.linspace(0,1,1000,endpoint=False)
 
     # allocate the lazy way
     alpha = 0.0*t.copy()
@@ -440,6 +518,7 @@ def visualize_kinematics_file( fname ):
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
     plt.savefig( fname.replace('.ini','.png'), format='png', dpi=300 )
+
 
 
 def Rx( angle ):
@@ -710,6 +789,27 @@ def interp_matrix( d, time_new ):
 
 
 def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.0, ax=None ):
+    """
+    Add shaded background areas to xy plots, often used to visually distinguish
+    up- and downstrokes.
+
+    Input:
+    ------
+
+        force_fullstrokes : bool
+            If set we use integer stroke numbers, even if the currents plots
+            axis are not (often the x-axis goes from say -0.1 to 1.1)
+        tstart: list of float
+            Manually give starting points of strokes. Shading starts after
+            tstroke/2 for a duration of tstroke/2
+        tstroke: duration of a stroke, if not units.
+
+
+    Output:
+    -------
+        directly in currently active figure, or figure /axis given in call
+    """
+
     from matplotlib.collections import PatchCollection
     from matplotlib.patches import Rectangle
     import matplotlib.pyplot as plt
@@ -737,7 +837,8 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
 
     # will there be any strokes at all?
     if abs(t2-t1) < tstroke:
-        print('warning: no complete stroke present, not returning any averages')
+        print('warning: no complete stroke present, not indicating any strokes.')
+        return
 
     if abs(t1 - np.round(t1)) >= 1e-3:
         print('warning: data does not start at full stroke (tstart=%f)' % t1)
@@ -1197,6 +1298,53 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
         for k in range(nfft[i]-2):
             f.write('%e ' % (bi[k+1]))
         f.write('%e;\n' % (bi[nfft[i]-1]))
+
+        i += 1
+
+    f.close()
+
+
+def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt, theta_dt):
+    """
+     given the angles alpha, phi and theta and a vector of numbers, perform
+     HERMITE series approximation and save result to INI file.
+
+     Input:
+         - fname: filename
+         - alpha, phi, theta: angles for kinematics approximation
+    """
+
+
+    # open file, erase existing
+    f = open( fname, 'w' )
+
+    f.write('[kinematics]\n')
+
+    f.write('; if the format changes in the future\n')
+    f.write('format=2015-10-09; currently unused\n')
+    f.write('convention=flusi;\n')
+    f.write('; what units, radiant or degree?\n')
+    f.write('units=degree;\n')
+    f.write('; is this hermite or Fourier coefficients?\n')
+    f.write('type=hermite;\n')
+
+    i = 0
+    for data, data_dt, name in zip( [alpha,phi,theta], [alpha_dt,phi_dt,theta_dt], ['alpha','phi','theta']):
+
+        f.write('; %s\n' % (name))
+        f.write('nfft_%s=%i;\n' % (name, data.shape[0] ))
+
+        # function values
+        f.write('ai_%s=' % (name))
+        for k in range(data.shape[0]-1):
+            f.write('%e ' % (data[k]))
+        f.write('%e;\n' % (data[-1]))
+
+        # values of derivatives
+        f.write('bi_%s=' % (name) )
+        for k in range(data.shape[0]-1):
+            f.write('%e ' % (data_dt[k]))
+        f.write('%e;\n' % (data_dt[-1]))
 
         i += 1
 

@@ -65,6 +65,15 @@ def check_parameters_for_stupid_errors( file ):
 
     if exists_ini_parameter( file, "Time", "time_step_calc" ) :
         warn('Found deprecated parameter: [Time]::time_step_calc')
+        
+    if exists_ini_parameter( file, "ACM", "forcing" ):
+        warn('Found deprecated parameter: [ACM]::forcing')
+        
+    if exists_ini_parameter( file, "ACM", "forcing_type" ):
+        warn('Found deprecated parameter: [ACM]::forcing_type')
+        
+    if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
+        warn('Found deprecated parameter: [ACM]::p_mean_zero')
 
     c0 = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     ceta = get_ini_parameter( file, 'VPM', 'C_eta', float)
@@ -1195,18 +1204,43 @@ def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
     return err
 
 def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
-    """ compute error given two wabbit dense fields
+    """
+    Read two wabbit files, which are supposed to have all blocks at the same
+    level. Then, we re-arrange the data in a dense matrix (wabbit_tools.dense_matrix)
+    and compute the relative error:
+        
+        err = || u2 - u1 || / || u1 ||
+        
+    The dense array is flattened before computing the error (np.ndarray.flatten)
+    
+    Input:
+    ------
+    
+        fname_ref : scalar, string
+            file to read u1 from
+            
+        fname_dat : scalar, string
+            file to read u2 from
+            
+        norm : scalar, float
+            Can be either 2, 1, or np.inf (passed to np.linalg.norm)
+
+    
+    Output:
+    -------
+        err
     """
     import numpy as np
     import matplotlib.pyplot as plt
-    import insect_tools
 
     time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
     time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
+    
     data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
     data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+    
     if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
-       raise ValueError("ERROR! Both fields are not a the same resolutionn")
+       raise ValueError("ERROR! Both fields are not a the same resolution")
 
     err = np.ndarray.flatten(data1-data2)
     exc = np.ndarray.flatten(data1)
@@ -1608,3 +1642,16 @@ def field_shape_to_bs(Nshape,level):
     # Note we have to flip  n here because Bs = [BsX, BsY]
     # The order of Bs is choosen like it is in WABBIT.
     return n[::-1]//2**level + 1
+
+
+
+def read_Bs_from_file(file):
+    import h5py
+    
+    fid = h5py.File(file, 'r')
+    b = fid['blocks'][:]            
+    dset_id = fid.get('blocks')
+    Nb, Bs, Bs = dset_id.shape            
+    fid.close() 
+        
+    return Bs
