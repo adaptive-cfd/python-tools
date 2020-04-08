@@ -28,8 +28,22 @@ def info( msg ):
 
 #%%
 def check_parameters_for_stupid_errors( file ):
-    """ For a given WABBIT parameter file, check for the most common stupid errors
+    """
+    For a given WABBIT parameter file, check for the most common stupid errors
     the user can commit: Jmax<Jmain, negative time steps, etc.
+    Ths function should be used on supercomputers at every job submission; I added
+    it to my launch wrappers.
+    
+    Input:
+    ------
+    
+        file:  string
+            The file to be checked
+    
+    Output:
+    -------
+        Warnings are printed on screen directly.
+    
     """
     import os
 
@@ -47,6 +61,15 @@ def check_parameters_for_stupid_errors( file ):
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
+        
+    g = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
+    discretization =  get_ini_parameter( file, 'Discretization', 'order_discretization', str)
+    
+    if discretization == "FD_2nd_central" and g != 2:
+        warn('For a 2nd order scheme you did not set ghosts=2')
+
+    if discretization == "FD_4th_central_optimized" and g != 4:
+        warn('For a 4th order scheme you did not set ghosts=4')
 
     # if somebody modifies the standard parameter file, users have to update their
     # ini files they use. this is often forgoten and obnoxious. Hence, if we find
@@ -129,8 +152,32 @@ def check_parameters_for_stupid_errors( file ):
 
 #%%
 def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None ):
-    """ From a given ini file, read [Section]::keyword and return the value
-        If the value is not found, an error is raised
+    """
+    From a given ini file, read [Section]::keyword and return the value
+    If the value is not found, an error is raised, if no default is given.
+    
+    Input:
+    ------
+    
+        inifile:  string
+            File to read from
+        section: string
+            Section to find in file that contains the value eg "Hallo" to find in [Hallo]
+        keyword: string
+            Variable name to find (e.g. [Hallo]  param=1;)
+        dtype: type
+            return value data type
+        vector: bool
+            If true, we allow returning vectors (eg param=1 2 2 3; in the file), without the option, the conversion to
+            dtype likely fails
+        default: value
+            If the entry in ini file is not found, this value is returned instead. If no default is given, not finding raises ValueError
+        
+    
+    Output:
+    -------
+        the value, maybe an np.ndarray
+    
     """
     import configparser
     import os
@@ -197,27 +244,6 @@ def exists_ini_parameter( inifile, section, keyword ):
                 found_parameter = True
 
     return found_parameter
-#%%
-def get_inifile_dir( dir ):
-    """ For a given simulation dir, return the *.INI file. Warning is issued if the
-        choice is not unique. In such cases, we should return the longest one. REASON:
-        For insects, we save the wingbeat kinematics in smaller INI files.
-    """
-    import glob
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir + '/'
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if len(inifile) > 1:
-        # if more ethan one ini file is found, try looking for the most appropriate
-
-        print('Warning: we ')
-    else:
-        return inifile[0]
 
 #%%
 def prepare_resuming_backup( inifile ):
@@ -456,7 +482,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     Level = np.size(treecode,1)
     if len(data.shape)==4:
         # 3d data
-        Bs=np.zeros([3,1])
+        Bs = np.zeros([3,1])
         N, Bs[0], Bs[1], Bs[2] = data.shape
         Bs = Bs[::-1]
         print( "Writing to file=%s max=%e min=%e size=%i %i %i " % (file, np.max(data), np.min(data), Bs[0], Bs[1], Bs[2]) )
@@ -533,293 +559,24 @@ def read_wabbit_hdf5_dir(dir):
 
 
 
-#%%
-def wabbit_error(dir, show=False, norm=2, file=None):
-    """ This function is in fact an artefact from earlier times, where we only simulated
-    convection/diffusion with WABBIT. Here, the ERROR is computed with respect to an
-    exact field (a Gaussian blob) which is set on the grid.
-    """
-    import numpy as np
-    import matplotlib.patches as patches
-    import matplotlib.pyplot as plt
-    import glob
-
-    if file is None:
-        files = glob.glob(dir+'/phi_*.h5')
-        files.sort()
-        file = files[-1]
-
-    # read data
-    time, x0, dx, box, data, treecode = read_wabbit_hdf5(file)
-    # get number of blocks and blocksize
-    N, Bs = data.shape[0], data.shape[1]
-
-
-    if show:
-        plt.close('all')
-        plt.figure()
-        for i in range(N):
-            [X,Y] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0], np.arange(Bs)*dx[i,1]+x0[i,1])
-            block = data[i,:,:].copy().transpose()
-            y = plt.pcolormesh( Y, X, block, cmap='rainbow' )
-            y.set_clim(0,1.0)
-            plt.gca().add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], fill=False ))
-        plt.colorbar()
-        plt.axis('equal')
-
-    # compute error:
-    err = []
-    exc = []
-    for i in range(N):
-        [X,Y] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0] - 0.75, np.arange(Bs)*dx[i,1]+x0[i,1] -0.5 )
-
-        # periodization
-        X[X<-0.5] = X[X<-0.5] + 1.0
-        Y[Y<-0.5] = Y[Y<-0.5] + 1.0
-
-        exact = np.exp( -((X)**2 + (Y)**2) / 0.01  )
-        block = data[i,:,:].copy().transpose()
-
-        err = np.hstack( (err,np.ndarray.flatten(exact - block)) )
-        exc = np.hstack( (exc,np.ndarray.flatten(exact)) )
-
-    if show:
-        plt.figure()
-        c1 = []
-        c2 = []
-        h = []
-
-        for i in range(N):
-            [X,Y] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0] - 0.75, np.arange(Bs)*dx[i,1]+x0[i,1] -0.5 )
-            [X1,Y1] = np.meshgrid( np.arange(Bs)*dx[i,0]+x0[i,0], np.arange(Bs)*dx[i,1]+x0[i,1] )
-
-            # periodization
-            X[X<-0.5] = X[X<-0.5] + 1.0
-            Y[Y<-0.5] = Y[Y<-0.5] + 1.0
-
-            exact = np.exp( -((X)**2 + (Y)**2) / 0.01  )
-            block = data[i,:,:].copy().transpose()
-
-            err = np.hstack( (err,np.ndarray.flatten(exact - block)) )
-            exc = np.hstack( (exc,np.ndarray.flatten(exact)) )
-
-            y = plt.pcolormesh( Y1, X1, exact-block, cmap='rainbow' )
-            a = y.get_clim()
-
-            h.append(y)
-            c1.append(a[0])
-            c2.append(a[1])
-
-            plt.gca().add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs-1)*dx[i,1], (Bs-1)*dx[i,0], fill=False ))
-
-        for i in range(N):
-            h[i].set_clim( (min(c1),max(c2))  )
-
-        plt.colorbar()
-        plt.axis('equal')
-
-
-    return( np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm) )
-
-# %%
-
-def key_parameters(dir):
-    import configparser
-    import glob
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if (len(inifile) > 1):
-        print('ERROR MORE THAN ONE INI FILE')
-
-    print(inifile[0])
-    config = configparser.ConfigParser()
-    config.read(inifile[0])
-
-
-    adapt_mesh=config.get('Blocks','adapt_mesh',fallback='0')
-    adapt_inicond=config.get('Blocks','adapt_inicond',fallback='0')
-    eps= config.get('Blocks','eps',fallback='0')
-
-    namestring = adapt_mesh+adapt_inicond+eps
-
-    print(namestring)
-
-# %%
-
-def fetch_dt_dir(dir):
-
-    inifile = get_inifile_dir(dir)
-    dt = get_ini_parameter( inifile, 'Time', 'dt_fixed', dtype=float )
-
-    return(dt)
-
-
-
-def fetch_Nblocks_dir(dir, return_Bs=False):
-    import numpy as np
-    import os.path
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    if os.path.isfile(dir+'timesteps_info.t'):
-        d = np.loadtxt(dir+'timesteps_info.t')
-        if d.shape[1]==5:
-            # old data has 5 cols
-            N = np.max(d[:,2])
-        else:
-            # new data we added the col for cpu time (...seufz)
-            N = np.max(d[:,3])
-    else:
-        raise ValueError('timesteps_info.t not found in dir.'+dir)
-
-    if (return_Bs):
-        # get blocksize
-        Bs = fetch_Bs_dir(dir)
-        return(N,Bs)
-    else:
-        return(N)
-
-
-
-def fetch_Nblocks_RHS_dir(dir, return_Bs=False):
-    import numpy as np
-    import os.path
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    # does the file exist?
-    if os.path.isfile(dir+'blocks_per_mpirank_rhs.t'):
-
-        # sometimes, glorious fortran writes ******* eg for iteration counter
-        # in which case the loadtxt will fail.
-        try:
-            # read file
-            d = np.loadtxt(dir+'blocks_per_mpirank_rhs.t')
-
-            # unfortunately, we changed the format of this file at some point:
-            if d.shape[1] == 10:
-                # old format requires computing the number...
-                d[:,2] = np.sum( d[:,2:], axis=1 )
-                N = np.max(d[:,2])
-            else:
-                # new format saves Number of blocks
-                N = np.max(d[:,2])
-        except:
-            print("Sometimes, glorious fortran writes ******* eg for iteration counter")
-            print("in which case the loadtxt will fail. I think that happended.")
-            N = 0
-
-    else:
-        raise ValueError('blocks_per_mpirank_rhs.t not found in dir: '+dir)
-
-    if (return_Bs):
-        # get blocksize
-        Bs = fetch_Bs_dir(dir)
-        return(N,Bs)
-    else:
-        return(N)
-
-
-def fetch_eps_dir(dir):
-    import glob
-    import configparser
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if (len(inifile) > 1):
-        print('ERROR MORE THAN ONE INI FILE')
-
-    return( get_ini_parameter(inifile[0], 'Blocks', 'eps') )
-
-
-def fetch_Ceta_dir(dir):
-    import glob
-    import configparser
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if (len(inifile) > 1):
-        print('ERROR MORE THAN ONE INI FILE')
-
-    return( get_ini_parameter(inifile[0], 'VPM', 'C_eta') )
-
-
-def fetch_Bs_dir(dir):
-    import glob
-    import configparser
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if (len(inifile) > 1):
-        print('ERROR MORE THAN ONE INI FILE')
-
-    return( get_ini_parameter(inifile[0], 'Blocks', 'number_block_nodes') )
-
-
-def fetch_jmax_dir(dir):
-    import glob
-    import configparser
-
-    if dir[-1] == '/':
-        dir = dir
-    else:
-        dir = dir+'/'
-
-    inifile = glob.glob(dir+'*.ini')
-
-    if (len(inifile) > 1):
-        print('ERROR MORE THAN ONE INI FILE')
-
-    return( get_ini_parameter(inifile[0], 'Blocks', 'max_treelevel') )
-
-
-def fetch_compression_rate_dir(dir):
-    import numpy as np
-    if dir[-1] != '/':
-        dir = dir+'/'
-
-    d = np.loadtxt(dir+'timesteps_info.t')
-    d2 = np.loadtxt(dir+'blocks_per_mpirank_rhs.t')
-
-    # how many blocks was the RHS evaluated on, on all mpiranks?
-    nblocks_rhs = d2[:,2]
-
-    # what was the maximum number in time?
-    it = np.argmax( nblocks_rhs )
-
-    # what was the maximum level at that time?
-#    Jmax = d[it,-1]
-    Jmax = fetch_jmax_dir(dir)
-
-
-    # compute compression rate w.r.t. this level
-    compression = nblocks_rhs[it] / ((2**Jmax)**2)
-
-    return( compression )
-
 def add_convergence_labels(dx, er):
+    """
+    This generic function adds the local convergence rate as nice labels between
+    two datapoints of a convergence rate (see https://arxiv.org/abs/1912.05371 Fig 3E)
+    
+    Input:
+    ------
+    
+        dx: np.ndarray 
+            The x-coordinates of the plot
+        dx: np.ndarray 
+            The y-coordinates of the plot
+    
+    Output:
+    -------
+        Print to figure.
+    
+    """
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -829,6 +586,7 @@ def add_convergence_labels(dx, er):
         order = "%2.1f" % ( convergence_order(dx[i:i+1+1],er[i:i+1+1]) )
         plt.text(x, y, order, horizontalalignment='center', verticalalignment='center',
                  bbox=dict(facecolor='w', alpha=0.75, edgecolor='none'), fontsize=7 )
+
 
 def convergence_order(N, err):
     """ This is a small function that returns the convergence order, i.e. the least
@@ -893,7 +651,6 @@ def treecode_level( tc ):
 
 # for a treecode list, return max and min level found
 def get_max_min_level( treecode ):
-    import numpy as np
 
     min_level = 99
     max_level = -99
@@ -915,17 +672,21 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                      block_edge_alpha=1.0, shading='flat',
                      colorbar_orientation="vertical",
                      gridonly_coloring='mpirank', flipud=False):
-
-    """ Read a (2D) wabbit file and plot it as a pseudocolor plot.
-
-    Keyword arguments:
-        * savepng directly store a image file
-        * cmap colormap for data
-        * caxis manually specify glbal min / max for color plot
-        * block_edge_alpha and block_edge_color defines the transparency
-        and color of the blocks
-
     """
+    Read and plot a 2D wabbit file. Not suitable for 3D data, use Paraview for that.
+    
+    Input:
+    ------
+    
+        file:  string
+            file to visualize
+        gridonly: bool
+            If true, we plot only the blocks and not the actual, point data on those blocks.
+        gridonly_coloring: string
+            if gridonly is true we can still color the blocks. One of 'lgt_id', 'refinement-status', 'mpirank', 'level'
+    
+    """
+
     import numpy as np
     import matplotlib.patches as patches
     import matplotlib.pyplot as plt
@@ -1317,7 +1078,7 @@ def overwrite_block_data_with_level(treecode, data):
 
 
 #%%
-def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
+def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False ):
 
     import math
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
@@ -1332,15 +1093,22 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
     N = data.shape[0]
     # size of each block
     Bs = data.shape[1:]
+    
+    if bs % 2 != 0 and new_format:
+        # Note: skipping of redundant points, hence the -1
+        # Note: this is still okay after Apr 2020: we save one extra point in the HDF5 file
+        # for visualization. However, now, the Bs must be odd!
+        raise ValueError("For the new code without redundant points, the block size should be even!")
 
     # check if all blocks are on the same level or not
     jmin, jmax = get_max_min_level( treecode )
     if jmin != jmax:
-        print("ERROR! not an equidistant grid yet...")
         raise ValueError("ERROR! not an equidistant grid yet...")
 
-    # note skipping of redundant points, hence the -1
+    
     if dim==2:
+        # in both new and old grid format, a redundant point is included (it is the first ghost 
+        # node in the new format!)
         nx = [int( np.sqrt(N)*(Bs[d]-1) ) for d in range(np.size(Bs))]
     else:
         nx = [int( round( (N)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
@@ -1368,7 +1136,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
             iy0 = int( round(x0[i,1]/dx[i,1]) )
 
             # copy block content to data field. Note we skip the last points, which
-            # are the redundant nodes.
+            # are the redundant nodes (or the first ghost node).
             field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1 ] = data[i, 0:-1 ,0:-1]
 
     else:
@@ -1386,7 +1154,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True ):
             iz0 = int( round(x0[i,2]/dx[i,2]) )
 
             # copy block content to data field. Note we skip the last points, which
-            # are the redundant nodes.
+            # are the redundant nodes (or the first ghost node).
             field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1, iz0:iz0+Bs[2]-1 ] = data[i, 0:-1, 0:-1, 0:-1]
 
     return(field, box)
@@ -1514,7 +1282,8 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Therefore the dense data is divided into equal blocks,
     similar as sparse_to_dense option in wabbit-post.
 
-     Input:
+    Input:
+    ======
          - ddata... 2d/3D array of the data you want to write to a file
                      Note ddata.shape=[Ny,Nx] !!
          - name ... prefix of the name of the datafile (e.g. "rho", "p", "Ux")
@@ -1522,11 +1291,15 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     is a 2D/3D dimensional array with Bs[0] being the number of
                     grid points in x direction etc.
                     The data size in each dimension has to be dividable by Bs.
-                    Optional Input:
-                        - box_size... 2D/3D array of the size of your box [Lx, Ly, Lz]
-                        - time    ... time of the data
-                        - iteration ... iteration of the time snappshot
+                    
+    Optional Input:
+    =============
+        - box_size... 2D/3D array of the size of your box [Lx, Ly, Lz]
+        - time    ... time of the data
+        - iteration ... iteration of the time snappshot
+        
     Output:
+    =======
         - filename of the hdf5 output
 
     """
@@ -1537,6 +1310,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     level = 0
     Bs = np.asarray(Bs)# make sure Bs is a numpy array
     Bs = Bs[::-1] # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]
+    
     #########################################################
     # do some initial checks on the input data
     # 1) check if the size of the domain is given
@@ -1547,6 +1321,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     if (type(Bs) is int):
         Bs = [Bs]*Ndim
+        
     # 2) check if number of lattice points is block decomposable
     # loop over all dimensions
     for d in range(Ndim):
@@ -1558,6 +1333,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                 err("Number of Intervals must be a power of 2!")
         else:
             err("datasize must be multiple of Bs!")
+            
     # 3) check dimension of array:
     if Ndim < 2 or Ndim > 3:
         err("dimensions are wrong")
@@ -1581,6 +1357,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Nintervals = [int(2**level)]*Ndim  # note [val]*3 means [val, val , val]
     Lintervals = box[:Ndim]/np.asarray(Nintervals)
     Lintervals = Lintervals[::-1]
+    
    # dx_val = 2**(-level) *box[:Ndim]/(Bs-1)
     #print(dx_val)
     x0 = []

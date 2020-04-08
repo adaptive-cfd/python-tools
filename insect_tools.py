@@ -20,22 +20,54 @@ def get_next_marker():
     marker = itertools.cycle(('o', '+', 's', '>', '*', 'd', 'p'))
     return next(marker)
 
-def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):
-    """ Assuming a one-period (normalized time!), take all full strokes present in the
-    data, sample them in on the same grid, and compute average and stddev.
+
+def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):    
     """
+    Perform statistics over periodic data.
+    Often, we have data for several strokes, say 0 <= t <= 10. This function assumes
+    a period time T=1.0, divides the data into chunks corresponding to each of the strokes,
+    then copmutes the average time evolution as well as standard deviation among all strokes.
+    
+    The data is divided into cycles and (linearily) interpolated to an equidistant time
+    grid. Ths grid is equidistant and sampled using 1000 data points.
+    
+    Input:
+    ------
+    
+        t: vector, float
+           full time vector (say 0<t<10.0)
+        y: vector, float
+           The actual data to be analyzed (e.g., drag or power)
+       plot_indiv_strokes: logical
+           If true, each individual stroke is plotted in the current figure.
+       
+    
+    Output:
+    -------
+        time, y_avg, y_std
+        
+        
+    Todo:
+    -----
+        The code does not check for incomplete cycles, say 0<t<4.57 is a problem
+    """
+
     import matplotlib.pyplot as plt
     
+    # all data is interpolated to an equidistant time grid
     time = np.linspace(0, 1, num=1000, endpoint=False)
     
     # start and end time of data
     t0, t1 = t[0], t[-1]
     tstroke = 1.0
+    # how many cycles are there?
     nstrokes = int( np.round( (t1-t0) / tstroke) )
     
     y_interp = np.zeros( (nstrokes-1, time.shape[0]) )
     for i in range(nstrokes-1):
+        # linear interpolation
         y_interp[i,:] = np.interp( time+float(i), t, y)
+        
         if plot_indiv_strokes:
             plt.plot(time, y_interp[i,:], color=[0.6, 0.6, 0.6], linewidth=0.1)
     
@@ -44,9 +76,34 @@ def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):
     
     return time, y_avg, y_std
 
+
+
 def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-'):
     """
     Plot the data y(x) with a shaded area for error (e.g., standard deviation.)
+    
+    This is a generic function often used. It does only the plotting, not the computation 
+    part.
+    
+    Input:
+    ------
+    
+        x: vector, float
+           data location (usually time)
+        y: vector, float
+           The actual data to be plotted (e.g., drag or power)
+        yerr: vector_float:
+            The shaded area will be between y-yerr and y+yerr for all x
+        color: color_object
+            Well. guess.
+        alpha: float (0<=alpha<=1.0)
+            The degree of transparency of the shaded area.
+       
+    
+    Output:
+    -------
+        plotting to figure
+        
     """
     import matplotlib.pyplot as plt
     import matplotlib
@@ -68,9 +125,27 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
     plt.plot( x, y, fmt, label=label, color=color, mfc='none' )
 
 
-# return the coefficients ai and bi from a truncated Fourier series of signal y
-# with n coefficients. Used for kinematics analysis.
+
 def fseries(y, n):
+    """
+    Return the coefficients ai and bi from a truncated Fourier series of signal y
+    with n coefficients. Used for kinematics analysis.
+    
+    Input:
+    ------
+    
+        y: vector, float
+           The actual data to be analyzed (e.g., angle time series). Note: it is assumed 
+           to be sampled on an equidistant grid. 
+        n: integer
+           Number of Fourier modes to use.
+       
+    
+    Output:
+    -------
+        ai, bi: numpy arrays containing the real (ai) and imaginary (bi) parts of the n Fourier coefficients.
+        
+    """ 
     # perform fft
     yk = np.fft.fft(y)
 
@@ -80,6 +155,7 @@ def fseries(y, n):
     # return first n values, normalized (note factor 2.0 from hermite symmetry)
     ai = +2.0*np.real( yk[0:n] ) / float(N)
     bi = -2.0*np.imag( yk[0:n] ) / float(N)
+    
     # I was not aware the the bi coefficients need to switch signs, but it seems they
     # do have to indeed. this is related to the minus sign in the basis function (exp-i....)
     # see: https://pages.mtu.edu/~tbco/cm416/fft1.pdf
@@ -116,7 +192,6 @@ def ylim_auto(ax, x, y):
 # set axis spacing to equal by modifying only the axis limits, not touching the
 # size of the figure
 def axis_equal_keepbox( fig, ax ):
-    import matplotlib.pyplot as plt
     w, h = fig.get_size_inches()
     x1, x2 = ax.get_xlim()
     y1, y2 = ax.get_ylim()
@@ -124,12 +199,12 @@ def axis_equal_keepbox( fig, ax ):
         # adjust y-axis
         l_old = (y2-y1)
         l_new = (x2-x1) * h/w
-        plt.ylim([ y1-(l_new-l_old)/2.0, y2+(l_new-l_old)/2.0])
+        ax.set_ylim([ y1-(l_new-l_old)/2.0, y2+(l_new-l_old)/2.0])
     else:
         # adjust x-axis
         l_old = (x2-x1)
         l_new = (y2-y1) * w/h
-        plt.xlim([ x1-(l_new-l_old)/2.0, x2+(l_new-l_old)/2.0])
+        ax.set_xlim([ x1-(l_new-l_old)/2.0, x2+(l_new-l_old)/2.0])
 
 
 
@@ -151,27 +226,42 @@ def reset_colorcycle():
     plt.gca().set_prop_cycle(None)
 
 
-# Read in a t-file, optionally interpolate to equidistant time vector
 def load_t_file( fname, interp=False, time_out=None, return_header=False,
                 verbose=True, time_mask_before=None, T0=None ):
     """
     Read in an ascii *.t file as generated by flusi or wabbit.
-
-     Input:
-         - fname ... filename to be read
-         - interp ... is interpolation used or do we just read what is in the file?
-         - time_out ... if interp=True, ou can specify to what time vector we interpolate.
-         - return_header  ... obvious!
-         - verbose ... be verbose or not.
-         - time_mask_before ... if set, we return a masked array which masks data before this time. note some routines do not like masked arrays
-         - T0 ... can be either one value or two values. In the former case, we extract data t>=T0
-                  in the latter T0[0]<=t<=T0[1]
-
-     Output:
-         - data ... the actual matrix stored in the file, possibly interpolated
-         - [header] ... the columns headers, if return_header=True
-
-    """
+    Returns only unique times (if the simulation ran first until t=3.0 and then is resumed from
+    t=2.0, the script will return the entries 2.0<t<3.0 only one time, even though they exist twice 
+    in the file)
+    
+    Input:
+    ------
+    
+         fname: string
+             filename to be read
+         interp: bool
+             is interpolation used or do we just read what is in the file?
+         time_out: numpy array
+             if interp=True, ou can specify to what time vector we interpolate.
+         return_header: bool
+             If true, we return the header line of the file as list of strings
+         verbose: bool
+             be verbose or not.
+         time_mask_before: float
+             if set, we return a masked array which masks data before this time. note some routines do not like masked arrays
+         T0: list of floats or single float
+             can be either one value or two values. In the former case, we extract data t>=T0
+             in the latter T0[0]<=t<=T0[1]
+       
+    
+    Output:
+    -------
+        data: numpy array
+            the actual matrix stored in the file, possibly interpolated
+        header: list of strings
+            the columns headers, if return_header=True. If we did not find a heade in the file, the list is empty.
+        
+    """ 
     import os
 
     if verbose:
@@ -305,19 +395,20 @@ def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None ):
     Input:
     ------
     
-        d : np.ndarray, float
+        d: np.ndarray, float
             Data. we assume d[:,0] to be time.
-        tstroke : scalar, float
+        tstroke: scalar, float
             length of a cycle
-        t1 : scalar, float
+        t1: scalar, float
             first time instant to begin averaging from
-        t2 : scalar, float
-            last time instant to and averaging at. This can be useful if the very last
+        t2: scalar, float
+            last time instant to end averaging at. This can be useful if the very last
             time step is not precisely the end of a stroke (say 2.9999 instead of 3.000)
     
     Output:
     -------
-        D
+        D: matrix
+            stroke averages in a matrix
     """
     # start time of data
     if t1 is None:
@@ -419,8 +510,9 @@ def write_csv_file( fname, d, header=None, sep=';'):
 def read_param(config, section, key):
     # read value
     value = config[section].get(key)
-    # remove comments and ; delimiter, which flusi uses for reading.
-    value = value.split(';')[0]
+    if value is not None:
+        # remove comments and ; delimiter, which flusi uses for reading.
+        value = value.split(';')[0]
     return value
 
 
@@ -434,15 +526,109 @@ def read_param_vct(config, section, key):
 
 
 
-def Fserieseval(a0,ai,bi,time):
-    # evaluate the Fourier series given by a0, ai, bi at the time instant time
-    # note we divide amplitude by 2
+def Fserieseval(a0, ai, bi, time):
+    """
+    evaluate the Fourier series given by a0, ai, bi at the time instant time
+    note we divide amplitude by 2
+     
+    function is vectorized; pass a vector of time instants for evaluation.
+    
+    Input:
+    ------
+    
+        a0: float
+           zero mode (constant) for historical reasons, it is divided by two.
+        ai: vector, float
+           real parts of fourier coefficients
+        bi: vector, float
+            imag parts of fourier coefficients
+        time: vector, float
+            Output time vector at which to evaluate the hermite interpolation
+       
+    
+    Output:
+    -------
+        u: vector, float
+            Resulting data sampled at "time"        
+        
+    """
+    if ai.shape[0] != bi.shape[0]:
+        raise ValueError("ai and bi must be of the same length!")
+    
     y = a0/2.0
     for k in range( ai.size ):
         # note pythons tedious 0-based indexing, so wavenumber is k+1
         y = y + ai[k]*np.cos(2.0*np.pi*float(k+1)*time) + bi[k]*np.sin(2.0*np.pi*float(k+1)*time)
+        
     return y
 
+
+
+def Hserieseval(a0, ai, bi, time):
+    """
+    evaluate hermite series, given by coefficients ai (function values)
+    and bi (derivative values) at the locations x. Note that x is assumed periodic;
+    do not include x=1.0.
+    a valid example is x=(0:N-1)/N
+    
+    Input:
+    ------
+    
+        a0: float
+           UNUSED dummy argument
+        ai: vector, float
+           Function values
+        bi: vector, float
+            Derivative values
+        time: vector, float
+            Output time vector at which to evaluate the hermite interpolation
+       
+    
+    Output:
+    -------
+        u: vector, float
+            Resulting data sampled at "time"        
+        
+    """
+    
+    # 
+    # function is vectorized; pass a vector of time instants for evaluation.
+    #
+    if len( ai.shape ) != 1:
+        raise ValueError("ai must be a vector")
+
+    if len( bi.shape ) != 1:
+        raise ValueError("bi must be a vector")
+        
+    if ai.shape[0] != bi.shape[0]:
+        raise ValueError("length of ai and bi must be the same")
+
+    # time periodization
+    while ( np.max(time) >= 1.0 ):
+        time[ time >= 1.0 ] -= 1.0
+        
+    n = ai.shape[0]
+    dt = 1.0 / n
+    j1 = np.floor(time/dt) # zero-based indexing in python
+    j1 = np.asarray(j1, dtype=int)
+    j2 = j1 + 1
+    
+    # periodization
+    j2[ j2 > n-1 ] = 0 # zero-based indexing in python
+    
+    # normalized time (between two data points)
+    t = (time - j1*dt) / dt
+
+    # values of hermite interpolant
+    h00 = (1.0+2.0*t)*((1.0-t)**2)
+    h10 = t*((1.0-t)**2)
+    h01 = (t**2)*(3.0-2.0*t)
+    h11 = (t**2)*(t-1.0)
+
+    # function value
+    u = h00*ai[j1] + h10*dt*bi[j1] + h01*ai[j2] + h11*dt*bi[j2]
+    
+    return u
 
 
 def read_kinematics_file( fname ):
@@ -454,16 +640,18 @@ def read_kinematics_file( fname ):
 
     if config['kinematics']:
         convention = read_param(config,'kinematics','convention')
-#        print(convention)
+        series_type = read_param(config,'kinematics','type')
 
-        nfft_phi = int(read_param(config,'kinematics','nfft_phi'))
-        nfft_alpha = int(read_param(config,'kinematics','nfft_alpha'))
-        nfft_theta = int(read_param(config,'kinematics','nfft_theta'))
+        if convention != "flusi":
+            raise ValueError("The kinematics file %s is using a convention noot supported yet" % (fname))
 
-        a0_phi   = float(read_param(config,'kinematics','a0_phi'))
-        a0_alpha = float(read_param(config,'kinematics','a0_alpha'))
-        a0_theta = float(read_param(config,'kinematics','a0_theta'))
-
+        if series_type == "fourier":
+            a0_phi   = float(read_param(config,'kinematics','a0_phi'))
+            a0_alpha = float(read_param(config,'kinematics','a0_alpha'))
+            a0_theta = float(read_param(config,'kinematics','a0_theta'))
+        else:
+            a0_phi, a0_theta, a0_alpha = 0.0, 0.0, 0.0
+            
         ai_alpha = read_param_vct(config,'kinematics','ai_alpha')
         bi_alpha = read_param_vct(config,'kinematics','bi_alpha')
 
@@ -474,7 +662,7 @@ def read_kinematics_file( fname ):
         bi_phi   = read_param_vct(config,'kinematics','bi_phi')
 
 
-        return a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta
+        return a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, series_type
     else:
         print('This seems to be an invalid ini file as it does not contain the kinematics section')
 
@@ -486,20 +674,21 @@ def visualize_kinematics_file( fname ):
 
     import matplotlib.pyplot as plt
 
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname )
+    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
+  
 
     # time vector for plotting
     t = np.linspace(0,1,1000,endpoint=False)
 
-    # allocate the lazy way
-    alpha = 0.0*t.copy()
-    phi   = 0.0*t.copy()
-    theta = 0.0*t.copy()
-
-    for i in range(t.size):
-        alpha[i] = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t[i])
-        phi[i]   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , t[i])
-        theta[i] = Fserieseval(a0_theta, ai_theta, bi_theta, t[i])
+    if kine_type == "fourier":
+        alpha = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t)
+        phi   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , t)
+        theta = Fserieseval(a0_theta, ai_theta, bi_theta, t)
+        
+    elif kine_type == "hermite":
+        alpha = Hserieseval(a0_alpha, ai_alpha, bi_alpha, t)
+        phi   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , t)
+        theta = Hserieseval(a0_theta, ai_theta, bi_theta, t)
 
     plt.rcParams["text.usetex"] = True
 
@@ -580,9 +769,8 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         raise ValueError("The file "+fname+" does not exist.")
 
     # read kinematics data:
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname )
-
-
+    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
+    
     # length of wing chord to be drawn. note this is not correlated with the actual
     # wing thickness at some position - it is just a marker.
     wing_chord = chord_length
@@ -615,19 +803,27 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     # array of color (note normalization to 1 for query values)
     colors = plt.cm.jet( (np.arange(time.size) / time.size) )
+    
+           
+    if kine_type == "fourier":
+        alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+        phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+        theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
+        
+    elif kine_type == "hermite":
+        alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+        phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+        theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
+        
 
     # step 1: draw the symbols for the wing section for some time steps
     for i in range(time.size):
-        alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time[i])
-        phi_l   = Fserieseval(a0_phi, ai_phi, bi_phi, time[i])
-        theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time[i])
-
         # rotation matrix from body to wing coordinate system
-        if wing is 'left':
-            M_wing = Ry(deg2rad(alpha_l))*Rz(deg2rad(theta_l))*Rx(deg2rad(phi_l))*M_stroke_l
+        if wing == 'left':
+            M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
 
-        elif wing is 'right':
-            M_wing = Ry(-deg2rad(alpha_l))*Rz(+deg2rad(theta_l))*Rx(-deg2rad(phi_l))*M_stroke_r
+        elif wing == 'right':
+            M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
 
 
         # convert wing points to global coordinate system
@@ -663,19 +859,27 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         time = np.linspace( start=0.0, stop=1.0, endpoint=False, num=1000)
         xpath = time.copy()
         zpath = time.copy()
+        
+        alpha_l, phi_l, theta_l = np.zeros(time.shape), np.zeros(time.shape), np.zeros(time.shape)
+           
+        if kine_type == "fourier":
+            alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+            phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+            theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
+            
+        elif kine_type == "hermite":
+            alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+            phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+            theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
 
 
         for i in range(time.size):
-            alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time[i])
-            phi_l   = Fserieseval(a0_phi, ai_phi, bi_phi, time[i])
-            theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time[i])
-
             # rotation matrix from body to wing coordinate system
             # rotation matrix from body to wing coordinate system
             if wing is 'left':
-                M_wing = Ry(deg2rad(alpha_l))*Rz(deg2rad(theta_l))*Rx(deg2rad(phi_l))*M_stroke_l
+                M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
             elif wing is 'right':
-                M_wing = Ry(-deg2rad(alpha_l))*Rz(+deg2rad(theta_l))*Rx(-deg2rad(phi_l))*M_stroke_r
+                M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
 
             # convert wing points to global coordinate system
             x_tip_g = np.transpose(M_body) * ( np.transpose(M_wing) * x_tip_w + x_pivot_b ) + x_body_g
@@ -732,7 +936,10 @@ def wingtip_velocity( fname_kinematics, time=None ):
     file. Note we assume the body at rest (hence relative to body).
     """
     # read kinematics data:
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta = read_kinematics_file( fname_kinematics )
+    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname_kinematics )
+    
+    if kine_type != "fourier":
+        raise ValueError("not supported")
 
     if time is None:
         time = np.linspace(0, 1.0, 200, endpoint=True)
@@ -1306,12 +1513,29 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
 
 def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt, theta_dt):
     """
-     given the angles alpha, phi and theta and a vector of numbers, perform
-     HERMITE series approximation and save result to INI file.
-
-     Input:
-         - fname: filename
-         - alpha, phi, theta: angles for kinematics approximation
+    Given the angles alpha, phi and theta and their time derivatives, create an 
+    kinematics INI file for HERMITE approximation.
+    
+    Unlike the Fourier approximation, the Hermite files indeed contain the function values
+    and derivatives directly. Interpolation in time is done when evaluating the file, e.g.,
+    in WABBIT or FLUSI.
+    
+    In python, the evaluation is done using insect_tools.Hserieseval
+    
+    Input:
+    ------
+    
+        fname: string
+            output ini file name
+        alpha, phi, theta: numpy arrays
+            the kinematic angles, sampled between 0<=t<1.0 (excluding t=1.0 !!)
+        alpha_dt, phi_dt, theta_dt: numpy arrays
+            the kinematic angles time derivatives, sampled between 0<=t<1.0 (excluding t=1.0 !!)
+       
+    
+    Output:
+    -------
+        Written to file directly.
     """
 
 

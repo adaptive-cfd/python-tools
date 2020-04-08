@@ -467,8 +467,8 @@ def select_RKC_scheme( eigenvalues, dt, plot=True ):
     eigenvalues *= dt
     z = eigenvalues
 
-    S = np.arange(4, 52+1, 1)
-    EPS = np.linspace(2.0/13.0, 20, 75)
+    S      = np.arange(4, 52+1, 1)
+    EPS    = np.linspace(2.0/13.0, 20, 75)
     S, EPS = np.meshgrid(S, EPS)
     stable = S*0.0
 
@@ -546,3 +546,66 @@ def select_RKC_scheme( eigenvalues, dt, plot=True ):
         plt.plot( np.real(eigenvalues), np.imag(eigenvalues), 'x' )
 
     return s_best, eps_best
+
+
+
+def piecewise_linear_universal( t, ti, ui ):
+    """
+    Piecewise linear interpolation. Given data points {ti, ui} (lists)
+    return the function u(t).
+    Periodization is applied.
+    """
+    # yes do include ti = 0.0    
+    u = np.inf + np.zeros( t.shape )
+    
+    if len(ti) != len(ui):
+        raise ValueError("not the same length??")
+    
+    for i in range(len(t)):
+        T = t[i]        
+        for j in np.arange(0, len(ti) ): 
+            t1 = ti[j]           
+            u1 = ui[j]
+            
+            if j == len(ti)-1:
+                # periodization
+                t2 = 1.0
+                u2 = ui[0]
+            else:                
+                t2 = ti[j+1]
+                u2 = ui[j+1]
+                
+            
+            if T >= t1 and T < t2:
+                # yes, this interval
+                u[i] = u1 + (u2-u1) * (T-t1) / (t2-t1)           
+        
+    return u
+
+
+def smooth(x, window_len=11, window='flat'):
+    """
+    smooth the data using a window with requested size.
+    """
+    import numpy
+
+    if x.ndim != 1:
+        raise ValueError("smooth only accepts 1 dimension arrays.")
+
+    if x.size < window_len:
+        raise ValueError("Input vector needs to be bigger than window size.")
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError("Window is one of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'")
+
+    # periodization
+    s = numpy.r_[ x[-window_len-1:], x, x[0:window_len+1]]
+
+    if window == 'flat': #moving average
+        w = numpy.ones(window_len,'d')
+    else:
+        w = eval('numpy.'+window+'(window_len)')
+
+    y = numpy.convolve( w/w.sum(), s, mode='same' )
+
+    return y[window_len+1:-window_len-1]
