@@ -1092,9 +1092,9 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
     # number of blocks
     N = data.shape[0]
     # size of each block
-    Bs = data.shape[1:]
+    Bs = np.asarray(data.shape[1:])
     
-    if bs % 2 != 0 and new_format:
+    if np.any(Bs % 2 != 0) and new_format:
         # Note: skipping of redundant points, hence the -1
         # Note: this is still okay after Apr 2020: we save one extra point in the HDF5 file
         # for visualization. However, now, the Bs must be odd!
