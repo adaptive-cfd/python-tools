@@ -151,7 +151,7 @@ def check_parameters_for_stupid_errors( file ):
         info("This simulation is being started from initial condition (and not from file)")
 
 #%%
-def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None ):
+def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False ):
     """
     From a given ini file, read [Section]::keyword and return the value
     If the value is not found, an error is raised, if no default is given.
@@ -169,7 +169,21 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
             return value data type
         vector: bool
             If true, we allow returning vectors (eg param=1 2 2 3; in the file), without the option, the conversion to
-            dtype likely fails
+            dtype likely fails. Vectors can also be in the syntax:
+                vct=1 2 2;   \n 
+                vct=1,2 2;        \n             
+                vct=(/1 2 2/)   \n                 
+                vct=(/1,2,2/)   \n 
+            because the fortran code can read both with and without commas.
+        matrix: bool
+            If true, return a matrix. A matrix is a vector that spans more than one line. It cannot be read using
+            the default python CONFIGPARSER module, so we do it manually here.
+            The matrix format is:
+                matrix=(/ 2 ,3 4,4\n
+                8,3,3,5\n
+                8,2,2,2/)\n
+            Again, the use of commas is optional. The fortran code seems to be more restrictive: I think it
+            can only read values separated by a SINGLE SPACE. If one row has a different length, reading will fail.
         default: value
             If the entry in ini file is not found, this value is returned instead. If no default is given, not finding raises ValueError
         
@@ -187,6 +201,58 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     if not os.path.isfile(inifile):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
+
+    if matrix:
+        fid = open( inifile, 'r')      
+        found_section, found = False, False
+        rows = []
+        
+        for line in fid:
+            # remove leading and trailing edges from line
+            line = line.strip()
+            
+            # this will read the second and following rows.
+            if found == True:
+                # some vectors are separated by commas ',', remove them.
+                line = line.replace(',', ' ')
+                line = line.replace('/)', '')
+                rows.append( [float(i) for i in line.split()] )
+                
+            if line == "":
+                line = "blabla"
+            
+            # is the line commented out?
+            if (line[0] == ";" or line[0] == "!" or line[0] == "#"):
+                line = "blabla"
+                
+            # did we find the section?
+            if '['+section+']' in line:
+                found_section = True
+                
+            # first row, if found keyword.
+            if found_section:
+                if keyword+"=" in line:
+                    
+                    if not '(/' in line:
+                        raise ValueError("You try to read a matrix, and we found the keyword, but it does not seem to be a matrix..")
+                    
+                    # remove first vct=
+                    line = line.replace(keyword+"=", "")
+                    # remove (/
+                    line = line.replace('(/', '')                                        
+                    # some vectors are separated by commas ',', remove them.
+                    line = line.replace(',', ' ')                    
+                    # next couple of line is all matrix elements
+                    found = True
+                    # this is the first row
+                    rows.append( [float(i) for i in line.split()] )
+        fid.close()
+        
+        # convert 
+        matrix = np.array( rows, dtype=float )
+        return matrix
+
+
     # initialize parser object
     config = configparser.ConfigParser(allow_no_value=True)
     # read (parse) inifile.
@@ -203,15 +269,30 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         return dtype(default)
 
 
+    
+
     if not vector:
         # configparser returns "0.0;" so remove trailing ";"
-        i = value_string.find(';')
-        value_string = value_string[:i]
+        if ";" in value_string:
+            i = value_string.find(';')
+            value_string = value_string[:i]
+        
         return dtype(value_string)
     else:
+                       
+        # remove everything after ; character
+        if ";" in value_string:
+            i = value_string.find(';')
+            value_string = value_string[:i]
+                
+        # some vectors are written as vect=(/2, 3, 4/)
+        value_string = value_string.replace('(/', '')
+        value_string = value_string.replace('/)', '')
+        
+        # some vectors are separated by commas ',', remove them.
+        value_string = value_string.replace(',', ' ')
+        
         # you can use the strip() to remove trailing and leading spaces.
-        i = value_string.find(';')
-        value_string = value_string[:i]
         value_string.strip()
         l = value_string.split()
         return np.asarray( [float(i) for i in l] )
@@ -624,7 +705,27 @@ def logfit(N, err):
         A[i,0] = np.log10(N[i])
         B[i] = np.log10(err[i])
 
-    x, residuals, rank, singval  = np.linalg.lstsq(A,B)
+    x, residuals, rank, singval  = np.linalg.lstsq(A, B, rcond=None)
+
+    return x
+
+def linfit(N, err):
+    """ This is a small function that returns the logfit, i.e. the least
+    squares fit to the log of the two passed lists.
+    """
+    import numpy as np
+
+    if len(N) != len(err):
+        raise ValueError('Convergence order args do not have same length')
+
+    A = np.ones([len(err), 2])
+    B = np.ones([len(err), 1])
+    # ERR = A*N + B
+    for i in range( len(N) ) :
+        A[i,0] = N[i]
+        B[i] = err[i]
+
+    x, residuals, rank, singval  = np.linalg.lstsq(A, B, rcond=None)
 
     return x
 
