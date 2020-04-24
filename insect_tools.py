@@ -78,7 +78,7 @@ def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):
 
 
 
-def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-'):
+def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-', linewidth=1.0):
     """
     Plot the data y(x) with a shaded area for error (e.g., standard deviation.)
     
@@ -122,7 +122,7 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
 
     # then, avg data
     color[3] = 1.00
-    plt.plot( x, y, fmt, label=label, color=color, mfc='none' )
+    plt.plot( x, y, fmt, label=label, color=color, mfc='none', linewidth=linewidth )
 
 
 
@@ -1275,7 +1275,8 @@ def load_image( infilename ):
 
     img = Image.open( infilename )
     img.load()
-    data = np.asarray( img , dtype=np.float32 )
+    img = img.convert('RGB')
+    data = np.asarray( img , dtype=np.float )
 
     return data
 
@@ -1469,6 +1470,9 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
          - alpha, phi, theta: angles for kinematics approximation
          - nfft=[n1,n2,n3]: number of fourier coefficients for each angle
     """
+    
+    import matplotlib.pyplot as plt
+    import easygui
 
     if len(nfft) != 3:
         raise ValueError("not the right number of fourier coefficients!")
@@ -1488,6 +1492,44 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
 
     i = 0
     for data, name in zip( [alpha,phi,theta], ['alpha','phi','theta']):
+        
+        if nfft[i] == -1:
+            fig = plt.figure()
+            
+            # first guess:
+            nfft[i] = 10
+            choice = ""
+            
+            while choice != "happy":   
+                fig.clf()
+                ax = plt.gca()
+                
+                ai, bi = fseries( data, nfft[i] )                
+                data_fft = Fserieseval(ai[0], ai[1:], bi[1:], np.linspace(0.0, 1.0, data.shape[0], endpoint=False))
+    
+                ax.plot( data, 'k-')
+                ax.plot( data_fft, 'r--')
+#                ax.set_title('INTERACTIVE FOURIER FIT')
+                fig.show()
+                
+                choice = easygui.buttonbox(title='Interactive fourier fit', 
+                                           msg='figure shows the current fft approx with %i modes' % (nfft[i]),
+                                           choices=('N=10', 'N=20', 'N=30', 'N+5', 'N+1', 'happy', 'N-1', 'N-5') )    
+    
+                if choice == "N+5":
+                    nfft[i] += 5
+                elif choice == "N+1":
+                    nfft[i] += 1
+                elif choice == "N-1":
+                    nfft[i] -= 1
+                elif choice == "N-5":
+                    nfft[i] -= 5
+                elif choice == "N=10":
+                    nfft[i] = 10
+                elif choice == "N=20":
+                    nfft[i] = 20
+                elif choice == "N=30":
+                    nfft[i] = 30
 
         ai, bi = fseries( data, nfft[i] )
 
@@ -1573,3 +1615,79 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
         i += 1
 
     f.close()
+    
+    
+def visualize_wing_shape_file(fname):
+    """
+    Reads in a wing shape ini file and visualizes the wing as 2D plot.
+    
+    Input:
+    ------
+    
+        fname: string
+            ini file name describing the wing shape. It must contan the [Wing] section
+            and describe a Fourier wing. The wing may have bristles, no problem.
+            
+    Output:
+    -------
+        Written to file (png/svg/pdf) directly.
+    """
+    import os
+    import wabbit_tools
+    import matplotlib.pyplot as plt
+    
+    
+    plt.rcParams["text.usetex"] = True
+
+    # does the ini file exist?
+    if not os.path.isfile(fname):
+        raise ValueError("Inifile not found!")
+        
+    if not wabbit_tools.exists_ini_section(fname, "Wing"):
+        raise ValueError("The ini file you specified does not contain the [Wing] section "+
+                         "so maybe it is not a wing-shape file after all?")
+
+    wtype = wabbit_tools.get_ini_parameter(fname, "Wing", "type", str)
+    
+    if wtype != "fourier":
+        print(wtype)
+        raise ValueError("Not a fourier wing. This function currently only supports a "+
+                         "Fourier encoded wing (maybe with bristles)")
+        
+    x0 = wabbit_tools.get_ini_parameter(fname, "Wing", "x0w", float)
+    y0 = wabbit_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+    
+    a0 = wabbit_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+    ai = wabbit_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+    bi = wabbit_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+    
+    # compute outer wing shape (membraneous part)
+    theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
+    r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+    
+    xc = x0+np.cos(theta2)*r_fft
+    yc = y0+np.sin(theta2)*r_fft
+    
+    d = 0.1
+    
+    plt.figure()    
+    plt.plot( xc, yc, 'r-', label='wing')
+    plt.axis('equal')
+    plt.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'k--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
+    plt.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'k--')
+    plt.grid()
+    plt.legend()
+    plt.title("wing shape visualization: "+fname)
+    
+    # if present, add bristles    
+    bristles = wabbit_tools.get_ini_parameter(fname, "Wing", "bristles", bool)
+    if bristles:
+        bristles_coords = wabbit_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
+        print(bristles_coords.shape)
+        for j in range( bristles_coords.shape[0]):
+            plt.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
+
+    plt.savefig( fname.replace('.ini','.pdf') )
+    plt.savefig( fname.replace('.ini','.svg') )
+    plt.savefig( fname.replace('.ini','.png'), dpi=300 )
+

@@ -327,6 +327,24 @@ def exists_ini_parameter( inifile, section, keyword ):
     return found_parameter
 
 #%%
+def exists_ini_section( inifile, section ):
+    """ check if a given parameter in the ini file exists or not. can be used to detect
+        deprecated entries somebody removed
+    """
+    found_section = False
+
+    # read jobfile
+    with open(inifile) as f:
+        # loop over all lines
+        for line in f:
+            # until we find the section
+            if "["+section+"]" in line and line[0]!=";" and line[0]!="!" and line[0]!="#":
+                found_section = True
+
+
+    return found_section
+
+#%%
 def prepare_resuming_backup( inifile ):
     """ we look for the latest *.h5 files
         to resume the simulation, and prepare the INI file accordingly.
