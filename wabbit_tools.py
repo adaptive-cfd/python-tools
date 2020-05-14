@@ -530,19 +530,24 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
 
     # get the dataset handle
     dset_id = fid.get('blocks')
-
+    
     # from the dset handle, read the attributes
     time = dset_id.attrs.get('time')
     iteration = dset_id.attrs.get('iteration')
     box = dset_id.attrs.get('domain-size')
+    version=dset_id.attrs.get('version')
+
 
     fid.close()
 
     jmin, jmax = get_max_min_level( treecode )
     N = data.shape[0]
     Bs = data.shape[1:]
-    Bs = Bs[::-1] # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
-
+    Bs = np.asarray(Bs[::-1]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
+    if version == 20200408:
+         Bs = Bs-1
+    else:
+        print("!!!Warning old version of wabbit format detected!!!")
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -608,6 +613,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
+    dset_id.attrs.create( "version", 20200408) # this is used to distinguish wabbit file formats
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
@@ -1477,8 +1483,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     Lintervals = box[:Ndim]/np.asarray(Nintervals)
     Lintervals = Lintervals[::-1]
     
-   # dx_val = 2**(-level) *box[:Ndim]/(Bs-1)
-    #print(dx_val)
+
     x0 = []
     treecode = []
     dx = []
@@ -1488,7 +1493,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 for ibz in range(Nintervals[2]):
                     x0.append([ibx, iby, ibz]*Lintervals)
-                    dx.append(Lintervals/(Bs-1))
+                    dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
 
                     lower = [ibx, iby, ibz]* (Bs - 1)
                     lower = np.asarray(lower, dtype=int)
@@ -1500,8 +1505,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
         for ibx in range(Nintervals[0]):
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
-                dx.append(Lintervals/(Bs-1))
-
+                dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
