@@ -126,42 +126,6 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
 
 
 
-def fseries(y, n):
-    """
-    Return the coefficients ai and bi from a truncated Fourier series of signal y
-    with n coefficients. Used for kinematics analysis.
-    
-    Input:
-    ------
-    
-        y: vector, float
-           The actual data to be analyzed (e.g., angle time series). Note: it is assumed 
-           to be sampled on an equidistant grid. 
-        n: integer
-           Number of Fourier modes to use.
-       
-    
-    Output:
-    -------
-        ai, bi: numpy arrays containing the real (ai) and imaginary (bi) parts of the n Fourier coefficients.
-        
-    """ 
-    # perform fft
-    yk = np.fft.fft(y)
-
-    # data length, for normalization
-    N = y.shape[0]
-
-    # return first n values, normalized (note factor 2.0 from hermite symmetry)
-    ai = +2.0*np.real( yk[0:n] ) / float(N)
-    bi = -2.0*np.imag( yk[0:n] ) / float(N)
-    
-    # I was not aware the the bi coefficients need to switch signs, but it seems they
-    # do have to indeed. this is related to the minus sign in the basis function (exp-i....)
-    # see: https://pages.mtu.edu/~tbco/cm416/fft1.pdf
-    return( ai, bi)
-
-
 # chunk a string, regardless of whatever delimiter, after length characters,
 # return a list
 def chunkstring(string, length):
@@ -525,11 +489,55 @@ def read_param_vct(config, section, key):
     return value
 
 
+def fseries(y, n):
+    """
+    Return the coefficients ai and bi from a truncated Fourier series of signal y
+    with n coefficients. Used for kinematics analysis and other encoding.
+    
+    The coefficients are determined efficiently using FFT, but note the hermitian
+    symmetry of real input data. The zeroth mode is multiplied by a factor of
+    two, i.e., mean = a0/2.0.
+    
+    If you request N=20 modes, we return a0 and ai[0:19] so a total of 21 numbers.
+    
+    Input:
+    ------
+    
+        y: vector, float
+           The actual data to be analyzed (e.g., angle time series). Note: it is assumed 
+           to be sampled on an equidistant grid. 
+        n: integer
+           Number of Fourier modes to use.
+       
+    
+    Output:
+    -------
+        ai, bi: numpy arrays containing the real (ai) and imaginary (bi) parts of the n Fourier coefficients.
+        
+    """ 
+    # perform fft
+    yk = np.fft.fft(y)
+
+    # data length, for normalization
+    N = y.shape[0]
+
+    # return first n values, normalized (note factor 2.0 from hermite symmetry)
+    ai = +2.0*np.real( yk[0:n+1] ) / float(N)
+    bi = -2.0*np.imag( yk[0:n+1] ) / float(N)
+    
+    a0 = ai[0]
+    ai, bi = ai[1:], bi[1:]
+    
+    # I was not aware the the bi coefficients need to switch signs, but it seems they
+    # do have to indeed. this is related to the minus sign in the basis function (exp-i....)
+    # see: https://pages.mtu.edu/~tbco/cm416/fft1.pdf
+    return( a0, ai, bi )
+
 
 def Fserieseval(a0, ai, bi, time):
     """
     evaluate the Fourier series given by a0, ai, bi at the time instant time
-    note we divide amplitude by 2
+    note we divide amplitude of constant by 2 (which is compatible with "fseries")
      
     function is vectorized; pass a vector of time instants for evaluation.
     
@@ -692,8 +700,8 @@ def visualize_kinematics_file( fname ):
 
     plt.rcParams["text.usetex"] = True
 
-    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
-    plt.subplots_adjust(bottom=0.16, left=0.14)
+    plt.figure( )#figsize=(cm2inch(12), cm2inch(7)) )
+#    plt.subplots_adjust(bottom=0.16, left=0.14)
 
     plt.plot(t, phi  , label='$\phi$ (positional)')
     plt.plot(t, alpha, label='$\\alpha$ (feathering)')
@@ -703,6 +711,9 @@ def visualize_kinematics_file( fname ):
     plt.xlim([0,1])
     plt.xlabel('$t/T$')
     plt.ylabel('angle $(^{\circ})$')
+    
+    indicate_strokes()
+    
     ax = plt.gca()
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
@@ -995,7 +1006,7 @@ def interp_matrix( d, time_new ):
 
 
 
-def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.0, ax=None ):
+def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.0, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
     """
     Add shaded background areas to xy plots, often used to visually distinguish
     up- and downstrokes.
@@ -1006,10 +1017,10 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
         force_fullstrokes : bool
             If set we use integer stroke numbers, even if the currents plots
             axis are not (often the x-axis goes from say -0.1 to 1.1)
-        tstart: list of float
+        tstart : list of float
             Manually give starting points of strokes. Shading starts after
             tstroke/2 for a duration of tstroke/2
-        tstroke: duration of a stroke, if not units.
+        tstroke : duration of a stroke, if not units.
 
 
     Output:
@@ -1039,9 +1050,9 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
     y1, y2 = ax.get_ybound()
 
     if force_fullstrokes:
-        t1 = np.round(t1)
-        t2 = np.round(t2)
-
+        t1 = np.round(t1 / tstroke) * tstroke
+        t2 = np.round(t2 / tstroke) * tstroke
+        
     # will there be any strokes at all?
     if abs(t2-t1) < tstroke:
         print('warning: no complete stroke present, not indicating any strokes.')
@@ -1072,8 +1083,7 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
 
 
     # Create patch collection with specified colour/alpha
-    color = [0.85,0.85,0.85]
-    pc = PatchCollection(rects, facecolor=color, alpha=1.0, edgecolor=color, zorder=-2)
+    pc = PatchCollection(rects, facecolor=color, edgecolor=color, zorder=-2)
 
     # Add collection to axes
     ax.add_collection(pc)
@@ -1460,7 +1470,7 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
         return np.sqrt(err1**2 + err2**2 + err3**2)
 
 
-def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
+def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header goes here']):
     """
      given the angles alpha, phi and theta and a vector of numbers, perform
      Fourier series approximation and save result to INI file.
@@ -1479,6 +1489,10 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
 
     # open file, erase existing
     f = open( fname, 'w' )
+    
+    if header is not None:
+        for h in header:
+            f.write('; %s\n' % (h))
 
     f.write('[kinematics]\n')
 
@@ -1504,8 +1518,8 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
                 fig.clf()
                 ax = plt.gca()
                 
-                ai, bi = fseries( data, nfft[i] )                
-                data_fft = Fserieseval(ai[0], ai[1:], bi[1:], np.linspace(0.0, 1.0, data.shape[0], endpoint=False))
+                a0, ai, bi = fseries( data, nfft[i] )                
+                data_fft = Fserieseval(a0, ai, bi, np.linspace(0.0, 1.0, data.shape[0], endpoint=False))
     
                 ax.plot( data, 'k-')
                 ax.plot( data_fft, 'r--')
@@ -1531,21 +1545,21 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft):
                 elif choice == "N=30":
                     nfft[i] = 30
 
-        ai, bi = fseries( data, nfft[i] )
+        a0, ai, bi = fseries( data, nfft[i] )
 
         f.write('; %s\n' % (name))
-        f.write('nfft_%s=%i;\n' % (name, nfft[i]-1 )) # note -1 because 0 mode is separate
+        f.write('nfft_%s=%i;\n' % (name, nfft[i]) )
 
-        f.write('a0_%s=%e;\n' % (name, ai[0]) )
+        f.write('a0_%s=%e;\n' % (name, a0) )
         f.write('ai_%s=' % (name))
-        for k in range(nfft[i]-2):
-            f.write('%e ' % (ai[k+1]))
+        for k in range(nfft[i]-1):
+            f.write('%e ' % (ai[k]))
         f.write('%e;\n' % (ai[nfft[i]-1]))
 
 
         f.write('bi_%s=' % (name) )
-        for k in range(nfft[i]-2):
-            f.write('%e ' % (bi[k+1]))
+        for k in range(nfft[i]-1):
+            f.write('%e ' % (bi[k]))
         f.write('%e;\n' % (bi[nfft[i]-1]))
 
         i += 1
@@ -1616,6 +1630,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
 
     f.close()
     
+  
     
 def visualize_wing_shape_file(fname):
     """
@@ -1690,4 +1705,5 @@ def visualize_wing_shape_file(fname):
     plt.savefig( fname.replace('.ini','.pdf') )
     plt.savefig( fname.replace('.ini','.svg') )
     plt.savefig( fname.replace('.ini','.png'), dpi=300 )
+
 

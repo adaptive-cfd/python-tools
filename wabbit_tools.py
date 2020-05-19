@@ -54,23 +54,54 @@ def check_parameters_for_stupid_errors( file ):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
 
-    bs = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
+    bs              = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
+    g               = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
+    dim             = get_ini_parameter( file, 'Domain', 'dim', int)
+    discretization  = get_ini_parameter( file, 'Discretization', 'order_discretization', str)
+    order_predictor = get_ini_parameter( file, 'Discretization', 'order_predictor', str)
+    
     if len(bs) > 1:
         bs = bs[0]
+
     if bs % 2 == 0:
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
+
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
-        
-    g = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
-    discretization =  get_ini_parameter( file, 'Discretization', 'order_discretization', str)
     
-    if discretization == "FD_2nd_central" and g != 2:
-        warn('For a 2nd order scheme you did not set ghosts=2')
+    if discretization  == "FD_2nd_central" and order_predictor != "multiresolution_2nd":
+        warn('You try to use 2nd order discretization but not 2nd order multiresolution')
+        
+    if discretization  == "FD_4th_central_optimized" and order_predictor != "multiresolution_4th":
+        warn('You try to use 4th order discretization but not 4th order multiresolution')
+        
+    if discretization == "FD_2nd_central" and g != 1:
+        warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
 
-    if discretization == "FD_4th_central_optimized" and g != 4:
-        warn('For a 4th order scheme you did not set ghosts=4')
+    if discretization == "FD_4th_central_optimized" and g != 3:
+        warn('For a 4th order scheme you did not set ghosts=3 (NOTE: this is no longer 4)')
 
+    time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
+    CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
+    CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
+    CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
+    
+    if time_step_method == "RungeKuttaChebychev":
+        if CFL_eta < 999:
+            warn('are you sure you did not forget to adjustl CFL_eta for the RKC scheme???')
+        if CFL_nu < 999:
+            warn('are you sure you did not forget to adjustl CFL_nu for the RKC scheme???')
+        if CFL != 0.75:
+            warn('are you sure you did not forget to adjustl CFL for the RKC scheme??? often we used 0.75.')    
+            
+    if time_step_method == "RungeKuttaGeneric":
+        if CFL_eta > 1.0:
+            warn('are you sure you did not forget to adjustl CFL_eta for the RK scheme? it may be unstable.')
+        if CFL_nu > 0.99*2.79/(float(dim)*np.pi**2):
+            warn('are you sure you did not forget to adjustl CFL_nu for the RK scheme? it may be unstable.')
+        if CFL >  1.0:
+            warn('are you sure you did not forget to adjustl CFL for the RK scheme? it may be unstable.')    
+            
     # if somebody modifies the standard parameter file, users have to update their
     # ini files they use. this is often forgoten and obnoxious. Hence, if we find
     # value sthat no longer exist, warn the user.
@@ -98,11 +129,13 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
         warn('Found deprecated parameter: [ACM]::p_mean_zero')
 
-    c0 = get_ini_parameter( file, 'ACM-new', 'c_0', float)
-    ceta = get_ini_parameter( file, 'VPM', 'C_eta', float)
-    csponge = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
+    c0        = get_ini_parameter( file, 'ACM-new', 'c_0', float)
+    ceta      = get_ini_parameter( file, 'VPM', 'C_eta', float)
+    csponge   = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
-    sponged = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
+    sponged   = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
+    
+    
 
     jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
 
@@ -260,12 +293,13 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
 
     # use configparser to find the value
     value_string = config.get( section, keyword, fallback='UNKNOWN')
-
-    # check if that worked
-    if value_string == 'UNKNOWN' and default is None:
+    
+    # check if that worked. If not value is found, UNKNOWN is returned. if the value field
+    # is empty, then ";" is returned
+    if (value_string==";" or 'UNKNOWN' in value_string) and default is None:
         raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
 
-    if value_string == 'UNKNOWN' and default is not None:
+    if (value_string==";" or 'UNKNOWN' in value_string) and default is not None:
         return dtype(default)
 
 
