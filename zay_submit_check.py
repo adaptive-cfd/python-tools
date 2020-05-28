@@ -137,9 +137,9 @@ if os.path.isfile( jobfile ):
     geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str)
 
     if len(Bs)==1:
-        dx = L[0]*(2**-Jmax)/(Bs[0]-1)
+        dx = L[0]*(2**-Jmax)/(Bs[0])
     else:
-        dx = min(L*(2**-Jmax)/(Bs-1))
+        dx = min(L*(2**-Jmax)/(Bs))
 
     keta = np.sqrt(ceta*nu)/dx
 

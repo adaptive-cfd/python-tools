@@ -32,6 +32,8 @@ parser.add_argument("-p", "--paramsfile", type=str,
                     help="""Parameter (*.ini) file for the wabbit run, required to determine
                     how much time is left in the simulation. If not specified, we
                     try to find an appropriate one in the directory""")
+parser.add_argument("-g", "--plot", action="store_true",
+                    help="""Plot a figure.""")
 args = parser.parse_args()
 
 verbose = not args.script_output
@@ -92,15 +94,11 @@ d = insect_tools.load_t_file(dir + 'performance.t', verbose=verbose)
 if args.first_n_time_steps is not None:
     d = d[0:args.first_n_time_steps+1, :]
 
-tstart = d[0,0]
-tnow = d[-1,0]
-# how many time steps did we already do?
-nt_now = d.shape[0]
-nt = min( 20, nt_now )
+
 
 
 # figure out how many RHS evaluatins we do per time step
-method = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_step_method', str)
+method = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
 
 # default is one (even though that might be wrong...)
 nrhs = 1
@@ -126,8 +124,13 @@ else:
     npoints = np.product(bs)
 
 
-# how long did this run run already
+# how long did this run run already (hours)
 runtime = sum(d[:,2])/3600
+
+tstart = d[0,0]
+tnow   = d[-1,0]
+nt_now = int(d[-1,1]-d[0,1])
+nt     = min( 20, d.shape[0] )
 
 
 # compute mean cost per grid point per RHS evaluation, avg over all time steps
@@ -143,6 +146,8 @@ std_cost2  = np.std ( d[-nt:,2]*d[-nt:,7] / (d[-nt:,3]*npoints) ) / nrhs
 max_cost2  = np.max ( d[-nt:,2]*d[-nt:,7] / (d[-nt:,3]*npoints) ) / nrhs
 min_cost2  = np.min ( d[-nt:,2]*d[-nt:,7] / (d[-nt:,3]*npoints) ) / nrhs
 
+
+
 cpuh_now = int( np.sum(d[:,2]*d[:,7])/3600 )
 
 # this is a recent file (>20/12/2018) it contains the number of procs in every line
@@ -156,7 +161,8 @@ d[:,2] *= d[:,7] / ncpu_now
 twall_avg = np.mean( d[:,2] )
 
 # avg time step until now
-dt = (tnow-tstart) / nt_now
+d2 = insect_tools.load_t_file(dir + 'dt.t', verbose=False)
+dt = np.mean( d2[:,1] )
 
 # how many time steps are left
 nt_left = (T-tnow) / dt
@@ -167,11 +173,16 @@ time_left = round(nt_left * twall_avg)
 # remaining cpu time
 cpuh_left = int(ncpu_now*time_left/3600)
 
+# cost in CPUh / T
+abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) * (1.0 / dt)
+abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) * (1.0 / dt)
+
 if verbose:
     print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
-    print("Already consumed %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
-    print("Runtime %s%2.1f%s h" % (bcolors.OKGREEN, runtime, bcolors.ENDC))
-    print("RHS evals per time step: %s%i%s" % (bcolors.OKGREEN, int(nrhs), bcolors.ENDC))
+    print("Already consumed:           %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
+    print("Runtime:                    %s%2.1f%s h" % (bcolors.OKGREEN, runtime, bcolors.ENDC))
+    print("RHS evals per time step:    %s%i%s" % (bcolors.OKGREEN, int(nrhs), bcolors.ENDC))
+    print("mean dt:                    %s%e%s" % (bcolors.OKGREEN, dt, bcolors.ENDC))
     print("----------------------------------------------------------")
     print("cost [CPUs / N / Nrhs]")
     print("    mean       max        min                std")
@@ -182,6 +193,12 @@ if verbose:
     print("NOW: %s%8.3e  %8.3e  %8.3e (%2.1f%%)  %8.3e (%2.1f%%) %s[CPUs / N / Nrhs]" % (bcolors.OKGREEN, mean_cost2, max_cost2,
           min_cost2, 100.0*min_cost/mean_cost2,
           std_cost2, 100.0*std_cost/mean_cost2, bcolors.ENDC))
+    print("-----------------")
+    print("Absolute cost (all time steps    ): %s%6.0f%s CPUh/T" % (bcolors.OKGREEN, abs_mean_cost, bcolors.ENDC) )
+    print("Absolute cost (last %i time steps): %s%6.0f%s CPUh/T" % (nt, bcolors.OKGREEN, abs_mean_cost2, bcolors.ENDC) )
+    print("-----------------")
+    print("Absolute Nb (all time steps    ): %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]), bcolors.ENDC) )
+    print("Absolute Nb (last %i time steps): %s%i%s" % (nt, bcolors.OKGREEN, np.mean(d[-nt:,3]), bcolors.ENDC) )
     print("-----------------")
     print("blocks-per-rank [mean over entire run ] (rhs) %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]/d[:,7]), bcolors.ENDC))
     print("blocks-per-rank [mean over last it=%i ] (rhs) %s%i%s" % (nt, bcolors.OKGREEN, np.mean(d[-nt:,3]/d[-nt:,7]), bcolors.ENDC))
@@ -202,3 +219,32 @@ if not verbose:
     # when the -s option is active, just print the number of remaining hours
 #    print( '%3.1f' % (time_left/3600.0) )
     print( '%3.1f h %i CPUh (=%i CPUh total)' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
+    
+    
+if args.plot:
+    import matplotlib.pyplot as plt
+    
+    plt.figure()
+    
+    plt.subplot(2,2,1)    
+    plt.plot( d[:,0], d[:,3], label='Nb' )
+    plt.legend()
+    plt.grid(True)
+    
+    plt.subplot(2,2,2)    
+    plt.semilogy( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints), '.', label='cost [CPUs / N / Nrhs]' )
+    plt.legend()
+    plt.grid(True)
+    
+    plt.subplot(2,2,3)    
+    plt.plot( d[:,0], d[:,3]/d[:,7], label='Nb/Ncpu' )
+    plt.legend()
+    plt.grid(True)
+    
+    plt.subplot(2,2,4)    
+    plt.semilogy( d[:,3]/d[:,7], d[:,2]*d[:,7] / (d[:,3]*npoints), '.', label='Nb/Ncpu' )
+    plt.xlabel('Nb/Ncpu')
+    plt.ylabel('cost [CPUs / N / Nrhs]')
+    plt.grid(True)
+    
+    plt.savefig( dir+'/info_performance.png')
