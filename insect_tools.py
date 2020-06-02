@@ -484,7 +484,10 @@ def read_param(config, section, key):
 
 def read_param_vct(config, section, key):
     value = read_param(config, section, key)
-    value = np.array( value.split() )
+    if "," in value:
+        value = np.array( value.split(",") )
+    else:
+        value = np.array( value.split() )
     value = value.astype(np.float)
     return value
 

@@ -110,7 +110,8 @@ elif method == "RungeKuttaChebychev":
     nrhs = wabbit_tools.get_ini_parameter( inifile, 'Time', 's', float)
     
 # if we perform more than one dt on the same grid, this must be taken into account as well
-nrhs *= wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'N_dt_per_grid', float, default=1.0)
+N_dt_per_grid = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'N_dt_per_grid', float, default=1.0)
+nrhs *= N_dt_per_grid
 
 
 T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
@@ -157,10 +158,11 @@ ncpu_now = d[-1,7]
 # the estimate how much time remains. We assume, of course, perfect scaling with #CPU
 d[:,2] *= d[:,7] / ncpu_now
 
-# avg walltime in seconds for this run
-twall_avg = np.mean( d[:,2] )
+# avg walltime in seconds for this run to do one time step
+twall_avg = np.mean( d[:,2] ) / N_dt_per_grid
 
-# avg time step until now
+# avg time step until now (note: this is really time steps, but if more than one time step
+# is performed on the grid before adaptation, the walltime is per multiple time steps)
 d2 = insect_tools.load_t_file(dir + 'dt.t', verbose=False)
 dt = np.mean( d2[:,1] )
 
@@ -174,8 +176,8 @@ time_left = round(nt_left * twall_avg)
 cpuh_left = int(ncpu_now*time_left/3600)
 
 # cost in CPUh / T
-abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) * (1.0 / dt)
-abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) * (1.0 / dt)
+abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) / N_dt_per_grid * (1.0 / dt)
+abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) / N_dt_per_grid * (1.0 / dt)
 
 if verbose:
     print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))

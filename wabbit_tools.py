@@ -53,33 +53,56 @@ def check_parameters_for_stupid_errors( file ):
     if not os.path.isfile(file):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
-
+    jmax            = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
     bs              = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
     g               = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
     dim             = get_ini_parameter( file, 'Domain', 'dim', int)
     discretization  = get_ini_parameter( file, 'Discretization', 'order_discretization', str)
     order_predictor = get_ini_parameter( file, 'Discretization', 'order_predictor', str)
+    transform       = get_ini_parameter( file, 'Wavelet', 'transform_type', str, default="harten-multiresolution")
+    wavelet         = get_ini_parameter( file, 'Wavelet', 'wavelet', str, default="")
+    
+    print("Using %s transform with wavelet %s" % (transform, wavelet) )
+    
     
     if len(bs) > 1:
         bs = bs[0]
+
+    print("Jmax=%i Bs=%i g=%i" % (jmax, bs, g))
 
     if bs % 2 == 0:
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
 
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
-    
+        
     if discretization  == "FD_2nd_central" and order_predictor != "multiresolution_2nd":
         warn('You try to use 2nd order discretization but not 2nd order multiresolution')
         
     if discretization  == "FD_4th_central_optimized" and order_predictor != "multiresolution_4th":
         warn('You try to use 4th order discretization but not 4th order multiresolution')
         
-    if discretization == "FD_2nd_central" and g != 1:
-        warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
 
-    if discretization == "FD_4th_central_optimized" and g != 3:
-        warn('For a 4th order scheme you did not set ghosts=3 (NOTE: this is no longer 4)')
+    if transform == "harten-multiresolution":    
+        if discretization == "FD_2nd_central" and g != 1:
+            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
+    
+        if discretization == "FD_4th_central_optimized" and g != 3:
+            warn('For a 4th order scheme you did not set ghosts=3 (NOTE: this is no longer 4)')
+            
+    elif transform == "biorthogonal":
+        if discretization == "FD_2nd_central" and g != 2:
+            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
+    
+        if discretization == "FD_4th_central_optimized" and g != 6:
+            warn('For a 4th order scheme you did not set ghosts=6 (NOTE: this is no longer 4)')
+            
+        if (wavelet == "CDF22" and wavelet == "CDF2,2") and discretization != "FD_2nd_central":
+            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
+            
+        if (wavelet == "CDF44" or wavelet == "CDF4,4") and discretization != "FD_4th_central_optimized":
+            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
+
 
     time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
