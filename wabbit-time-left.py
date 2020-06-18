@@ -227,26 +227,52 @@ if args.plot:
     import matplotlib.pyplot as plt
     
     plt.figure()
+    a = 1.0
+    plt.gcf().set_size_inches( [a*10.0, a*15] ) # default 6.4, 4.8
     
-    plt.subplot(2,2,1)    
+    plt.subplot(3,2,1)    
     plt.plot( d[:,0], d[:,3], label='Nb' )
     plt.legend()
     plt.grid(True)
+    plt.xlabel('time')
     
-    plt.subplot(2,2,2)    
+    plt.subplot(3,2,2)    
     plt.semilogy( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints), '.', label='cost [CPUs / N / Nrhs]' )
     plt.legend()
     plt.grid(True)
+    plt.xlabel('time')
     
-    plt.subplot(2,2,3)    
+    plt.subplot(3,2,3)    
     plt.plot( d[:,0], d[:,3]/d[:,7], label='Nb/Ncpu' )
     plt.legend()
     plt.grid(True)
+    plt.xlabel('time')
     
-    plt.subplot(2,2,4)    
-    plt.semilogy( d[:,3]/d[:,7], d[:,2]*d[:,7] / (d[:,3]*npoints), '.', label='Nb/Ncpu' )
+    plt.subplot(3,2,4)    
+    
+    Nb_per_rank  = np.round( d[:,3]/d[:,7])
+    cost         = d[:,2]*d[:,7] / (d[:,3]*npoints)       
+    Nb_per_rank2 = np.arange( start=np.min(Nb_per_rank), stop=np.max(Nb_per_rank)+1, dtype=float )
+    cost_avg     = np.zeros( Nb_per_rank2.shape )
+    cost_std     = np.zeros( Nb_per_rank2.shape )
+    
+    for i in range(len(Nb_per_rank2)):
+        cost_avg[i] = np.mean( cost[Nb_per_rank==Nb_per_rank2[i]] )
+        cost_std[i] = np.std( cost[Nb_per_rank==Nb_per_rank2[i]] )
+    
+    plt.semilogy(  d[:,3]/d[:,7], cost, 'k.', label='Nb/Ncpu', markersize=0.5 )
+    insect_tools.plot_errorbar_fill_between( Nb_per_rank2, cost_avg, cost_std )
+    plt.gca().set_yscale('log')
     plt.xlabel('Nb/Ncpu')
     plt.ylabel('cost [CPUs / N / Nrhs]')
     plt.grid(True)
+    
+    
+    plt.subplot(3,2,5)    
+    plt.plot( d[:,0], np.cumsum(d[:,3]), label='Nb (integral)' )
+    plt.xlabel('time')
+    plt.ylabel('N_b integral')
+    plt.grid(True)
+    
     
     plt.savefig( dir+'/info_performance.png')

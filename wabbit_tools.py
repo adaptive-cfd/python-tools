@@ -674,6 +674,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
+    dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -1444,15 +1445,17 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     import insect_tools
     import matplotlib.pyplot as plt
 
-    if dim==3:
-        print('I think due to fft2usapmle, this routine works only in 2D')
-        raise ValueError
+#    if dim==3:
+#        print('I think due to fft2usapmle, this routine works only in 2D')
+#        raise ValueError
+        
     # read in flusi's reference solution
-    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi,dtype=dtype )
+    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
     box = box[1:]
+    
     data_flusi = np.squeeze(data_flusi).T
     Bs = field_shape_to_bs(data_flusi.shape,level)
-    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time,dtype=dtype)
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time, dtype=dtype)
 
 
 #%%
