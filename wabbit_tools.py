@@ -675,7 +675,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
-    dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
+    dset_id.attrs.create('block-size', np.asarray(Bs)-1, dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
