@@ -53,24 +53,78 @@ def check_parameters_for_stupid_errors( file ):
     if not os.path.isfile(file):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
-
-    bs = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
+    jmax            = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
+    bs              = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
+    g               = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
+    dim             = get_ini_parameter( file, 'Domain', 'dim', int)
+    discretization  = get_ini_parameter( file, 'Discretization', 'order_discretization', str)
+    order_predictor = get_ini_parameter( file, 'Discretization', 'order_predictor', str)
+    transform       = get_ini_parameter( file, 'Wavelet', 'transform_type', str, default="harten-multiresolution")
+    wavelet         = get_ini_parameter( file, 'Wavelet', 'wavelet', str, default="")
+    
+    print("Using %s transform with wavelet %s" % (transform, wavelet) )
+    
+    
     if len(bs) > 1:
         bs = bs[0]
+
+    print("Jmax=%i Bs=%i g=%i" % (jmax, bs, g))
+
     if bs % 2 == 0:
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
+
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
         
-    g = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
-    discretization =  get_ini_parameter( file, 'Discretization', 'order_discretization', str)
+    if discretization  == "FD_2nd_central" and order_predictor != "multiresolution_2nd":
+        warn('You try to use 2nd order discretization but not 2nd order multiresolution')
+        
+    if discretization  == "FD_4th_central_optimized" and order_predictor != "multiresolution_4th":
+        warn('You try to use 4th order discretization but not 4th order multiresolution')
+        
+
+    if transform == "harten-multiresolution":    
+        if discretization == "FD_2nd_central" and g != 1:
+            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
     
-    if discretization == "FD_2nd_central" and g != 2:
-        warn('For a 2nd order scheme you did not set ghosts=2')
+        if discretization == "FD_4th_central_optimized" and g != 3:
+            warn('For a 4th order scheme you did not set ghosts=3 (NOTE: this is no longer 4)')
+            
+    elif transform == "biorthogonal":
+        if discretization == "FD_2nd_central" and g != 2:
+            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
+    
+        if discretization == "FD_4th_central_optimized" and g != 6:
+            warn('For a 4th order scheme you did not set ghosts=6 (NOTE: this is no longer 4)')
+            
+        if (wavelet == "CDF22" and wavelet == "CDF2,2") and discretization != "FD_2nd_central":
+            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
+            
+        if (wavelet == "CDF44" or wavelet == "CDF4,4") and discretization != "FD_4th_central_optimized":
+            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
 
-    if discretization == "FD_4th_central_optimized" and g != 4:
-        warn('For a 4th order scheme you did not set ghosts=4')
 
+    time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
+    CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
+    CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
+    CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
+    
+    if time_step_method == "RungeKuttaChebychev":
+        if CFL_eta < 999:
+            warn('are you sure you did not forget to adjustl CFL_eta for the RKC scheme???')
+        if CFL_nu < 999:
+            warn('are you sure you did not forget to adjustl CFL_nu for the RKC scheme???')
+        if CFL != 0.75:
+            warn('are you sure you did not forget to adjustl CFL for the RKC scheme??? often we used 0.75.')    
+            
+    if time_step_method == "RungeKuttaGeneric":
+        if CFL_eta > 1.0:
+            warn('are you sure you did not forget to adjustl CFL_eta for the RK scheme? it may be unstable.')
+        if CFL_nu > 0.99*2.79/(float(dim)*np.pi**2):
+            warn('are you sure you did not forget to adjustl CFL_nu for the RK scheme? it may be unstable.')
+        if CFL >  1.0:
+            warn('are you sure you did not forget to adjustl CFL for the RK scheme? it may be unstable.')    
+            
     # if somebody modifies the standard parameter file, users have to update their
     # ini files they use. this is often forgoten and obnoxious. Hence, if we find
     # value sthat no longer exist, warn the user.
@@ -98,11 +152,13 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
         warn('Found deprecated parameter: [ACM]::p_mean_zero')
 
-    c0 = get_ini_parameter( file, 'ACM-new', 'c_0', float)
-    ceta = get_ini_parameter( file, 'VPM', 'C_eta', float)
-    csponge = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
+    c0        = get_ini_parameter( file, 'ACM-new', 'c_0', float)
+    ceta      = get_ini_parameter( file, 'VPM', 'C_eta', float)
+    csponge   = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
-    sponged = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
+    sponged   = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
+    
+    
 
     jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
 
@@ -260,12 +316,13 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
 
     # use configparser to find the value
     value_string = config.get( section, keyword, fallback='UNKNOWN')
-
-    # check if that worked
-    if value_string == 'UNKNOWN' and default is None:
+    
+    # check if that worked. If not value is found, UNKNOWN is returned. if the value field
+    # is empty, then ";" is returned
+    if (value_string==";" or 'UNKNOWN' in value_string) and default is None:
         raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
 
-    if value_string == 'UNKNOWN' and default is not None:
+    if (value_string==";" or 'UNKNOWN' in value_string) and default is not None:
         return dtype(default)
 
 
@@ -618,6 +675,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
+    dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -1388,15 +1446,17 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     import insect_tools
     import matplotlib.pyplot as plt
 
-    if dim==3:
-        print('I think due to fft2usapmle, this routine works only in 2D')
-        raise ValueError
+#    if dim==3:
+#        print('I think due to fft2usapmle, this routine works only in 2D')
+#        raise ValueError
+        
     # read in flusi's reference solution
-    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi,dtype=dtype )
+    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
     box = box[1:]
+    
     data_flusi = np.squeeze(data_flusi).T
     Bs = field_shape_to_bs(data_flusi.shape,level)
-    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time,dtype=dtype)
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time, dtype=dtype)
 
 
 #%%

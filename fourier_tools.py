@@ -62,15 +62,14 @@ def spectrum1(u):
         print(u.shape)
         raise ValueError('wrong dimension: Spectrum is currently for 2D data only.')
 
-    uk = np.fft.fft(u)
 
     N = u.size
 
-    ek = np.abs( uk/N )**2.0
+    ek = np.abs( np.fft.fft(u) / N )**2.0
     ek = 0.5 * ek
 
     dimMax = np.max( u.shape )
-    k = np.fft.fftfreq(dimMax) * dimMax
+#    k = np.fft.fftfreq(dimMax) * dimMax
 
 
     # Only consider one half of spectrum (due to symmetry)
