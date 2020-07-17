@@ -614,6 +614,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
     dset_id.attrs.create( "version", 20200408) # this is used to distinguish wabbit file formats
+    dset_id.attrs.create( "block-size", Bs-1)
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
