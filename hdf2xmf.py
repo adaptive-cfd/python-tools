@@ -848,9 +848,9 @@ def main():
                 # read time from file
                 f = h5py.File(fname, 'r')
                 # dataset name depends on program
-                if mode is 'flusi':
+                if mode == 'flusi':
                     dset_name = get_dset_name(fname)
-                elif mode is 'wabbit':
+                elif mode == 'wabbit':
                     dset_name = 'blocks'
                     #
                 # get the dataset handle
@@ -890,17 +890,17 @@ def main():
             # construct filename
             outfile = fname + "_" + timestamps[i] + ".xmf"
             print("writing " + outfile + "....")
-            if mode is 'flusi':
+            if mode == 'flusi':
                 write_xmf_file_flusi( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory)
-            elif mode is 'wabbit':
+            elif mode == 'wabbit':
                 write_xmf_file_wabbit( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory)
     else:
         # one file for the dataset
         # write the acual xmf file with the information extracted above
         print("writing " + args.outfile + "....")
-        if mode is 'flusi':
+        if mode == 'flusi':
             write_xmf_file_flusi( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory)
-        elif mode is 'wabbit':
+        elif mode == 'wabbit':
             write_xmf_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory)
 
     print("Done. Enjoy!")
