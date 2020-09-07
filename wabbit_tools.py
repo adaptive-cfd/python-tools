@@ -1029,14 +1029,14 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
 
     if not ticks:
-        plt.tick_params(
+        ax.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
         bottom=False,      # ticks along the bottom edge are off
         top=False,         # ticks along the top edge are off
         labelbottom=False) # labels along the bottom edge are off
 
-        plt.tick_params(
+        ax.tick_params(
         axis='y',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
         bottom=False,      # ticks along the bottom edge are off
@@ -1048,9 +1048,9 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 #    plt.xlim([0.0, box[0]])
 #    plt.ylim([0.0, box[1]])
 
-    plt.axis('tight')
-    plt.axes().set_aspect('equal')
-    plt.gcf().canvas.draw()
+    ax.axis('tight')
+    ax.set_aspect('equal')
+    fig.canvas.draw()
 
     if not gridonly:
         if savepng:
@@ -1065,7 +1065,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         if savepdf:
             plt.savefig( file.replace('.h5','-grid.pdf'), bbox_inches='tight' )
 
-    return ax,cb
+    return ax,cb,hplot
 
 
 #%%
@@ -1148,7 +1148,7 @@ def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
 
     return err
 
-def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
+def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     """
     Read two wabbit files, which are supposed to have all blocks at the same
     level. Then, we re-arrange the data in a dense matrix (wabbit_tools.dense_matrix)
@@ -1158,13 +1158,16 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
         
     The dense array is flattened before computing the error (np.ndarray.flatten)
     
+    New: if a list of files is passed instead of a single file,
+    then we compute the vector norm.
+    
     Input:
     ------
     
-        fname_ref : scalar, string
+        fname_ref : scalar or list of string 
             file to read u1 from
             
-        fname_dat : scalar, string
+        fname_dat : scalar or list of string
             file to read u2 from
             
         norm : scalar, float
@@ -1176,20 +1179,33 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
         err
     """
     import numpy as np
-    import matplotlib.pyplot as plt
 
-    time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
-    time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
+    if  not isinstance(fname_ref_list, list):
+        fname_ref_list = [fname_ref_list]
     
-    data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
-    data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+    if  not isinstance(fname_dat_list, list):
+        fname_dat_list = [fname_dat_list]
     
-    if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
-       raise ValueError("ERROR! Both fields are not a the same resolution")
+    assert len(fname_dat_list) == len(fname_ref_list) 
+        
+    for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
+        time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
+        time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
+    
+        data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
+        data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+    
+        if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
+            raise ValueError("ERROR! Both fields are not a the same resolution")
 
-    err = np.ndarray.flatten(data1-data2)
-    exc = np.ndarray.flatten(data1)
-
+        if k==0:
+            err = np.ndarray.flatten(data1-data2)
+            exc = np.ndarray.flatten(data1)
+        else:
+            err = np.concatenate((err,np.ndarray.flatten(data1-data2)))
+            exc = np.concatenate((exc,np.ndarray.flatten(data1)))
+        
+    
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
 
     print( "error was e=%e" % (err) )
