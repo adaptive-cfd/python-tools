@@ -670,12 +670,11 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
-    dset_id.attrs.create( "version", 20200408) # this is used to distinguish wabbit file formats
-    dset_id.attrs.create( "block-size", Bs-1)
+    dset_id.attrs.create( "block-size", Bs)
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
-    dset_id.attrs.create('block-size', np.asarray(Bs)-1, dtype=int )
+    dset_id.attrs.create('block-size', np.asarray(Bs), dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -1570,7 +1569,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 for ibz in range(Nintervals[2]):
                     x0.append([ibx, iby, ibz]*Lintervals)
-                    dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
+                    dx.append(Lintervals/(Bs-1))
 
                     lower = [ibx, iby, ibz]* (Bs - 1)
                     lower = np.asarray(lower, dtype=int)
@@ -1582,7 +1581,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
         for ibx in range(Nintervals[0]):
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
-                dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
+                dx.append(Lintervals/(Bs-1))
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
