@@ -237,7 +237,7 @@ if args.plot:
     plt.xlabel('time')
     
     plt.subplot(3,2,2)    
-    plt.semilogy( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints), '.', label='cost [CPUs / N / Nrhs]' )
+    plt.semilogy( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints*nrhs), '.', label='cost [CPUs / N / Nrhs]' )
     plt.legend()
     plt.grid(True)
     plt.xlabel('time')

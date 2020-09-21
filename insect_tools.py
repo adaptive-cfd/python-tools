@@ -21,15 +21,15 @@ def get_next_marker():
     return next(marker)
 
 
-def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):    
+def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True, N=1000, tstroke=1.0, plot_raw_data=False ):    
     """
     Perform statistics over periodic data.
     Often, we have data for several strokes, say 0 <= t <= 10. This function assumes
     a period time T=1.0, divides the data into chunks corresponding to each of the strokes,
-    then copmutes the average time evolution as well as standard deviation among all strokes.
+    then computes the average time evolution as well as standard deviation among all strokes.
     
     The data is divided into cycles and (linearily) interpolated to an equidistant time
-    grid. Ths grid is equidistant and sampled using 1000 data points.
+    grid. Ths grid is equidistant and sampled using N=1000 data points.
     
     Input:
     ------
@@ -55,24 +55,37 @@ def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True ):
     import matplotlib.pyplot as plt
     
     # all data is interpolated to an equidistant time grid
-    time = np.linspace(0, 1, num=1000, endpoint=False)
+    time = np.linspace(0.0, 1.0, num=N, endpoint=False)
     
     # start and end time of data
     t0, t1 = t[0], t[-1]
-    tstroke = 1.0
+    
     # how many cycles are there?
     nstrokes = int( np.round( (t1-t0) / tstroke) )
     
-    y_interp = np.zeros( (nstrokes-1, time.shape[0]) )
-    for i in range(nstrokes-1):
+    y_interp = np.zeros( (nstrokes, time.shape[0]) )
+    
+    for i in range(nstrokes):
         # linear interpolation
-        y_interp[i,:] = np.interp( time+float(i), t, y)
+        y_interp[i,:] = np.interp( time+float(i)*tstroke, t, y)
         
         if plot_indiv_strokes:
-            plt.plot(time, y_interp[i,:], color=[0.6, 0.6, 0.6], linewidth=0.1)
+            # plot the linear interpolated data for this stroke
+            plt.plot(time, y_interp[i,:], color='k', linewidth=0.5)
+            
+        if plot_raw_data:
+            # plot raw (non-interpolated) data points 
+            # helpful if data contains holes (NAN) and isolated datapoints, because 
+            # we need at least two non-NAN points for linear interpolation
+            mask = np.zeros( t.shape, dtype=bool)
+            mask[ t>=float(i)*tstroke ]   = True
+            mask[ t>=float(i+1)*tstroke ] = False
+            plt.plot( t[mask]-float(i)*tstroke, y[mask], 'kd', mfc='none', linewidth=0.5)
+            
+            
     
-    y_avg = np.mean(y_interp, axis=0)
-    y_std = np.std(y_interp, axis=0)
+    y_avg = np.nanmean(y_interp, axis=0)
+    y_std = np.nanstd(y_interp, axis=0)
     
     return time, y_avg, y_std
 
@@ -113,7 +126,7 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
     yerr = np.asarray(yerr)
 
     if color is None:
-        color = next(plt.gca()._get_lines.prop_cycler)['color']
+        color = get_next_color()
     color = np.asarray( matplotlib.colors.to_rgba(color) )
 
     # first, draw shaded area for dev
@@ -774,19 +787,21 @@ def visualize_kinematics_file( fname ):
         phi   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , t)
         theta = Hserieseval(a0_theta, ai_theta, bi_theta, t)
 
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = False
 
-    plt.figure( )#figsize=(cm2inch(12), cm2inch(7)) )
-#    plt.subplots_adjust(bottom=0.16, left=0.14)
+    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
+    plt.subplots_adjust(bottom=0.16, left=0.14)
 
-    plt.plot(t, phi  , label='$\phi$ (positional)')
+    plt.plot(t, phi  , label='$\\phi$ (positional)')
     plt.plot(t, alpha, label='$\\alpha$ (feathering)')
     plt.plot(t, theta, label='$\\theta$ (deviation)')
 
     plt.legend()
     plt.xlim([0,1])
     plt.xlabel('$t/T$')
-    plt.ylabel('angle $(^{\circ})$')
+    plt.ylabel('angle $(^{\\circ})$')
+
+#    plt.ylim([-100, 100])
     
     indicate_strokes()
     
@@ -843,6 +858,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False ):
     """ visualize the wing chord
+    
+    give all angles in degree
+    
     visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None ):
@@ -963,9 +981,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         for i in range(time.size):
             # rotation matrix from body to wing coordinate system
             # rotation matrix from body to wing coordinate system
-            if wing is 'left':
+            if wing == 'left':
                 M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
-            elif wing is 'right':
+            elif wing == 'right':
                 M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
 
             # convert wing points to global coordinate system
@@ -977,9 +995,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
 
     # Draw stroke plane as a dashed line
-    if wing is 'left':
+    if wing == 'left':
         M_stroke = M_stroke_l
-    elif wing is 'right':
+    elif wing == 'right':
         M_stroke = M_stroke_r
 
     # we draw the line between [0,0,-1] and [0,0,1] in the stroke system
@@ -988,6 +1006,8 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     # bring these points back to the global system
     x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
     x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
+
+    plt.ylim([-1, 1])
 
     # remember we're in the x-z plane
     l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
@@ -999,13 +1019,14 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         axis_equal_keepbox( plt.gcf(), plt.gca() )
 
     # annotate plot
-    plt.rcParams["text.usetex"] = True
-    plt.xlabel('$x^{(g)}$')
-    plt.ylabel('$z^{(g)}$')
+#    plt.rcParams["text.usetex"] = False
+#    plt.xlabel('$x^{(g)}$')
+#    plt.ylabel('$z^{(g)}$')
 
     if meanflow is not None:
-        plt.arrow( 1.75, 1.4, -0.5, 0.0, width=0.000001, head_width=0.025 )
-        plt.text(1.46, 1.29, '$u_\infty$' )
+        x0, y0 = 0.0, 0.0
+        plt.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
+        plt.text(x0+meanflow[0]*1.4, y0+meanflow[2]*1.4, '$u_\infty$' )
 
     if reverse_x_axis:
         plt.gca().invert_xaxis()
@@ -1479,7 +1500,7 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
     data[:,1] = (data[:,1] + data[:,2]) / np.sqrt( 2.0 )
 
 
-    if reference is 'suzuki':
+    if reference == 'suzuki':
         data_flusi = load_t_file('/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/level3_small/forces.t')
         data_flusi[:,1:3+1] /= fcoef
         data_flusi[:,1] = (data_flusi[:,1] + data_flusi[:,2]) / np.sqrt( 2.0 )
@@ -1643,7 +1664,7 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header go
     f.close()
 
 
-def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt, theta_dt):
+def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt, theta_dt, header=None):
     """
     Given the angles alpha, phi and theta and their time derivatives, create an 
     kinematics INI file for HERMITE approximation.
@@ -1673,6 +1694,9 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
 
     # open file, erase existing
     f = open( fname, 'w' )
+    
+    if header is not None:
+        f.write('%s\n' % (header))
 
     f.write('[kinematics]\n')
 

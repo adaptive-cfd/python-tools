@@ -601,10 +601,12 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     N = data.shape[0]
     Bs = data.shape[1:]
     Bs = np.asarray(Bs[::-1]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
+    
     if version == 20200408:
          Bs = Bs-1
     else:
         print("!!!Warning old version of wabbit format detected!!!")
+        
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -674,7 +676,12 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
-    dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
+    if len(data.shape)==4:
+        # 3d data
+        dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
+    else:
+        # 2d
+        dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1], dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -846,8 +853,58 @@ def get_max_min_level( treecode ):
 
     return min_level, max_level
 
+#%%
+def plot_1d_cut( file, y ):
+    # read data
+    time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
 
+    # get number of blocks and blocksize
+    N, Bs = data.shape[0], data.shape[1:]
+    
+    dim = len( data.shape )-1
+    
+    if dim != 2:
+        raise ValueError("Sadly, we do this only for 2D fields right now")
+        
+    if y < 0.0 or y >= box[1]:
+        raise ValueError("Sadly, you request a y value out of the domain..")
+        
+    y_found = []
+    # first check if any blocks contain the y value at all 
+    for i in range(N):
+        y_vct = np.arange(Bs[0])*dx[i,0] + x0[i,0]
+        
+        if np.min( np.abs(y_vct-y) ) < dx[i,1]/2.0:
+            iy = np.argmin( np.abs(y_vct-y) )
+            y_found.append( y_vct[iy] )
+            
+    print(y_found)
+    y_new = y_found[0]
+    print('snapped to y=%f' % (y_new))
+    
+    x_values, f_values = [],[]
+    
+    for i in range(N):
+        
+        x_vct = np.arange(Bs[1])*dx[i,1] + x0[i,1]
+        y_vct = np.arange(Bs[0])*dx[i,0] + x0[i,0]
+        
+        if np.min( np.abs(y_vct-y_new) ) < dx[i,0]/100.0:
+            iy = np.argmin( np.abs(y_vct-y) )
+            x_values.append( x_vct )
+            f_values.append( data[i,iy,:].copy() )
+            
+    x_values = np.hstack(x_values)
+    f_values = np.hstack(f_values)
+    
+    x_values, f_values = zip(*sorted(zip(x_values, f_values)))
+           
+    return x_values, f_values
+#    import matplotlib.pyplot as plt
+#    plt.figure()
+#    plt.plot(x_values, f_values, '-')
 
+#%%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
@@ -1262,7 +1319,6 @@ def overwrite_block_data_with_level(treecode, data):
 
 #%%
 def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False ):
-
     import math
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 
