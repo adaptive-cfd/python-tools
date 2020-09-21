@@ -1238,18 +1238,18 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     assert len(fname_dat_list) == len(fname_ref_list) 
         
     for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
-    time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
-    time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
+        time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
+        time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
     
-    data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
-    data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
-    
-    if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
-       raise ValueError("ERROR! Both fields are not a the same resolution")
+        data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
+        data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+        
+        if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
+           raise ValueError("ERROR! Both fields are not a the same resolution")
 
         if k==0:
-    err = np.ndarray.flatten(data1-data2)
-    exc = np.ndarray.flatten(data1)
+            err = np.ndarray.flatten(data1-data2)
+            exc = np.ndarray.flatten(data1)
         else:
             err = np.concatenate((err,np.ndarray.flatten(data1-data2)))
             exc = np.concatenate((exc,np.ndarray.flatten(data1)))
