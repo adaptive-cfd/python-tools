@@ -603,9 +603,8 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     Bs = np.asarray(Bs[::-1]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
     
     if version == 20200408:
-         Bs = Bs-1
-    else:
-        print("!!!Warning old version of wabbit format detected!!!")
+        Bs = Bs-1
+        print("!!!Warning old (newGhostNodes) version of wabbit format detected!!!")
         
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
@@ -672,16 +671,10 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
-    dset_id.attrs.create( "version", 20200408) # this is used to distinguish wabbit file formats
+    dset_id.attrs.create( "version", 20200902) # this is used to distinguish wabbit file formats
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
-    if len(data.shape)==4:
-        # 3d data
-        dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1,Bs[2]-1], dtype=int )
-    else:
-        # 2d
-        dset_id.attrs.create('block-size', [Bs[0]-1,Bs[1]-1], dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -860,7 +853,7 @@ def plot_1d_cut( file, y ):
 
     # get number of blocks and blocksize
     N, Bs = data.shape[0], data.shape[1:]
-    
+
     dim = len( data.shape )-1
     
     if dim != 2:
@@ -1085,14 +1078,14 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
 
     if not ticks:
-        plt.tick_params(
+        ax.tick_params(
         axis='x',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
         bottom=False,      # ticks along the bottom edge are off
         top=False,         # ticks along the top edge are off
         labelbottom=False) # labels along the bottom edge are off
 
-        plt.tick_params(
+        ax.tick_params(
         axis='y',          # changes apply to the x-axis
         which='both',      # both major and minor ticks are affected
         bottom=False,      # ticks along the bottom edge are off
@@ -1104,9 +1097,9 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 #    plt.xlim([0.0, box[0]])
 #    plt.ylim([0.0, box[1]])
 
-    plt.axis('tight')
-    plt.axes().set_aspect('equal')
-    plt.gcf().canvas.draw()
+    ax.axis('tight')
+    ax.set_aspect('equal')
+    fig.canvas.draw()
 
     if not gridonly:
         if savepng:
@@ -1121,7 +1114,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         if savepdf:
             plt.savefig( file.replace('.h5','-grid.pdf'), bbox_inches='tight' )
 
-    return ax,cb
+    return ax,cb,hplot
 
 
 #%%
@@ -1204,7 +1197,7 @@ def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
 
     return err
 
-def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
+def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     """
     Read two wabbit files, which are supposed to have all blocks at the same
     level. Then, we re-arrange the data in a dense matrix (wabbit_tools.dense_matrix)
@@ -1214,13 +1207,16 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
         
     The dense array is flattened before computing the error (np.ndarray.flatten)
     
+    New: if a list of files is passed instead of a single file,
+    then we compute the vector norm.
+    
     Input:
     ------
     
-        fname_ref : scalar, string
+        fname_ref : scalar or list of string 
             file to read u1 from
             
-        fname_dat : scalar, string
+        fname_dat : scalar or list of string
             file to read u2 from
             
         norm : scalar, float
@@ -1232,8 +1228,16 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
         err
     """
     import numpy as np
-    import matplotlib.pyplot as plt
 
+    if  not isinstance(fname_ref_list, list):
+        fname_ref_list = [fname_ref_list]
+    
+    if  not isinstance(fname_dat_list, list):
+        fname_dat_list = [fname_dat_list]
+    
+    assert len(fname_dat_list) == len(fname_ref_list) 
+        
+    for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
     time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
     time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
     
@@ -1243,8 +1247,13 @@ def wabbit_error_vs_wabbit(fname_ref, fname_dat, norm=2, dim=2):
     if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
        raise ValueError("ERROR! Both fields are not a the same resolution")
 
+        if k==0:
     err = np.ndarray.flatten(data1-data2)
     exc = np.ndarray.flatten(data1)
+        else:
+            err = np.concatenate((err,np.ndarray.flatten(data1-data2)))
+            exc = np.concatenate((exc,np.ndarray.flatten(data1)))
+        
 
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
 
@@ -1319,6 +1328,7 @@ def overwrite_block_data_with_level(treecode, data):
 
 #%%
 def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False ):
+
     import math
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 
@@ -1609,7 +1619,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 for ibz in range(Nintervals[2]):
                     x0.append([ibx, iby, ibz]*Lintervals)
-                    dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
+                    dx.append(Lintervals/(Bs-1))
 
                     lower = [ibx, iby, ibz]* (Bs - 1)
                     lower = np.asarray(lower, dtype=int)
@@ -1621,7 +1631,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
         for ibx in range(Nintervals[0]):
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
-                dx.append(Lintervals/(Bs-1)) # we assume here that Bs=data.shape() / after new format this must be even
+                dx.append(Lintervals/(Bs-1))
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
