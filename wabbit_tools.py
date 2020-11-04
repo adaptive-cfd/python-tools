@@ -151,14 +151,24 @@ def check_parameters_for_stupid_errors( file ):
         
     if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
         warn('Found deprecated parameter: [ACM]::p_mean_zero')
-
+        
+    if exists_ini_parameter( file, "ACM", "compute_laplacian" ):
+        warn('Found deprecated parameter: [ACM]::compute_laplacian')
+        
+    if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
+        warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
+        
     c0        = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     ceta      = get_ini_parameter( file, 'VPM', 'C_eta', float)
     csponge   = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
     sponged   = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
     
-    
+    HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
+    if HIT:
+        print(type(HIT))
+        print(HIT)
+        warn('You use HIT linear forcing, which is HIGHLY EXPERIMENTAL')
 
     jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
 
@@ -264,14 +274,18 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         rows = []
         
         for line in fid:
-            # remove leading and trailing edges from line
+            # remove leading and trailing spaces from line
             line = line.strip()
             
             # this will read the second and following rows.
             if found == True:
+                # is this the last line of the matrix?
+                if '/)' in line:
+                    found = False
                 # some vectors are separated by commas ',', remove them.
                 line = line.replace(',', ' ')
                 line = line.replace('/)', '')
+                line = line.replace(';', '')
                 rows.append( [float(i) for i in line.split()] )
                 
             if line == "":
