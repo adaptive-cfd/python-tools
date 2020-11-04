@@ -197,10 +197,13 @@ def write_pointcloud(file, data, header):
     write_csv_file( file, data, header=header, sep=' ')
 
 
-def reset_colorcycle():
+def reset_colorcycle( ax=None ):
     import matplotlib.pyplot as plt
     # reset color cycle
-    plt.gca().set_prop_cycle(None)
+    if ax is None:
+        plt.gca().set_prop_cycle(None)
+    else:
+        ax.set_prop_cycle(None)
 
 
 def load_t_file( fname, interp=False, time_out=None, return_header=False,
@@ -331,7 +334,7 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
         # skip first time stamp
         for it in np.arange( 1, nt_raw ):
             t0, t1 = time_raw[it-1], time_raw[it]
-            if t1 < t0:
+            if t1 <= t0:
                 # we have found a jump (which is often quite big so we must not worry about <=)
                 # now, figure out the index where we duplicate time stamps began
                 istart = np.argmin( np.abs(time_raw[0:it-1]-t1) )                
@@ -346,7 +349,7 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
                     it_unique[istart:it] = False
                     it_unique[it] = True
             else:
-                # no jup, seems to be okay for now, but is maybe removed later
+                # no jump, seems to be okay for now, but is maybe removed later
                 it_unique[it] = True
                     
         data = data_raw[ it_unique, :].copy()
@@ -377,7 +380,20 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
             else:
                 it_unique[it] = True
                 
+        # sometimes the last point is a problem:
+        err_abs = np.abs(data[-2,:]-data[-1,:])
+        err_rel = err_abs / np.abs(data[-2,:])
+        err = err_rel
+        err[ err_abs <= 1.0e-7 ] = err_abs[ err_abs <= 1.0e-7 ]
+
+        if (np.max(err)>1.5):
+            it_unique[-1] = False
+        else:
+            it_unique[-1] = True
+                
         data = data[ it_unique, :].copy()
+        
+        
 
     if T0 is not None:
         if type(T0) is list and len(T0)==2:
@@ -808,7 +824,7 @@ def visualize_kinematics_file( fname ):
     ax = plt.gca()
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
-    plt.savefig( fname.replace('.ini','.png'), format='png', dpi=300 )
+#    plt.savefig( fname.replace('.ini','.png'), format='png', dpi=300 )
 
 
 
@@ -1035,7 +1051,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     ax = plt.gca()
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
-    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
+#    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
 
 
 

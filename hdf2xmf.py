@@ -81,7 +81,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
     # use any file to get blocksize and dimensionality
     file = directory + prefixes[0] + '_' + timestamps[0] + '.h5'
     # open h5 file
-    f = h5py.File(file)
+    f = h5py.File(file, 'r')
     # get the dataset handle
     dset_id = f.get('blocks')
 
@@ -243,7 +243,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             #use any of our files at the same timestamp to determine number of blocks
             file = directory + prefixes[0] + '_' + timestamps[i] + '.h5'
             # open h5 file
-            f = h5py.File(file)
+            f = h5py.File(file, 'r')
             dset_id = f.get('blocks')
             Nb = dset_id.shape[0]
             print("timestamp "+timestamps[i]+" has Nb=%i blocks" % (Nb) )
