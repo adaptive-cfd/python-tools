@@ -604,7 +604,7 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     if version == 20200408:
          Bs = Bs-1
     else:
-        print("!!!Warning old version of wabbit format detected!!!")
+        print("This file includes redundant points")
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -655,7 +655,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
         Bs = Bs[::-1]
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Writing file %s" % (file) )
-        print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Level=%i" % (time, iteration, N, Bs[0], Bs[1],Level) )
+        print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Level=%i Domain=[%d, %d]" % (time, iteration, N, Bs[0], Bs[1],Level, box[0], box[1]) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 
@@ -1317,10 +1317,10 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
     ddx = dx[0,:]
     if verbose:
         print("Nblocks :" , (N))
-        print("Bs      :" , Bs)
+        print("Bs      :" , Bs[::-1])
         print("Spacing :" , ddx)
-        print("Domain  :" , ddx*nx)
-        print("Dense field resolution :", nx )
+        print("Domain  :" , ddx*nx[::-1])
+        print("Dense field resolution :", nx[::-1] )
 
     if dim==2:
         # allocate target field
