@@ -151,14 +151,24 @@ def check_parameters_for_stupid_errors( file ):
         
     if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
         warn('Found deprecated parameter: [ACM]::p_mean_zero')
-
+        
+    if exists_ini_parameter( file, "ACM", "compute_laplacian" ):
+        warn('Found deprecated parameter: [ACM]::compute_laplacian')
+        
+    if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
+        warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
+        
     c0        = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     ceta      = get_ini_parameter( file, 'VPM', 'C_eta', float)
     csponge   = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
     penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
     sponged   = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
     
-    
+    HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
+    if HIT:
+        print(type(HIT))
+        print(HIT)
+        warn('You use HIT linear forcing, which is HIGHLY EXPERIMENTAL')
 
     jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
 
@@ -264,14 +274,18 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         rows = []
         
         for line in fid:
-            # remove leading and trailing edges from line
+            # remove leading and trailing spaces from line
             line = line.strip()
             
             # this will read the second and following rows.
             if found == True:
+                # is this the last line of the matrix?
+                if '/)' in line:
+                    found = False
                 # some vectors are separated by commas ',', remove them.
                 line = line.replace(',', ' ')
                 line = line.replace('/)', '')
+                line = line.replace(';', '')
                 rows.append( [float(i) for i in line.split()] )
                 
             if line == "":
@@ -601,10 +615,13 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     N = data.shape[0]
     Bs = data.shape[1:]
     Bs = np.asarray(Bs[::-1]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
+    
     if version == 20200408:
-         Bs = Bs-1
+        Bs = Bs-1
+        print("!!!Warning old (old branch: newGhostNodes) version of wabbit format detected!!!")
     else:
         print("This file includes redundant points")
+        
     if verbose:
         print("Time=%e it=%i N=%i Bs[0]=%i Bs[1]=%i Jmin=%i Jmax=%i" % (time, iteration, N, Bs[0], Bs[1], jmin, jmax) )
         print("~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -670,11 +687,10 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
-    dset_id.attrs.create( "block-size", Bs)
+    dset_id.attrs.create( "version", 20200902) # this is used to distinguish wabbit file formats
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
-    dset_id.attrs.create('block-size', np.asarray(Bs), dtype=int )
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
@@ -846,8 +862,58 @@ def get_max_min_level( treecode ):
 
     return min_level, max_level
 
+#%%
+def plot_1d_cut( file, y ):
+    # read data
+    time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
 
+    # get number of blocks and blocksize
+    N, Bs = data.shape[0], data.shape[1:]
 
+    dim = len( data.shape )-1
+    
+    if dim != 2:
+        raise ValueError("Sadly, we do this only for 2D fields right now")
+        
+    if y < 0.0 or y >= box[1]:
+        raise ValueError("Sadly, you request a y value out of the domain..")
+        
+    y_found = []
+    # first check if any blocks contain the y value at all 
+    for i in range(N):
+        y_vct = np.arange(Bs[0])*dx[i,0] + x0[i,0]
+        
+        if np.min( np.abs(y_vct-y) ) < dx[i,1]/2.0:
+            iy = np.argmin( np.abs(y_vct-y) )
+            y_found.append( y_vct[iy] )
+            
+    print(y_found)
+    y_new = y_found[0]
+    print('snapped to y=%f' % (y_new))
+    
+    x_values, f_values = [],[]
+    
+    for i in range(N):
+        
+        x_vct = np.arange(Bs[1])*dx[i,1] + x0[i,1]
+        y_vct = np.arange(Bs[0])*dx[i,0] + x0[i,0]
+        
+        if np.min( np.abs(y_vct-y_new) ) < dx[i,0]/100.0:
+            iy = np.argmin( np.abs(y_vct-y) )
+            x_values.append( x_vct )
+            f_values.append( data[i,iy,:].copy() )
+            
+    x_values = np.hstack(x_values)
+    f_values = np.hstack(f_values)
+    
+    x_values, f_values = zip(*sorted(zip(x_values, f_values)))
+           
+    return x_values, f_values
+#    import matplotlib.pyplot as plt
+#    plt.figure()
+#    plt.plot(x_values, f_values, '-')
+
+#%%
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
@@ -1193,9 +1259,9 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     
         data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
         data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
-    
+        
         if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
-            raise ValueError("ERROR! Both fields are not a the same resolution")
+           raise ValueError("ERROR! Both fields are not a the same resolution")
 
         if k==0:
             err = np.ndarray.flatten(data1-data2)
@@ -1204,7 +1270,7 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
             err = np.concatenate((err,np.ndarray.flatten(data1-data2)))
             exc = np.concatenate((exc,np.ndarray.flatten(data1)))
         
-    
+
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
 
     print( "error was e=%e" % (err) )

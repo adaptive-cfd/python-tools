@@ -394,7 +394,7 @@ def RK4_stability_map( fig=None ):
     if fig is None:
         fig = plt.figure()
 
-    fig.gca().contour(RE, IM, Pj, levels=[1.0], colors='b', label='RK4')
+    fig.gca().contour(RE, IM, Pj, levels=[1.0], colors='k',  linestyles='--')
 
 
 def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
@@ -543,7 +543,8 @@ def select_RKC_scheme( eigenvalues, dt, plot=True ):
 
     if plot:
         RKC_stability_map(s_best, eps_best)
-        plt.plot( np.real(eigenvalues), np.imag(eigenvalues), 'x' )
+        RK4_stability_map( fig=plt.gcf() )
+        plt.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
 
     return s_best, eps_best
 
