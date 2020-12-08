@@ -78,7 +78,7 @@ def uniquelist( l ):
         print(l)
         return l[0]
 
-def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 "):
+def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 ", level = ""):
     print('-------------------------')
     print('- WABBIT module matlab  -')
     print('-------------------------')
@@ -106,7 +106,7 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             file_dense = densedir + prefix + '_' + timestamps[i] + '.h5'
             command = mpicommand + " " + \
                  "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "  \
-                  #+ level + " " + order    
+                  + level + " 4" #+ order    
             command = command + " >> " + densedir+"wabbit-post.log"
             print("\n",command,"\n")
             ierr = os.system(command)
@@ -168,6 +168,7 @@ def main():
     group3 = parser.add_mutually_exclusive_group()
     group3.add_argument("-p", "--skip-incomplete-timestamps", help="If some files are missing, skip the time step", action="store_true")
     group3.add_argument("-l", "--skip-incomplete-prefixes", help="If some files are missing, skip the prefix", action="store_true")
+    group3.add_argument("-r", "--refinement-level", help="refinement level of the equidistant mat-field")
     args = parser.parse_args()
 
     if args.directory is None:
@@ -200,6 +201,11 @@ def main():
 
     if args.ignore_origin:
         print("We will force origin = 0.0, 0.0, 0.0 regardless of what is specified in h5 files")
+    if args.refinement_level == None:
+        refinement_level = ""
+        print("We will use the maximal refinement level of the data for refiment of coarser blocks")
+    else:
+        refinement_level = args.refinement_level
 
     # will vector recognition be turned off? This option is useful if for some reason
     # you have a file that ends with x is not a vector or if you downloaded just one
@@ -487,13 +493,13 @@ def main():
             outfile = fname + "_" + timestamps[i] + ".mat"
             print("writing " + outfile + "....")
         
-            write_mat_file_wabbit( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory)
+            write_mat_file_wabbit( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory, level= refinement_level)
             
     else:
         # one file for the dataset
         # write the acual xmf file with the information extracted above
         print("writing " + args.outfile + "....")
-        write_mat_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory)
+        write_mat_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory, level=refinement_level)
         
     print("Done. Enjoy!")
 
