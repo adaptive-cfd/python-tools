@@ -1492,7 +1492,7 @@ def command_on_each_hdf5_file(directory, command):
     files = glob.glob(directory+'/*.h5')
     files.sort()
     for file in files:
-        c = command  % file
+        c = command % file
         os.system(c)
 
 #%%

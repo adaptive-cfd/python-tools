@@ -111,7 +111,8 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             print("\n",command,"\n")
             ierr = os.system(command)
             if (ierr > 0):
-                warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH" )
+                warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. 
+                      export PATH=$PATH:/path/to/wabbit/" )
                 return 0
             time, x0, dx, box, data, treecode = read_wabbit_hdf5( file_dense )
             data_dense, box_dense = dense_matrix( x0, dx, data, treecode, dim )
