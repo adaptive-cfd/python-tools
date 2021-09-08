@@ -78,7 +78,7 @@ def uniquelist( l ):
         print(l)
         return l[0]
 
-def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 ", level = ""):
+def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 ", level = None):
     print('-------------------------')
     print('- WABBIT module matlab  -')
     print('-------------------------')
@@ -104,15 +104,18 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
              #use any of our files at the same timestamp to determine number of blocks
             file = directory + prefix + '_' + timestamps[i] + '.h5'
             file_dense = densedir + prefix + '_' + timestamps[i] + '.h5'
-            command = mpicommand + " " + \
+            if not level: 
+                 command = mpicommand + " " + \
+                 "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "
+            else:
+                 command = mpicommand + " " + \
                  "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "  \
                   + level + " 4" #+ order    
             command = command + " >> " + densedir+"wabbit-post.log"
             print("\n",command,"\n")
             ierr = os.system(command)
             if (ierr > 0):
-                warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. 
-                      export PATH=$PATH:/path/to/wabbit/" )
+                warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. export PATH=$PATH:/path/to/wabbit/" )
                 return 0
             time, x0, dx, box, data, treecode = read_wabbit_hdf5( file_dense )
             data_dense, box_dense = dense_matrix( x0, dx, data, treecode, dim )
