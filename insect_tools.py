@@ -91,7 +91,7 @@ def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True, N=1000, tst
 
 
 
-def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-', linewidth=1.0):
+def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt='o-', linewidth=1.0, ax=None):
     """
     Plot the data y(x) with a shaded area for error (e.g., standard deviation.)
     
@@ -120,6 +120,9 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
     """
     import matplotlib.pyplot as plt
     import matplotlib
+    
+    if ax is None:
+        ax = plt.gca()
 
     x = np.asarray(x)
     y = np.asarray(y)
@@ -131,11 +134,11 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
 
     # first, draw shaded area for dev
     color[3] = alpha
-    plt.fill_between( x, y-yerr, y+yerr, color=color )
+    ax.fill_between( x, y-yerr, y+yerr, color=color )
 
     # then, avg data
     color[3] = 1.00
-    plt.plot( x, y, fmt, label=label, color=color, mfc='none', linewidth=linewidth )
+    ax.plot( x, y, fmt, label=label, color=color, mfc='none', linewidth=linewidth )
 
 
 
@@ -372,10 +375,9 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
             err_rel = np.abs(line - line_interp) / np.abs(line_interp)
             
             err = err_rel
-            err[ err_abs <= 1.0e-7 ] = err_abs[ err_abs <= 1.0e-7 ]
+            err[ err_abs <= 1.0e-7 ] = err_abs[ err_abs <= 1.0e-7 ]            
             
-            
-            if (np.max(err)>1.5):
+            if (np.max(err)>0.25):
                 it_unique[it] = False
             else:
                 it_unique[it] = True
@@ -551,8 +553,8 @@ def write_csv_file( fname, d, header=None, sep=';'):
     # if we specified a header ( a list of strings )
     # write that
     if not header == None:
-        # write column headers
-        if header is list:
+        # write column headers        
+        if isinstance(header, list):
             for name in header:
                 f.write( name+sep )
         else:
@@ -746,6 +748,10 @@ def Hserieseval(a0, ai, bi, time):
 
 def read_kinematics_file( fname ):
     import configparser
+    import os
+    
+    if not os.path.isfile(fname):
+        raise ValueError("File "+fname+" not found!")
 
     config = configparser.ConfigParser( inline_comment_prefixes=(';'), allow_no_value=True )
     # read the ini-file
@@ -756,7 +762,7 @@ def read_kinematics_file( fname ):
         series_type = read_param(config,'kinematics','type')
 
         if convention != "flusi":
-            raise ValueError("The kinematics file %s is using a convention noot supported yet" % (fname))
+            raise ValueError("The kinematics file %s is using a convention not supported yet" % (fname))
 
         if series_type == "fourier":
             a0_phi   = float(read_param(config,'kinematics','a0_phi'))
@@ -781,18 +787,82 @@ def read_kinematics_file( fname ):
 
 
 
-def visualize_kinematics_file( fname ):
+def visualize_kinematics_file(fname):
     """ Read an INI file with wingbeat kinematics and plot the 3 angles over the period. Output written to a PDF and PNG file.
     """
 
     import matplotlib.pyplot as plt
 
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
-  
+    t, phi, alpha, theta = eval_angles_kinematics_file(fname)
 
-    # time vector for plotting
-    t = np.linspace(0,1,1000,endpoint=False)
+    plt.rcParams["text.usetex"] = True
 
+    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
+    plt.subplots_adjust(bottom=0.16, left=0.14)
+
+    plt.plot(t, phi  , label='$\\phi$ (flapping)')
+    plt.plot(t, alpha, label='$\\alpha$ (feathering)')
+    plt.plot(t, theta, label='$\\theta$ (deviation)')
+
+    plt.legend()
+    plt.xlim([0,1])
+    plt.xlabel('$t/T$')
+    plt.ylabel('angle $(^{\\circ})$')
+
+    plt.title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi)))
+    
+    indicate_strokes()
+    
+    ax = plt.gca()
+    ax.tick_params( which='both', direction='in', top=True, right=True )
+    plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
+
+
+def csv_kinematics_file(fname):
+    """ Read an INI file with wingbeat kinematics and store the 3 angles over the period in a *.csv file
+    """
+    
+    t, phi, alpha, theta = eval_angles_kinematics_file(fname, time=np.linspace(0,1,100, endpoint=False) )
+    
+    d = np.zeros([t.shape[0], 4])
+    d[:,0] = t
+    d[:,1] = phi
+    d[:,2] = alpha
+    d[:,3] = theta
+    
+    write_csv_file( fname.replace('.ini', '.csv'), d, header=['time', 'phi', 'alpha', 'theta'], sep=';')
+
+
+def eval_angles_kinematics_file(fname, time=None):
+    """
+    Parameters
+    ----------
+    fname : TYPE
+        DESCRIPTION.
+    time : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Returns
+    -------
+    t : array
+        time.
+    phi : array
+        flapping angle.
+    alpha : array
+        feathering angle.
+    theta : array
+        deviation angle.
+
+    """
+    # read the kinematics INI file
+    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file(fname)
+    
+    if time is None:
+        # time vector for plotting
+        t = np.linspace(0.0, 1.0, 1000, endpoint=False)
+    else:
+        t = time
+        
     if kine_type == "fourier":
         alpha = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t)
         phi   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , t)
@@ -802,29 +872,11 @@ def visualize_kinematics_file( fname ):
         alpha = Hserieseval(a0_alpha, ai_alpha, bi_alpha, t)
         phi   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , t)
         theta = Hserieseval(a0_theta, ai_theta, bi_theta, t)
-
-    plt.rcParams["text.usetex"] = False
-
-    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
-    plt.subplots_adjust(bottom=0.16, left=0.14)
-
-    plt.plot(t, phi  , label='$\\phi$ (positional)')
-    plt.plot(t, alpha, label='$\\alpha$ (feathering)')
-    plt.plot(t, theta, label='$\\theta$ (deviation)')
-
-    plt.legend()
-    plt.xlim([0,1])
-    plt.xlabel('$t/T$')
-    plt.ylabel('angle $(^{\\circ})$')
-
-#    plt.ylim([-100, 100])
     
-    indicate_strokes()
+        
     
-    ax = plt.gca()
-    ax.tick_params( which='both', direction='in', top=True, right=True )
-    plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
-#    plt.savefig( fname.replace('.ini','.png'), format='png', dpi=300 )
+    return t, phi, alpha, theta
+
 
 
 
@@ -872,7 +924,8 @@ def Rmirror( x0, n):
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
-                             draw_true_chord=False, meanflow=None, reverse_x_axis=False ):
+                             draw_true_chord=False, meanflow=None, reverse_x_axis=False, 
+                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40) ):
     """ visualize the wing chord
     
     give all angles in degree
@@ -891,13 +944,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     # read kinematics data:
     a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
-    
+        
     # length of wing chord to be drawn. note this is not correlated with the actual
     # wing thickness at some position - it is just a marker.
     wing_chord = chord_length
-
-    # create time vector:
-    time = np.linspace( start=0.0, stop=1.0, endpoint=False, num=40)
 
     # wing tip in wing coordinate system
     x_tip_w = vct([0.0, 1.0, 0.0])
@@ -1053,50 +1103,91 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
 #    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
 
+def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0):
+   
+    if time is None:
+        time = np.linspace(0, 1.0, 1000, endpoint=True)
+        
+    # wing tip in wing coordinate system
+    x_tip_w   = vct([0.0, 1.0, 0.0])
+    x_pivot_b = vct([0.0, 0.0, 0.0])
+    x_body_g  = vct([0.0, 0.0, 0.0])
+        
+    # body transformation matrix
+    M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
 
+    # rotation matrix from body to stroke coordinate system:
+    M_stroke_l = Ry(deg2rad(eta_stroke))
+    M_stroke_r = Rx(np.pi)*Ry(deg2rad(eta_stroke))
+    
+    # evaluate kinematics
+    t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname, time=time)
+    
+    # allocation
+    xb, yb, zb = np.zeros(time.shape), np.zeros(time.shape), np.zeros(time.shape)
+       
+    for i in range(time.shape[0]):
+        # rotation matrix from body to wing coordinate system
+        if wing == 'left':
+            M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
+        elif wing == 'right':
+            M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
+
+        # convert wing points to global coordinate system
+        x_tip_g = np.transpose(M_body) * ( np.transpose(M_wing) * x_tip_w + x_pivot_b ) + x_body_g
+
+        xb[i] = (x_tip_g[0])
+        yb[i] = (x_tip_g[1])
+        zb[i] = (x_tip_g[2])  
+    
+    return xb, yb, zb
 
 def wingtip_velocity( fname_kinematics, time=None ):
     """ Compute wingtip velocity as a function of time, given a wing kinematics parameter
     file. Note we assume the body at rest (hence relative to body).
     """
-    # read kinematics data:
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname_kinematics )
+    # # read kinematics data:
+    # a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname_kinematics )
     
-    if kine_type != "fourier":
-        raise ValueError("not supported")
-
     if time is None:
         time = np.linspace(0, 1.0, 200, endpoint=True)
-
+    
+    # if kine_type == "fourier":
+    #     alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+    #     phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+    #     theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
+        
+    # elif kine_type == "hermite":
+    #     alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
+    #     phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
+    #     theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
+        
+    t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname_kinematics, time=time)
+    
     # wing tip in wing coordinate system
     x_tip_w = vct([0.0, 1.0, 0.0])
-
+    
     v_tip_b = np.zeros(time.shape)
-
-    # step 1: draw the symbols for the wing section for some time steps
-    for i in range(time.size):
+    
+    for i in range(time.size-1):
         # we use simple differentiation (finite differences) to get the velocity
-        alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time[i])
-        phi_l   = Fserieseval(a0_phi, ai_phi, bi_phi, time[i])
-        theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time[i])
+        dt = time[1]-time[0]
 
         # rotation matrix from body to wing coordinate system
-        M_wing_l = Ry(deg2rad(alpha_l))*Rz(deg2rad(theta_l))*Rx(deg2rad(phi_l))
+        M_wing_l = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))
+        
         # convert wing points to body coordinate system
         x1_tip_b = np.transpose(M_wing_l) * x_tip_w
 
-        dt = 1.0e-5
-        alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time[i]+dt)
-        phi_l   = Fserieseval(a0_phi, ai_phi, bi_phi, time[i]+dt)
-        theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time[i]+dt)
-
         # rotation matrix from body to wing coordinate system
-        M_wing_l = Ry(deg2rad(alpha_l))*Rz(deg2rad(theta_l))*Rx(deg2rad(phi_l))
+        M_wing_l = Ry(deg2rad(alpha_l[i+1]))*Rz(deg2rad(theta_l[i+1]))*Rx(deg2rad(phi_l[i+1]))
+
         # convert wing points to body coordinate system
         x2_tip_b = np.transpose(M_wing_l) * x_tip_w
 
         v_tip_b[i] = np.linalg.norm( (x2_tip_b - x1_tip_b)/dt )
 
+    v_tip_b[-1] = v_tip_b[0]
     return v_tip_b
 
 
@@ -1400,6 +1491,15 @@ def load_image( infilename ):
     img.load()
     img = img.convert('RGB')
     data = np.asarray( img , dtype=np.float )
+    
+    # Funny: a tall image is loaded as 10000x100 here, but GIMP etc
+    # read it as 100x10000, so I guess its a good idea to swap the axis
+    #
+    # In matix convention (IJ), first index is rows, and a tall image thus should have 
+    # the first index large. 
+    #
+    # GIMP etc give, I think, WxH because of a stupid convention
+#    data = np.swapaxes(data, 0, 1)
 
     return data
 

@@ -110,62 +110,21 @@ if os.path.isfile( jobfile ):
     else:
         print('RESUBMISSION      : %sAutomatic resubmission is DEACTIVTÀTED!!%s' % (bcolors.WARNING,bcolors.ENDC) )
 
-
     if memory >= 0.98*maxmem:
         print('Memory check      : %sEXCEEDED%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
         print('Memory check      : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
-
-
 
     if abs(ncpu/core_per_node - float(round(ncpu/core_per_node))) > 0.0:
         print('Complete node(s)  : %sYou did not specify N*48 CPUS%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
         print('Complete node(s)  : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
-
-
     if wtime_ini > wtime:
         print('walltime *.SH/INI : %s Walltime in ini file greater than walltime in job file!%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
         print('walltime *.SH/INI : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
-    print("----------------------------------------")
-
-    eps  = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'eps',float )
-
-    Jmax = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
-    L = wabbit_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
-    Bs = wabbit_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int, vector=True)
-    CFL = wabbit_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
-
-    c0 =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
-    nu =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
-    ceta =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float)
-    penalized = wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
-    csponge =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float)
-    sponged =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
-
-    geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str)
-
-    dx = L[0]*(2**-Jmax)/(Bs[0]-1)
-
-    keta = np.sqrt(ceta*nu)/dx
-    
-    print( "dx               = %2.2e" % (dx))
-    print( "Jmax             = %i" % (Jmax))
-    print( "eps              = %2.2e" % (eps))
-    print( "c0               = %2.2f" % (c0))
-    print( "C_eta            = %2.2e" % (ceta))
-    print( "K_eta            = %s%2.2f%s" % (bcolors.OKGREEN,keta,bcolors.ENDC))
-    print( "C_sponge         = %2.2e" % (csponge))
-
-    if geometry == "Insect":
-        t =  wabbit_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float)
-        print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
-
-    print("----------------------------------------")
-    print('Launching wabbit_tools ini file check now:')
     print("----------------------------------------")
     wabbit_tools.check_parameters_for_stupid_errors( paramsfile )
 

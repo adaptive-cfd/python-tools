@@ -25,6 +25,8 @@ parser.add_argument("-d", "--directory", nargs='?', const='./',
                     help="directory of h5 files, if not ./")
 parser.add_argument("-n", "--first-n-time-steps", nargs='?', type=int, const=None, default=None,
                     help="Use only the first N time steps")
+parser.add_argument("-m", "--last-m-time-steps", nargs='?', type=int, const=None, default=None,
+                    help="Use only the last M time steps")
 parser.add_argument("-s", "--script-output", action="store_true",
                     help="""When running in a script, it may be useful to just print the number of
                     remaining hours to STDOUT (and not any fancy messages)""")
@@ -93,6 +95,10 @@ d = insect_tools.load_t_file(dir + 'performance.t', verbose=verbose)
 # if we consider only a few time steps, we discard the others:
 if args.first_n_time_steps is not None:
     d = d[0:args.first_n_time_steps+1, :]
+
+# if we consider only a few time steps, we discard the others:
+if args.last_m_time_steps is not None:
+    d = d[-args.last_m_time_steps:, :]
 
 
 

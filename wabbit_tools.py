@@ -46,6 +46,23 @@ def check_parameters_for_stupid_errors( file ):
     
     """
     import os
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~ini-file~~~~~~~~~~~')
+    # # read jobfile
+    # with open(file) as f:
+    #     # loop over all lines
+    #     for line in f:
+    #         line = line.lstrip()
+    #         line = line.rstrip()
+    #         if len(line)>0:
+    #             if ';' in line:
+    #                 line = line[0:line.index(";")]
+    #             if len(line)>0:
+    #                 if '[' in line and ']' in line:
+    #                     print(bcolors.OKBLUE + line + bcolors.ENDC)
+    #                 else:
+    #                     print(line)
+    # print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
 
     print("We scan %s for stupid errors." % (file) )
 
@@ -53,22 +70,68 @@ def check_parameters_for_stupid_errors( file ):
     if not os.path.isfile(file):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
-    jmax            = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
-    bs              = get_ini_parameter( file, 'Blocks', 'number_block_nodes', int, vector=True)
-    g               = get_ini_parameter( file, 'Blocks', 'number_ghost_nodes', int)
-    dim             = get_ini_parameter( file, 'Domain', 'dim', int)
-    discretization  = get_ini_parameter( file, 'Discretization', 'order_discretization', str)
-    order_predictor = get_ini_parameter( file, 'Discretization', 'order_predictor', str)
-    transform       = get_ini_parameter( file, 'Wavelet', 'transform_type', str, default="harten-multiresolution")
-    wavelet         = get_ini_parameter( file, 'Wavelet', 'wavelet', str, default="")
+    jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
+    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_mesh', int)
+    ceps            = get_ini_parameter(file, 'Blocks', 'eps')
+    bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
+    g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int)
+    dealias         = get_ini_parameter(file, 'Blocks', 'force_maxlevel_dealiasing', int)
+    dim             = get_ini_parameter(file, 'Domain', 'dim', int)
+    L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
+    discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
+    order_predictor = get_ini_parameter(file, 'Discretization', 'order_predictor', str)
+    transform       = get_ini_parameter(file, 'Wavelet', 'transform_type', str, default="harten-multiresolution")
+    wavelet         = get_ini_parameter(file, 'Wavelet', 'wavelet', str, default="")
+    time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
+    CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
+    CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
+    CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
+    c0           = get_ini_parameter( file, 'ACM-new', 'c_0', float)
+    nu           = get_ini_parameter( file, 'ACM-new', 'nu', float)
+    ceta         = get_ini_parameter( file, 'VPM', 'C_eta', float, default=0.0)
+    penalized    = get_ini_parameter( file, 'VPM', 'penalization', bool, default=False)
+    geometry     = get_ini_parameter( file, 'VPM', 'geometry', str, default='default')
+    sponged      = get_ini_parameter( file, 'Sponge', 'use_sponge', bool, default=False)
+    csponge      = get_ini_parameter( file, 'Sponge', 'C_sponge', float, default=0.0)
+    sponge_type  = get_ini_parameter( file, 'Sponge', 'sponge_type', str, default='default')
+    L_sponge     = get_ini_parameter( file, 'Sponge', 'L_sponge', default=0.0)
+    time_max     = get_ini_parameter( file, 'Time', 'time_max', float)
+    time_stepper = get_ini_parameter( file, 'Time', 'time_step_method', str)
+    CFL          = get_ini_parameter( file, 'Time', 'CFL', float, default=0.5)
+    CFL_nu       = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2) )
+    CFL_eta      = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
+    filter_type  = get_ini_parameter( file, 'Discretization', 'filter_type', str, default='no_filter')
+    filter_freq  = get_ini_parameter( file, 'Discretization', 'filter_freq', int, default=-1)
+    coarseWins   = get_ini_parameter( file, 'Debug', 'ghost_nodes_redundant_point_coarseWins', int, default=1)
+    iterGhosts   = get_ini_parameter( file, 'Debug', 'iter_ghosts', int, default=0)
     
-    print("Using %s transform with wavelet %s" % (transform, wavelet) )
+    
+    dx = L[0]*2**-jmax/(bs[0]-1)
+    keta = np.sqrt(ceta*nu)/dx
+    
+    
+    print("======================================================================================")
+    print("Bs= %i   g= %i   dim= %i   Jmax= %i   L= %2.2f %s==> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
+          (bs[0],g,dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
+    print("discretization= %s" % (discretization))
+    print("T_max = %2.2f   CFL= %2.2f   CFL_eta= %2.2f   CFL_nu= %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
+    
+    
+    print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ==> K_eta = %2.2f%s" % 
+          (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+    print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
+          (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
+    print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
+    print("C_eps = %2.2e   wavelet-transform= %s   wavelet= %s    dealias=%i    adapt_mesh=%i" % (ceps, transform, wavelet, dealias, adapt_mesh))
+    
+    print("dt_CFL= %2.3e" % (CFL*dx/c0))
+    print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
+    print("coarseWins=%i iterGhosts=%i" % (coarseWins, iterGhosts))
+    print("======================================================================================")
     
     
     if len(bs) > 1:
         bs = bs[0]
-
-    print("Jmax=%i Bs=%i g=%i" % (jmax, bs, g))
 
     if bs % 2 == 0:
         warn('The block size is bs=%i which is an EVEN number.' % (bs) )
@@ -103,12 +166,7 @@ def check_parameters_for_stupid_errors( file ):
         if (wavelet == "CDF44" or wavelet == "CDF4,4") and discretization != "FD_4th_central_optimized":
             warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
 
-
-    time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
-    CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
-    CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
-    CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
-    
+   
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
             warn('are you sure you did not forget to adjustl CFL_eta for the RKC scheme???')
@@ -158,12 +216,7 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
         warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
         
-    c0        = get_ini_parameter( file, 'ACM-new', 'c_0', float)
-    ceta      = get_ini_parameter( file, 'VPM', 'C_eta', float)
-    csponge   = get_ini_parameter( file, 'Sponge', 'C_sponge', float)
-    penalized = get_ini_parameter( file, 'VPM', 'penalization', bool)
-    sponged   = get_ini_parameter( file, 'Sponge', 'use_sponge', bool)
-    
+   
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
         print(type(HIT))
@@ -184,8 +237,6 @@ def check_parameters_for_stupid_errors( file ):
             is treated as if it were time dependent because it does not have
             to be at the maximum refinement level.""")
 
-        L_sponge = get_ini_parameter( file, 'Sponge', 'L_sponge', float)
-        print("INFO: C_sponge=%e, L_sponge=%f ==> tau_sponge=%f" % (csponge, L_sponge, L_sponge/(c0*csponge)))
 
 
     # loop over ini file and check that each non-commented line with a "=" contains the trailing semicolon ";"
@@ -217,7 +268,7 @@ def check_parameters_for_stupid_errors( file ):
         info("This simulation is being started from initial condition (and not from file)")
 
 #%%
-def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False ):
+def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False ):
     """
     From a given ini file, read [Section]::keyword and return the value
     If the value is not found, an error is raised, if no default is given.
@@ -337,16 +388,26 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
 
     if (value_string==";" or 'UNKNOWN' in value_string) and default is not None:
+        if verbose:
+            print("Returning default!")
         return dtype(default)
 
-
-    
+   
 
     if not vector:
+        if verbose:
+            print(value_string)
+            
         # configparser returns "0.0;" so remove trailing ";"
         if ";" in value_string:
             i = value_string.find(';')
             value_string = value_string[:i]
+            
+        if dtype is bool:
+            if value_string=="1" or value_string=="yes":
+                return True
+            else:
+                return False
         
         return dtype(value_string)
     else:
@@ -930,7 +991,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         gridonly: bool
             If true, we plot only the blocks and not the actual, point data on those blocks.
         gridonly_coloring: string
-            if gridonly is true we can still color the blocks. One of 'lgt_id', 'refinement-status', 'mpirank', 'level'
+            if gridonly is true we can still color the blocks. One of 'lgt_id', 'refinement-status', 'mpirank', 'level', 'file-index'
     
     """
 
@@ -1004,7 +1065,18 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                 level = treecode_level( treecode[i,:] )
                 c = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
                 color = [c,c,c]
+                
+            elif gridonly_coloring == 'file-index':
+                color = cm( float(i)/float(N) )
 
+                tag = "%i" % (i)
+                x = Bs[1]/2*dx[i,1]+x0[i,1]
+                if not flipud:
+                    y = Bs[0]/2*dx[i,0]+x0[i,0]
+                else:
+                    y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
+                plt.text( x, y, tag, fontsize=6, horizontalalignment='center', verticalalignment='center')
+                
             elif gridonly_coloring == 'lgt_id':
                 color = cm( lgt_ids[i]/max(lgt_ids) )
 
@@ -1014,8 +1086,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                     y = Bs[0]/2*dx[i,0]+x0[i,0]
                 else:
                     y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
-                plt.text( x, y, tag, fontsize=6, horizontalalignment='center',
-                         verticalalignment='center')
+                plt.text( x, y, tag, fontsize=6, horizontalalignment='center', verticalalignment='center')
 
             else:
                 raise ValueError("ERROR! The value for gridonly_coloring is unkown")
@@ -1025,6 +1096,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                                             fill=True, edgecolor=block_edge_color, alpha=block_edge_alpha,
                                             facecolor=color))
             cb = None
+            hplot = None
 
     else:
         #----------------------------------------------------------------------
@@ -1151,6 +1223,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
 
     # read in flusi's reference solution
     time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi )
+    print(data_ref.shape)
     ny = data_ref.shape[1]
 
     # wabbit field to be analyzed: note has to be full already
@@ -1161,12 +1234,12 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
 
     if dim==2:
         # squeeze 3D flusi field (where dim0 == 1) to true 2d data
-        data_ref = data_ref[:,:,0].copy().transpose()
+        data_ref = data_ref[0,:,:].copy().transpose()
         box_ref = box_ref[1:2].copy()
 
     # convert wabbit to dense field
     data_dense, box_dense = dense_matrix( x0, dx, data, treecode, dim )
-
+    
     if data_dense.shape[0] < data_ref.shape[0]:
         # both datasets have different size
         s = int( data_ref.shape[0] / data_dense.shape[0] )
@@ -1176,7 +1249,8 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     if data_dense.shape[0] > data_ref.shape[0]:
         warn("WARNING! The reference solution is not fine enough for the comparison! UPSAMPLING!")
         import fourier_tools
-        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[0] )
+        print(data_ref.shape)
+        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[1] )
 
     err = np.ndarray.flatten(data_ref-data_dense)
     exc = np.ndarray.flatten(data_ref)

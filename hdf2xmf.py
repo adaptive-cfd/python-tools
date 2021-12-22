@@ -73,6 +73,8 @@ def uniquelist( l ):
 
 
 def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory):
+    import numpy as np
+    
     print('-------------------------')
     print('- WABBIT module         -')
     print('-------------------------')
@@ -84,6 +86,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
     f = h5py.File(file, 'r')
     # get the dataset handle
     dset_id = f.get('blocks')
+    
+    
+    
 
     res = dset_id.shape
 
@@ -124,6 +129,11 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             dset_id = f.get('blocks')
             Nb = dset_id.shape[0]
             print("timestamp "+timestamps[i]+" has Nb=%i blocks" % (Nb) )
+            
+            b = f['coords_origin'][:]
+            x0 = np.array(b, dtype=float)
+            b = f['coords_spacing'][:]
+            dx = np.array(b, dtype=float)
 
             # all blocks for this timestep
             for b  in range(Nb):
@@ -131,32 +141,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 fid.write('          <Grid Name="block%i" GridType="Uniform">\n' % (b))
                 fid.write('            <Topology TopologyType="2DCoRectMesh" NumberOfElements="%i %i"/>\n' % (Bs[0],Bs[1]) )
                 fid.write('            <Geometry GeometryType="ORIGIN_DXDY">\n')
-                fid.write('\n')
-                fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
-                fid.write('                <DataItem Dimensions="3 2" Format="XML">\n')
-                fid.write('                  %i 0\n' % (b))
-                fid.write('                  1 1\n')
-                fid.write('                  1 2\n')
-                fid.write('                </DataItem>\n')
-                fid.write('                <DataItem Name="origin" Dimensions="%i 2" Format="HDF" ItemType="Uniform">\n' % (Nb))
-                # origin of blocks defined by first prefix
-                fid.write('                  %s:/coords_origin\n' % (directory + prefixes[0] + '_' + timestamps[i] + '.h5') )
-                fid.write('                </DataItem>\n')
-                fid.write('              </DataItem>\n')
-                fid.write('\n')
-                fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
-                fid.write('                <DataItem Dimensions="3 2" Format="XML">\n')
-                fid.write('                  %i 0\n' % (b) )
-                fid.write('                  1 1\n')
-                fid.write('                  1 2\n')
-                fid.write('                </DataItem>\n')
-                fid.write('                <DataItem Name="spacing" Dimensions="%i 2" Format="HDF">\n' % (Nb) )
-                # block spacing defined by first prefix
-                fid.write('                  %s:/coords_spacing\n'% (directory + prefixes[0] + '_' + timestamps[i] + '.h5'))
-                fid.write('                </DataItem>\n')
-                fid.write('              </DataItem>\n')
-                fid.write('            </Geometry>\n')
-                fid.write('\n')
+                fid.write('            <DataItem Name="origin" Dimensions="2" Format="XML"> \n %e %e </DataItem>\n' % (x0[b,0],x0[b,1]))
+                fid.write('            <DataItem Name="spacing" Dimensions="2" Format="XML"> \n %e %e </DataItem>\n' % (dx[b,0],dx[b,1]))
+                fid.write('            </Geometry>\n\n')
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
                     fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
@@ -247,39 +234,22 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             dset_id = f.get('blocks')
             Nb = dset_id.shape[0]
             print("timestamp "+timestamps[i]+" has Nb=%i blocks" % (Nb) )
+            
+            b = f['coords_origin'][:]
+            x0 = np.array(b, dtype=float)
+            b = f['coords_spacing'][:]
+            dx = np.array(b, dtype=float)
 
             # all blocks for this timestep
             for b  in range(Nb):
                 fid.write('          <!-- ***************************************************************** -->\n')
                 fid.write('          <Grid Name="block%i" GridType="Uniform">\n' % (b))
                 fid.write('            <Topology TopologyType="3DCoRectMesh" NumberOfElements="%i %i %i"/>\n' % (Bs[0], Bs[1], Bs[2]) )
-                fid.write('            <Geometry GeometryType="ORIGIN_DXDYDZ">\n')
-                fid.write('\n')
-                fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
-                fid.write('                <DataItem Dimensions="3 2" Format="XML">\n')
-                fid.write('                  %i 0\n' % (b))
-                fid.write('                  1 1\n')
-                fid.write('                  1 3\n')
-                fid.write('                </DataItem>\n')
-                fid.write('                <DataItem Name="origin" Dimensions="%i 3" Format="HDF" ItemType="Uniform">\n' % (Nb))
-                # origin of blocks defined by first prefix
-                fid.write('                  %s:/coords_origin\n' % (directory + prefixes[0] + '_' + timestamps[i] + '.h5') )
-                fid.write('                </DataItem>\n')
-                fid.write('              </DataItem>\n')
-                fid.write('\n')
-                fid.write('              <DataItem ItemType="HyperSlab" Dimensions="2" Type="HyperSlab">\n')
-                fid.write('                <DataItem Dimensions="3 2" Format="XML">\n')
-                fid.write('                  %i 0\n' % (b) )
-                fid.write('                  1 1\n')
-                fid.write('                  1 3\n')
-                fid.write('                </DataItem>\n')
-                fid.write('                <DataItem Name="spacing" Dimensions="%i 3" Format="HDF">\n' % (Nb) )
-                # block spacing defined by first prefix
-                fid.write('                  %s:/coords_spacing\n'% (directory + prefixes[0] + '_' + timestamps[i] + '.h5'))
-                fid.write('                </DataItem>\n')
-                fid.write('              </DataItem>\n')
-                fid.write('            </Geometry>\n')
-                fid.write('\n')
+                #%%
+                fid.write('            <Geometry GeometryType="ORIGIN_DXDYDZ">\n')  
+                fid.write('            <DataItem Name="origin" Dimensions="3" Format="XML"> \n %e %e %e </DataItem>\n' % (x0[b,0],x0[b,1],x0[b,2]))
+                fid.write('            <DataItem Name="spacing" Dimensions="3" Format="XML"> \n %e %e %e </DataItem>\n' % (dx[b,0],dx[b,1],dx[b,2]))
+                fid.write('            </Geometry>\n\n')
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
                     fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
@@ -536,6 +506,8 @@ def main():
     files. If -o outfile.xmf is set, then the files are named outfile_0000.xmf, outfile_0001.xmf etc.""", action="store_true")
     parser.add_argument("-o", "--outfile", help="XMF file to write to, default is ALL.xmf")
     parser.add_argument("-0", "--ignore-origin", help="force origin to 0,0,0", action="store_true")
+    parser.add_argument("-k", "--global-origin", help="Pass an artificial origin (shifts the whole grid by this amount", 
+                        nargs="+", default=[0.0,0.0,0.0])
     parser.add_argument("-u", "--unit-spacing", help="use unit spacing dx=dy=dz=1 regardless of what is specified in h5 files", action="store_true")
     parser.add_argument("-d", "--directory", help="directory of h5 files, if not ./")
     parser.add_argument("-q", "--scalars", help="""Overwrite vector recongnition. Normally, a file ux_8384.h5 is interpreted as vector,
