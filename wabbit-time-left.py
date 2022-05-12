@@ -169,8 +169,12 @@ twall_avg = np.mean( d[:,2] ) / N_dt_per_grid
 
 # avg time step until now (note: this is really time steps, but if more than one time step
 # is performed on the grid before adaptation, the walltime is per multiple time steps)
-d2 = insect_tools.load_t_file(dir + 'dt.t', verbose=False)
-dt = np.mean( d2[:,1] )
+# d2 = insect_tools.load_t_file(dir + 'dt.t', verbose=False)
+# dt = np.mean( d2[:,1] )
+dts = d[1:,0]-d[:-1,0]
+dts[ dts < 0.0 ] = np.nan
+dt = np.nanmean(dts)
+
 
 # how many time steps are left
 nt_left = (T-tnow) / dt

@@ -442,7 +442,7 @@ def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
 
     return dt
 
-def select_RKC_scheme( eigenvalues, dt, plot=True ):
+def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False ):
     """
     Given operator eigenvalues, select best stable RKC scheme.
 
@@ -468,7 +468,7 @@ def select_RKC_scheme( eigenvalues, dt, plot=True ):
     z = eigenvalues
 
     S      = np.arange(4, 52+1, 1)
-    EPS    = np.linspace(2.0/13.0, 20, 75)
+    EPS    = np.linspace(2.0/13.0, 20, 75) # was 20, 75
     S, EPS = np.meshgrid(S, EPS)
     stable = S*0.0
 
@@ -498,20 +498,37 @@ def select_RKC_scheme( eigenvalues, dt, plot=True ):
                 stable[i,j] = 0.0
 
     if np.max(stable)<1.0:
-        raise ValueError("No stable scheme found!")
+        print("No stable scheme found!")
+        return None, None
 
     # select the scheme. The "best" scheme is the one with smallest s (least stages)
     # and largest eps. The latter should make the choice more robust as larger eps
     # results in a more circle-like stability map with less dimpels.
-    for i in range(S.shape[1]):
-        s =  S[0,i]
-        if np.max( stable[:,i] ) == 1.0:
-            # find largest stable epsilon:
-            for j in range(S.shape[0]):
-                if stable[j,i] == 1.0:
-                    eps_best = EPS[j,i]
-                    s_best = S[j,i]
-            break
+    if not safety:
+        # scheme with smallest s
+        for i in range(S.shape[1]):
+            s =  S[0,i]
+            if np.max( stable[:,i] ) == 1.0:
+                # find largest stable epsilon:
+                for j in range(S.shape[0]):
+                    if stable[j,i] == 1.0:
+                        eps_best = EPS[j,i]
+                        s_best = S[j,i]
+                break
+    else:
+        # scheme with smallest s+1
+        found=False
+        for i in range(S.shape[1]):
+            s =  S[0,i]
+            if np.max( stable[:,i] ) == 1.0:
+                # find largest stable epsilon:
+                for j in range(S.shape[0]):
+                    if stable[j,i] == 1.0:
+                        eps_best = EPS[j,i]
+                        s_best = S[j,i]
+                if found:
+                    break
+                found=True
 
     print(';-------------------')
     print('; Best RKC scheme given eigenvalues')

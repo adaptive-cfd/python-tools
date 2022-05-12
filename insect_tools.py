@@ -809,7 +809,7 @@ def visualize_kinematics_file(fname):
     plt.xlabel('$t/T$')
     plt.ylabel('angle $(^{\\circ})$')
 
-    plt.title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi)))
+    plt.title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$ $\\phi_\\mathrm{max}=%2.2f^\\circ$ $\\phi_\\mathrm{min}=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi), np.max(phi), np.min(phi)))
     
     indicate_strokes()
     

@@ -492,8 +492,9 @@ def prepare_resuming_backup( inifile ):
         raise ValueError("Inifile not found!")
 
     Tmax = get_ini_parameter(inifile, "Time", "time_max", float)
-    dim = get_ini_parameter(inifile, "Domain", "dim", int)
+    dim  = get_ini_parameter(inifile, "Domain", "dim", int)
 
+    # This code currenty only works with ACMs
     physics_type = get_ini_parameter(inifile, "Physics", "physics_type", str)
 
     if physics_type != "ACM-new":
@@ -504,7 +505,7 @@ def prepare_resuming_backup( inifile ):
         state_vector_prefixes = ['ux', 'uy', 'p']
     else:
         state_vector_prefixes = ['ux', 'uy', 'uz', 'p']
-    print(state_vector_prefixes)
+    
 
 
     # if used, take care of passive scalar as well
@@ -524,10 +525,42 @@ def prepare_resuming_backup( inifile ):
 
     if not files:
         raise ValueError( "Something is wrong: no h5 files found for resuming" )
-
-    print('Latest file is:           ' + files[-1])
-    timestamp = flusi_tools.get_timestamp_name( files[-1] )
+        
+    # first, we try the latest snapshots (obviously)
+    # it can happen (disk quota) that the code cannot complete writing this backup.
+    index = -1
+    timestamp = flusi_tools.get_timestamp_name( files[index] )
     t0 = float(timestamp) / 1e6
+    
+    # is this complete ? 
+    snapshot_complete = True
+    for prefix in state_vector_prefixes:
+        if not os.path.isfile( prefix + '_' + timestamp + '.h5'):
+            snapshot_complete = False
+            print('For snapshot %s we did not find %s!! -> trying another one' % (timestamp, prefix))
+    
+    # if not, we try the second latest, if it exists
+    if not snapshot_complete:
+        if len(files) >= 2:
+            index = -2
+            timestamp = flusi_tools.get_timestamp_name( files[index] )
+            t0 = float(timestamp) / 1e6
+            
+            snapshot_complete = True
+            for prefix in state_vector_prefixes:
+                if not os.path.isfile( prefix + '_' + timestamp + '.h5'):
+                    snapshot_complete = False
+                    print('For snapshot %s we did not find all required input files!! -> trying another one' % (timestamp))
+            
+        else:
+            raise ValueError("We did not find a complete snapshot to resume from...you'll have to start over.")
+   
+    # if we still were unable to resume...well, then its time to give up (if both snapshots are incomplete, you may have forgotten
+    # to save enough data, simply)
+    if not snapshot_complete:
+        raise ValueError("We did not find a complete snapshot to resume from (tried -1 and -2)...you'll have to start over.")
+
+    print('Latest file is:           ' + files[index])    
     print('Latest file is at time:   %f' % (t0))
 
     # if we find the dt.t file, we now at what time the job ended.
@@ -981,7 +1014,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                      colorbar=True, dpi=300, block_edge_color='k',
                      block_edge_alpha=1.0, shading='flat',
                      colorbar_orientation="vertical",
-                     gridonly_coloring='mpirank', flipud=False):
+                     gridonly_coloring='mpirank', flipud=False, fileContainsGhostNodes=False):
     """
     Read and plot a 2D wabbit file. Not suitable for 3D data, use Paraview for that.
     
@@ -1065,8 +1098,12 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
             elif gridonly_coloring == 'level':
                 level = treecode_level( treecode[i,:] )
-                c = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
-                color = [c,c,c]
+                if (jmax-jmin>0):
+                    c = 0.9 - 0.75*(level-jmin)/(jmax-jmin)
+                    color = [c,c,c]
+                else:
+                    color ='w'
+                
                 
             elif gridonly_coloring == 'file-index':
                 color = cm( float(i)/float(N) )
@@ -1089,12 +1126,18 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                 else:
                     y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
                 plt.text( x, y, tag, fontsize=6, horizontalalignment='center', verticalalignment='center')
-
+            elif gridonly_coloring == 'none':
+                color = 'w'
             else:
                 raise ValueError("ERROR! The value for gridonly_coloring is unkown")
 
             # draw colored rectangles for the blocks
-            ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
+            if not fileContainsGhostNodes:                
+                ax.add_patch( patches.Rectangle( (x0[i,1],x0[i,0]), (Bs[1]-1)*dx[i,1], (Bs[0]-1)*dx[i,0],
+                                            fill=True, edgecolor=block_edge_color, alpha=block_edge_alpha,
+                                            facecolor=color))
+            else:
+                ax.add_patch( patches.Rectangle( (x0[i,1]+6*dx[i,1],x0[i,0]+6*dx[i,0]), (Bs[1]-1-6*2)*dx[i,1], (Bs[0]-1-6*2)*dx[i,0],
                                             fill=True, edgecolor=block_edge_color, alpha=block_edge_alpha,
                                             facecolor=color))
             cb = None

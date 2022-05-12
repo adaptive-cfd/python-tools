@@ -69,7 +69,6 @@ def spectrum1(u):
     ek = 0.5 * ek
 
     dimMax = np.max( u.shape )
-#    k = np.fft.fftfreq(dimMax) * dimMax
 
 
     # Only consider one half of spectrum (due to symmetry)
