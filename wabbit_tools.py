@@ -1012,7 +1012,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
                      colorbar=True, dpi=300, block_edge_color='k',
-                     block_edge_alpha=1.0, shading='flat',
+                     block_edge_alpha=1.0, shading='auto',
                      colorbar_orientation="vertical",
                      gridonly_coloring='mpirank', flipud=False, fileContainsGhostNodes=False):
     """
@@ -1164,6 +1164,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
             else:
                 # --- pseudocolor plot ----
+                #hplot=plt.pcolormesh(X,X,X)
                 hplot = ax.pcolormesh( Y, X, block, cmap=cmap, shading=shading )
 
                 # use rasterization for the patch we just draw
@@ -1361,6 +1362,7 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
         err
     """
     import numpy as np
+    import matplotlib.pyplot as plt
 
     if  not isinstance(fname_ref_list, list):
         fname_ref_list = [fname_ref_list]
@@ -1376,6 +1378,7 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     
         data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
         data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+        #plt.pcolormesh(data1-data2)
         
         if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
            raise ValueError("ERROR! Both fields are not a the same resolution")
@@ -1396,7 +1399,7 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
 
 
 #%%
-def to_dense_grid( fname_in, fname_out, dim=2 ):
+def to_dense_grid( fname_in, fname_out = None, dim=2 ):
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 
     We asssume here that interpolation has already been performed, i.e. all
@@ -1413,7 +1416,12 @@ def to_dense_grid( fname_in, fname_out, dim=2 ):
     field, box = dense_matrix(  x0, dx, data, treecode, dim=dim )
 
     # write data to FLUSI-type hdf file
-    insect_tools.write_flusi_HDF5( fname_out, time, box, field)
+    if fname_out:
+        insect_tools.write_flusi_HDF5( fname_out, time, box, field)
+    else:        
+        dx = [b/(np.size(field,k)) for k,b in enumerate(box)]
+        X = [np.arange(0,np.size(field,k))*dx[k] for k,b in enumerate(box)]
+        return field, box, dx, X
 
 #%%
 def compare_two_grids( treecode1, treecode2 ):
