@@ -11,6 +11,12 @@ import numpy as np
 import numpy.ma as ma
 import glob
 
+# I cannot learn this by heart....
+def change_figure_dpi(dpi):
+    import matplotlib.pyplot as plt
+    plt.rcParams['figure.dpi'] = dpi
+    
+
 def get_next_color():
     import matplotlib.pyplot as plt
     return next(plt.gca()._get_lines.prop_cycler)['color']
@@ -1848,7 +1854,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
     
   
     
-def visualize_wing_shape_file(fname):
+def visualize_wing_shape_file(fname, fig=None):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -1872,7 +1878,7 @@ def visualize_wing_shape_file(fname):
 
     # does the ini file exist?
     if not os.path.isfile(fname):
-        raise ValueError("Inifile not found!")
+        raise ValueError("Inifile: %s not found!" % (fname))
         
     if not wabbit_tools.exists_ini_section(fname, "Wing"):
         raise ValueError("The ini file you specified does not contain the [Wing] section "+
@@ -1884,6 +1890,34 @@ def visualize_wing_shape_file(fname):
         print(wtype)
         raise ValueError("Not a fourier wing. This function currently only supports a "+
                          "Fourier encoded wing (maybe with bristles)")
+    
+    # open the new figure:
+    if fig is None:
+        fig = plt.figure()    
+        
+    # -------------------------------------------------------------------------
+    # damage (if present)
+    # Drawn first as a background
+    # -------------------------------------------------------------------------  
+    damaged = wabbit_tools.get_ini_parameter(fname, "Wing", "damaged", bool, default=False)
+    
+    if damaged:
+        # actual 0/1 damage mask:
+        mask = wabbit_tools.get_ini_parameter( fname, 'Wing', 'damage_mask', dtype=float, vector=False, default=None, matrix=True )
+        mask = mask.T
+        
+        # the bounding box of the mask is set here:
+        bbox = wabbit_tools.get_ini_parameter( fname, 'Wing', 'corrugation_array_bbox', dtype=float, vector=True, default=None )
+        
+        n1, n2 = mask.shape[0], mask.shape[1]
+        
+        x1, x2 = np.linspace(bbox[0], bbox[1], num=n2, endpoint=True), np.linspace(bbox[2], bbox[3], num=n1, endpoint=True)
+        X, Y = np.meshgrid(x2, x1)
+        
+        plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')
+        
+        
+    
         
     x0 = wabbit_tools.get_ini_parameter(fname, "Wing", "x0w", float)
     y0 = wabbit_tools.get_ini_parameter(fname, "Wing", "y0w", float)
@@ -1901,15 +1935,21 @@ def visualize_wing_shape_file(fname):
     
     d = 0.1
     
-    plt.figure()    
+    # plots wing outline
     plt.plot( xc, yc, 'r-', label='wing')
+    
     plt.axis('equal')
-    plt.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'k--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
-    plt.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'k--')
+    
+    # plot the rotation axes
+    plt.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
+    plt.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
     plt.grid()
     plt.legend()
-    plt.title("wing shape visualization: "+fname)
+    plt.title("wing shape visualization: \n"+fname)
     
+    # -------------------------------------------------------------------------
+    # bristles (if present)
+    # -------------------------------------------------------------------------
     # if present, add bristles    
     bristles = wabbit_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False)
     if bristles:
@@ -1917,9 +1957,104 @@ def visualize_wing_shape_file(fname):
         print(bristles_coords.shape)
         for j in range( bristles_coords.shape[0]):
             plt.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
-
-    plt.savefig( fname.replace('.ini','.pdf') )
-    plt.savefig( fname.replace('.ini','.svg') )
+            
+            
+    
+        
+    # plt.savefig( fname.replace('.ini','.pdf') )
+    # plt.savefig( fname.replace('.ini','.svg') )
     plt.savefig( fname.replace('.ini','.png'), dpi=300 )
+    
 
 
+
+def compute_inertial_power(file_kinematics='kinematics.t'):
+    """
+    Post-processing: Compute the insects inertial power. 
+    
+    The routine reads the kinematics.t file (for angular velocity and acceleration
+    of the wings). The inertia tensor can be 
+        (i) read from a PARAMS.INI file
+        (ii) passed to this routine
+    The background is that often, during the simulation, we do not bother to compute the
+    inertia tensor, and it is thus not contained in the PARAMS.ini files
+    
+    Input:
+    ------
+    
+        fname: string
+            ini file name describing the wing shape. It must contan the [Wing] section
+            and describe a Fourier wing. The wing may have bristles, no problem.
+            
+    Output:
+    -------
+        written to inertial_power_postprocessing.t
+    """
+    
+    # indices [zero-based] in kinematics.t:
+    # 0	time
+    # 1	xc_body_g_x
+    # 2	xc_body_g_y
+    # 3	xc_body_g_z
+    # 4	psi
+    # 5	beta
+    # 6	gamma
+    # 7	eta_stroke
+    # 8	alpha_l
+    # 9	phi_l
+    # 10	theta_l
+    # 11	alpha_r
+    # 12	phi_r
+    # 13	theta_r    
+    # 14	rot_rel_l_w_x
+    # 15	rot_rel_l_w_y
+    # 16	rot_rel_l_w_z    
+    # 17	rot_rel_r_w_x
+    # 18	rot_rel_r_w_y
+    # 19	rot_rel_r_w_z   
+    # 20	rot_dt_l_w_x
+    # 21	rot_dt_l_w_y
+    # 22	rot_dt_l_w_z    
+    # 23	rot_dt_r_w_x
+    # 24	rot_dt_r_w_y
+    # 25	rot_dt_r_w_z
+   
+    # k = load_t_file( file_kinematics )
+    
+    # for it in range(k.shape[0]):
+        
+    #     rot_dt_wing_l_w1, rot_dt_wing_l_w2, rot_dt_wing_l_w3 = k[it,20], k[it,21], k[it,22]
+    #     rot_dt_wing_r_w1, rot_dt_wing_r_w2, rot_dt_wing_r_w3 = k[it,23], k[it,24], k[it,25]
+        
+    #     rot_rel_wing_l_w1, rot_rel_wing_l_w2, rot_rel_wing_l_w3 = k[it,14], k[it,15], k[it,16]
+    #     rot_rel_wing_r_w1, rot_rel_wing_r_w2, rot_rel_wing_r_w3 = k[it,17], k[it,18], k[it,19]
+        
+    #     #-- LEFT WING
+    #     a1 = Jxx * rot_dt_wing_l_w1 + Jxy * rot_dt_wing_l_w2
+    #     a2 = Jxy * rot_dt_wing_l_w1 + Jyy * rot_dt_wing_l_w2
+    #     a3 = Jzz * rot_dt_wing_l_w3
+        
+    #     b1 = Jxx * rot_rel_wing_l_w1 + Jxy * rot_rel_wing_l_w2
+    #     b2 = Jxy * rot_rel_wing_l_w1 + Jyy * rot_rel_wing_l_w2
+    #     b3 = Jzz * rot_rel_wing_l_w3
+        
+    #     iwmoment1 = (a1 + rot_rel_wing_l_w2*b3 - rot_rel_wing_l_w3*b2)
+    #     iwmoment2 = (a2 + rot_rel_wing_l_w3*b1 - rot_rel_wing_l_w1*b3)
+    #     iwmoment3 = (a3 + rot_rel_wing_l_w1*b2 - rot_rel_wing_l_w2*b1)
+        
+    #     inertial_power_left = rot_rel_wing_l_w1 * iwmoment1 + rot_rel_wing_l_w2 * iwmoment2 + rot_rel_wing_l_w3 * iwmoment3
+        
+    #     #-- RIGHT WING
+    #     a1 = Jxx * rot_dt_wing_r_w1 + Jxy * rot_dt_wing_r_w2
+    #     a2 = Jxy * rot_dt_wing_r_w1 + Jyy * rot_dt_wing_r_w2
+    #     a3 = Jzz * rot_dt_wing_r_w3
+        
+    #     b1 = Jxx * rot_rel_wing_r_w1 + Jxy * rot_rel_wing_r_w2
+    #     b2 = Jxy * rot_rel_wing_r_w1 + Jyy * rot_rel_wing_r_w2
+    #     b3 = Jzz * rot_rel_wing_r_w3
+        
+    #     iwmoment1 = (a1 + rot_rel_wing_r_w2*b3 - rot_rel_wing_r_w3*b2)
+    #     iwmoment2 = (a2 + rot_rel_wing_r_w3*b1 - rot_rel_wing_r_w1*b3)
+    #     iwmoment3 = (a3 + rot_rel_wing_r_w1*b2 - rot_rel_wing_r_w2*b1)
+        
+    #     inertial_power_right = rot_rel_wing_r_w1 * iwmoment1 + rot_rel_wing_r_w2 * iwmoment2 + rot_rel_wing_r_w3 * iwmoment3

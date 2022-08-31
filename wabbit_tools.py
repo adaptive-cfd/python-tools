@@ -26,7 +26,7 @@ def err( msg ):
 def info( msg ):
     print( bcolors.OKBLUE + "Information:  " + bcolors.ENDC + msg)
 
-#%%
+#
 def check_parameters_for_stupid_errors( file ):
     """
     For a given WABBIT parameter file, check for the most common stupid errors
@@ -267,7 +267,7 @@ def check_parameters_for_stupid_errors( file ):
     else:
         info("This simulation is being started from initial condition (and not from file)")
 
-#%%
+#
 def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False ):
     """
     From a given ini file, read [Section]::keyword and return the value
@@ -319,6 +319,8 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
 
+    # a matrix is something that starts with (/ (FORTRAN style) and it extends
+    # over many lines. this is incompatible with the python ini files parser
     if matrix:
         fid = open( inifile, 'r')      
         found_section, found = False, False
@@ -374,13 +376,64 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         return matrix
 
 
-    # initialize parser object
-    config = configparser.ConfigParser(allow_no_value=True)
-    # read (parse) inifile.
-    config.read(inifile)
+    # 2022: We do no longer use the buildin ini files parser, because it has trouble 
+    # with MATRIX definitions. Unfortunately, we used an incompatible syntax (I regret this very much)
+    
+    # -------------------------------------------------------------------------
+    # # initialize parser object
+    # config = configparser.ConfigParser(allow_no_value=True)
+    # # read (parse) inifile.
+    # config.read(inifile)
 
-    # use configparser to find the value
-    value_string = config.get( section, keyword, fallback='UNKNOWN')
+    # # use configparser to find the value
+    # value_string = config.get( section, keyword, fallback='UNKNOWN')
+    # -------------------------------------------------------------------------
+      
+    
+    value_string = 'UNKNOWN'
+    
+    fid = open( inifile, 'r')      
+    found_section = False
+    
+    for line in fid:
+        # remove leading and trailing spaces from line
+        line = line.strip()
+        
+        # remove trailing comments (including the ';')
+        if ';' in line:
+            line = line[0:line.index(';')]
+              
+        if line == "":
+            line = "blabla"
+        
+        # is the line commented out?
+        if (line[0] == ";" or line[0] == "!" or line[0] == "#"):
+            line = "blabla"
+            
+        # did we find the section?
+        if '['+section+']' in line:
+            found_section = True
+            continue
+        
+        # if we found the section previously, and we now find a DIFFERENT one, well,
+        # then we did not find the keyword
+        if found_section and ('[' in line and ']' in line):
+            found_section = False
+            break
+            
+        # first row, if found keyword.
+        if found_section:
+            if keyword+"=" in line:
+                # remove first vct=
+                line = line.replace(keyword+"=", "")
+                
+                # this is the result...
+                value_string = line
+                # we're done
+                break
+    fid.close()
+        
+    
     
     # check if that worked. If not value is found, UNKNOWN is returned. if the value field
     # is empty, then ";" is returned
@@ -431,7 +484,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
 
 
 
-#%%
+#
 def exists_ini_parameter( inifile, section, keyword ):
     """ check if a given parameter in the ini file exists or not. can be used to detect
         deprecated entries somebody removed
@@ -458,7 +511,7 @@ def exists_ini_parameter( inifile, section, keyword ):
 
     return found_parameter
 
-#%%
+#
 def exists_ini_section( inifile, section ):
     """ check if a given parameter in the ini file exists or not. can be used to detect
         deprecated entries somebody removed
@@ -476,7 +529,7 @@ def exists_ini_section( inifile, section ):
 
     return found_section
 
-#%%
+#
 def prepare_resuming_backup( inifile ):
     """ we look for the latest *.h5 files
         to resume the simulation, and prepare the INI file accordingly.
@@ -633,7 +686,7 @@ def prepare_resuming_backup( inifile ):
         os.rename( inifile+'.tmptmp', inifile )
 
 
-#%%
+#
 def block_level_distribution_file( file ):
     """ Read a 2D/3D wabbit file and return a list of how many blocks are at the different levels
     """
@@ -664,7 +717,7 @@ def block_level_distribution_file( file ):
 
     return counter
 
-#%%
+#
 def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     """ Read a wabbit-type HDF5 of block-structured data.
 
@@ -726,7 +779,7 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     else:
         return time, x0, dx, box, data, treecode
 
-#%%
+#
 def read_treecode_hdf5(file):
     """ Read a wabbit-type HDF5 of block-structured data.
     same as read_wabbit_hdf5, but reads ONLY the treecode array.
@@ -741,7 +794,7 @@ def read_treecode_hdf5(file):
 
     return treecode
 
-#%%
+#
 def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, dtype=np.float64  ):
     """ Write data from wabbit to an HDF5 file
         Note: hdf5 saves the arrays in [Nz, Ny, Nx] order!
@@ -788,7 +841,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     dset_id.attrs.create('total_number_blocks', N )
     fid.close()
 
-#%%
+#
 
 
 def read_wabbit_hdf5_dir(dir):
@@ -956,7 +1009,7 @@ def get_max_min_level( treecode ):
 
     return min_level, max_level
 
-#%%
+#
 def plot_1d_cut( file, y ):
     # read data
     time, x0, dx, box, data, treecode = read_wabbit_hdf5( file )
@@ -1007,7 +1060,7 @@ def plot_1d_cut( file, y ):
 #    plt.figure()
 #    plt.plot(x_values, f_values, '-')
 
-#%%
+#
 def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
@@ -1051,7 +1104,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
         if gridonly_coloring == 'lgt_id':
             b = fid['lgt_ids'][:]
             lgt_ids = np.array(b, dtype=float)
-
+            
         fid.close()
 
     # read data
@@ -1249,7 +1302,7 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     return ax,cb,hplot
 
 
-#%%
+#
 def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     """ Compute the error (in some norm) wrt a flusi field.
     Useful for example for the half-swirl test where no exact solution is available
@@ -1307,7 +1360,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     return err
 
 
-#%%
+#
 def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
     """ compute error given two flusi fields
     """
@@ -1398,7 +1451,7 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     return err
 
 
-#%%
+#
 def to_dense_grid( fname_in, fname_out = None, dim=2 ):
     """ Convert a WABBIT grid to a full dense grid in a single matrix.
 
@@ -1423,7 +1476,7 @@ def to_dense_grid( fname_in, fname_out = None, dim=2 ):
         X = [np.arange(0,np.size(field,k))*dx[k] for k,b in enumerate(box)]
         return field, box, dx, X
 
-#%%
+#
 def compare_two_grids( treecode1, treecode2 ):
     """ Compare two grids. The number returned is the % of blocks from treecode1
     which have also been found in treecode2 """
@@ -1447,7 +1500,7 @@ def compare_two_grids( treecode1, treecode2 ):
     return common_blocks / treecode1.shape[0]
 
 
-#%%
+#
 def overwrite_block_data_with_level(treecode, data):
     """On all blocks of the data array, replace any function values by the level of the block"""
 
@@ -1467,7 +1520,7 @@ def overwrite_block_data_with_level(treecode, data):
     return data
 
 
-#%%
+#
 def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False ):
 
     import math
@@ -1549,7 +1602,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
 
     return(field, box)
 
-#%%
+#
 def prediction1D( signal1, order=4 ):
     import numpy as np
 
@@ -1576,7 +1629,7 @@ def prediction1D( signal1, order=4 ):
     return signal_interp
 
 
-#%%
+#
 # calculates treecode from the index of the block
 # Note: other then in fortran we start counting from 0
 def blockindex2treecode(ix, dim, treeN):
@@ -1594,7 +1647,7 @@ def blockindex2treecode(ix, dim, treeN):
     # flip again befor returning array
     return treecode[::-1]
 
-#%%
+#
 def command_on_each_hdf5_file(directory, command):
     """
     This routine performs a shell command on each *.h5 file in a given directory!
@@ -1620,7 +1673,7 @@ def command_on_each_hdf5_file(directory, command):
         c = command % file
         os.system(c)
 
-#%%
+#
 def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
     """
     Convert directory with flusi *h5 files to wabbit *h5 files
@@ -1642,7 +1695,7 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
 
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
 
-#%%
+#
 def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 ):
 
     """
@@ -1665,7 +1718,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time, dtype=dtype)
 
 
-#%%
+#
 def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration = 0, dtype=np.float64):
 
     """
@@ -1788,7 +1841,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration, dtype )
     return fname
 
-# %%
+#
 
 def is_power2(num):
     'states if a number is a power of two'
