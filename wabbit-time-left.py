@@ -165,7 +165,7 @@ ncpu_now = d[-1,7]
 d[:,2] *= d[:,7] / ncpu_now
 
 # avg walltime in seconds for this run to do one time step
-twall_avg = np.mean( d[:,2] ) / N_dt_per_grid
+twall_avg = np.mean( d[:,2] )
 
 # avg time step until now (note: this is really time steps, but if more than one time step
 # is performed on the grid before adaptation, the walltime is per multiple time steps)
@@ -186,8 +186,8 @@ time_left = round(nt_left * twall_avg)
 cpuh_left = int(ncpu_now*time_left/3600)
 
 # cost in CPUh / T
-abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) / N_dt_per_grid * (1.0 / dt)
-abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) / N_dt_per_grid * (1.0 / dt)
+abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) * (1.0 / dt)
+abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) * (1.0 / dt)
 
 if verbose:
     print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
