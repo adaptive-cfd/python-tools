@@ -129,12 +129,12 @@ if os.path.isfile( jobfile ):
 
     c0 =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
     nu =  wabbit_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
-    ceta =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float)
+    ceta =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float, default=0.0)
     penalized = wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
-    csponge =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float)
+    csponge =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float, default=0.0)
     sponged =  wabbit_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
 
-    geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str)
+    geometry =  wabbit_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str, default='none')
 
     if len(Bs)==1:
         dx = L[0]*(2**-Jmax)/(Bs[0]-1)
@@ -152,7 +152,7 @@ if os.path.isfile( jobfile ):
     print( "C_sponge         = %2.2e" % (csponge))
 
     if geometry == "Insect":
-        t =  wabbit_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float)
+        t =  wabbit_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float, default=0.0)
         print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
 
     print("----------------------------------------")

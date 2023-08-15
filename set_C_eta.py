@@ -30,7 +30,7 @@ Jmax = wabbit_tools.get_ini_parameter(file, 'Blocks', 'max_treelevel')
 L    = wabbit_tools.get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
 nu   = wabbit_tools.get_ini_parameter(file, 'ACM-new', 'nu')
 
-dx = L[0]*(2**-Jmax)/(Bs[0]-1)
+dx = L[0]*(2**-Jmax)/Bs[0]
 
 C_eta = (K_eta*dx)**2 / nu
 

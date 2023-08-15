@@ -17,9 +17,11 @@ def change_figure_dpi(dpi):
     plt.rcParams['figure.dpi'] = dpi
     
 
-def get_next_color():
+def get_next_color(ax=None):
     import matplotlib.pyplot as plt
-    return next(plt.gca()._get_lines.prop_cycler)['color']
+    if ax is None:
+        ax = plt.gca()
+    return next(ax._get_lines.prop_cycler)['color']
 
 def get_next_marker():
     import itertools
@@ -27,7 +29,7 @@ def get_next_marker():
     return next(marker)
 
 
-def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True, N=1000, tstroke=1.0, plot_raw_data=False ):    
+def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True, N=1000, tstroke=1.0, plot_raw_data=False, color='k', marker='d'):    
     """
     Perform statistics over periodic data.
     Often, we have data for several strokes, say 0 <= t <= 10. This function assumes
@@ -86,7 +88,7 @@ def statistics_stroke_time_evolution( t, y, plot_indiv_strokes=True, N=1000, tst
             mask = np.zeros( t.shape, dtype=bool)
             mask[ t>=float(i)*tstroke ]   = True
             mask[ t>=float(i+1)*tstroke ] = False
-            plt.plot( t[mask]-float(i)*tstroke, y[mask], 'kd', mfc='none', linewidth=0.5)
+            plt.plot( t[mask]-float(i)*tstroke, y[mask], marker=marker, color=color, mfc='none', linewidth=0.5, linestyle='none')
             
             
     
@@ -140,7 +142,7 @@ def plot_errorbar_fill_between(x, y, yerr, color=None, label="", alpha=0.25, fmt
 
     # first, draw shaded area for dev
     color[3] = alpha
-    ax.fill_between( x, y-yerr, y+yerr, color=color )
+    ax.fill_between( x, y-yerr, y+yerr, color=color, alpha=alpha )
 
     # then, avg data
     color[3] = 1.00
@@ -320,6 +322,8 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
 
                 if len(tmp) == ncols:
                     dat.append( tmp )
+                else:
+                    dat.append( tmp[0:ncols] )
 
     # convert list of lists into an numpy array
     data_raw = np.array( dat, dtype=float )
@@ -408,12 +412,14 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
             # extract time instants between T0[0] and T0[1]
             i0 = np.argmin( np.abs(data[:,0]-T0[0]) )
             i1 = np.argmin( np.abs(data[:,0]-T0[1]) )
-            data = np.copy( data[i0:i1,:] )
+            # data = np.copy( data[i0:i1,:] )
+            data = data[i0:i1,:].copy()
 
         else:
             # extract everything after T0
             i0 = np.argmin( np.abs(data[:,0]-T0) )
-            data = np.copy( data[i0:,:] )
+            # data = np.copy( data[i0:,:] )
+            data = data[i0:,:].copy()
 
 
     # info on data
@@ -554,15 +560,16 @@ def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None, force_fullstroke=Tr
 
 def write_csv_file( fname, d, header=None, sep=';'):
     # open file, erase existing
-    f = open( fname, 'w' )
+    f = open( fname, 'w', encoding='utf-8' )
 
     # if we specified a header ( a list of strings )
     # write that
     if not header == None:
         # write column headers        
         if isinstance(header, list):
-            for name in header:
+            for name in header[:-1]:
                 f.write( name+sep )
+            f.write(name)
         else:
             f.write(header)
         # newline after header
@@ -598,7 +605,7 @@ def read_param_vct(config, section, key):
         value = np.array( value.split(",") )
     else:
         value = np.array( value.split() )
-    value = value.astype(np.float)
+    value = value.astype(float)
     return value
 
 
@@ -801,7 +808,7 @@ def visualize_kinematics_file(fname):
 
     t, phi, alpha, theta = eval_angles_kinematics_file(fname)
 
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = False
 
     plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
     plt.subplots_adjust(bottom=0.16, left=0.14)
@@ -813,7 +820,10 @@ def visualize_kinematics_file(fname):
     plt.legend()
     plt.xlim([0,1])
     plt.xlabel('$t/T$')
-    plt.ylabel('angle $(^{\\circ})$')
+        
+    # axis y in degree
+    from matplotlib.ticker import EngFormatter
+    plt.gca().yaxis.set_major_formatter(EngFormatter(unit="°"))
 
     plt.title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$ $\\phi_\\mathrm{max}=%2.2f^\\circ$ $\\phi_\\mathrm{min}=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi), np.max(phi), np.min(phi)))
     
@@ -1086,7 +1096,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     ax.add_line(l)
 
     # this is a manually set size, which should be the same as what is produced by visualize kinematics file
-    plt.gcf().set_size_inches([4.71, 2.75] )
+    # plt.gcf().set_size_inches([4.71, 2.75] )
+    plt.gcf().set_size_inches([4.0, 4.0] )
+    plt.gcf().subplots_adjust(hspace=0.0, right=0.88, bottom=0.12, left=0.16, top=0.92)
+    
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), plt.gca() )
 
@@ -1103,8 +1116,16 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     if reverse_x_axis:
         plt.gca().invert_xaxis()
 
-    # modify ticks in matlab-style.
+    
     ax = plt.gca()
+    ax.set_ylim([-1.1, 1.1])
+    ax.set_xlim([-1.1, 1.1])
+    ax.set_yticks([-1.0, -0.5, 0.0, 0.5, 1.0])
+    ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
+    ax.set_xlabel('x/R')
+    ax.set_ylabel('y/R')
+    
+    # modify ticks in matlab-style.
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
 #    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
@@ -1496,7 +1517,7 @@ def load_image( infilename ):
     img = Image.open( infilename )
     img.load()
     img = img.convert('RGB')
-    data = np.asarray( img , dtype=np.float )
+    data = np.asarray( img , dtype=float )
     
     # Funny: a tall image is loaded as 10000x100 here, but GIMP etc
     # read it as 100x10000, so I guess its a good idea to swap the axis
@@ -1530,7 +1551,7 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
         print( "Data dimension is %i %i %i" % (nx,ny,nz))
 
         # allocate (single precision) data
-        data = np.zeros([nx,ny,nz], dtype=np.float32)
+        data = np.zeros([nx,ny,nz], dtype=float32)
 
         # it is useful to now use the entire array, so python can crash here if
         # out of memory, and not after waiting a long time...
@@ -1818,7 +1839,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
     f = open( fname, 'w' )
     
     if header is not None:
-        f.write('%s\n' % (header))
+        f.write('; %s\n' % (header))
 
     f.write('[kinematics]\n')
 
@@ -1963,7 +1984,7 @@ def visualize_wing_shape_file(fname, fig=None):
         
     # plt.savefig( fname.replace('.ini','.pdf') )
     # plt.savefig( fname.replace('.ini','.svg') )
-    plt.savefig( fname.replace('.ini','.png'), dpi=300 )
+    plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     
 
 

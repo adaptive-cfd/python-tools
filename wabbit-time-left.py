@@ -18,6 +18,9 @@ class bcolors:
         BOLD = '\033[1m'
         UNDERLINE = '\033[4m'
 
+# this is a peculiar oddity for IRENE, she spits out some runtime warnings....
+np.seterr(invalid='ignore')
+
 
 
 parser = argparse.ArgumentParser()
@@ -109,11 +112,14 @@ method = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_step_method', st
 # default is one (even though that might be wrong...)
 nrhs = 1
 
-if method == "RungeKuttaGeneric":
+if method == "RungeKuttaGeneric" or method == "RungeKuttaGeneric-FSI":
     # this is not always true, but most of the time (butcher_tableau)
     nrhs = 4.0
 elif method == "RungeKuttaChebychev":
     nrhs = wabbit_tools.get_ini_parameter( inifile, 'Time', 's', float)
+    
+if nrhs == 1:
+    print("\n\n\n%sWe assume 1 rhs eval per time step, but that is likely not correct.%s\n\n\n" % (bcolors.FAIL, bcolors.ENDC))
     
 # if we perform more than one dt on the same grid, this must be taken into account as well
 N_dt_per_grid = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'N_dt_per_grid', float, default=1.0)
@@ -203,8 +209,8 @@ if verbose:
           min_cost, 100.0*min_cost/mean_cost,
           std_cost, 100.0*std_cost/mean_cost, bcolors.ENDC))
     print("NOW: %s%8.3e  %8.3e  %8.3e (%2.1f%%)  %8.3e (%2.1f%%) %s[CPUs / N / Nrhs]" % (bcolors.OKGREEN, mean_cost2, max_cost2,
-          min_cost2, 100.0*min_cost/mean_cost2,
-          std_cost2, 100.0*std_cost/mean_cost2, bcolors.ENDC))
+          min_cost2, 100.0*min_cost2/mean_cost2,
+          std_cost2, 100.0*std_cost2/mean_cost2, bcolors.ENDC))
     print("-----------------")
     print("Absolute cost (all time steps    ): %s%6.0f%s CPUh/T" % (bcolors.OKGREEN, abs_mean_cost, bcolors.ENDC) )
     print("Absolute cost (last %i time steps): %s%6.0f%s CPUh/T" % (nt, bcolors.OKGREEN, abs_mean_cost2, bcolors.ENDC) )
@@ -279,9 +285,9 @@ if args.plot:
     
     
     plt.subplot(3,2,5)    
-    plt.plot( d[:,0], np.cumsum(d[:,3]), label='Nb (integral)' )
+    plt.plot( d[:,0], d[:,7], label='#CPU' )
     plt.xlabel('time')
-    plt.ylabel('N_b integral')
+    plt.ylabel('#CPU')
     plt.grid(True)
     
     

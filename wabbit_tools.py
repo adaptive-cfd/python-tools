@@ -70,18 +70,33 @@ def check_parameters_for_stupid_errors( file ):
     if not os.path.isfile(file):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
+    wavelet         = get_ini_parameter(file, 'Wavelet', 'wavelet', str, default="CDF40")        
+        
+    # since 05 Jul 2023, g is set automatically, unless we do something stupid.
+    if wavelet == 'CDF20':
+        g_default = 2
+    elif wavelet=='CDF22':
+        g_default = 3
+    elif wavelet=='CDF40':
+        g_default = 4
+    elif wavelet=='CDF42':
+        g_default = 5
+    elif wavelet=='CDF44' or wavelet=='CDF62':
+        g_default = 7
+    else:
+        g_default = 1
+        
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
-    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_mesh', int)
+    jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int)
+    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
-    g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int)
+    g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
+    g_rhs           = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes_rhs', int, default=g)
     dealias         = get_ini_parameter(file, 'Blocks', 'force_maxlevel_dealiasing', int)
     dim             = get_ini_parameter(file, 'Domain', 'dim', int)
     L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
     discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
-    order_predictor = get_ini_parameter(file, 'Discretization', 'order_predictor', str)
-    transform       = get_ini_parameter(file, 'Wavelet', 'transform_type', str, default="harten-multiresolution")
-    wavelet         = get_ini_parameter(file, 'Wavelet', 'wavelet', str, default="")
     time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
     CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
@@ -96,37 +111,36 @@ def check_parameters_for_stupid_errors( file ):
     sponge_type  = get_ini_parameter( file, 'Sponge', 'sponge_type', str, default='default')
     L_sponge     = get_ini_parameter( file, 'Sponge', 'L_sponge', default=0.0)
     time_max     = get_ini_parameter( file, 'Time', 'time_max', float)
-    time_stepper = get_ini_parameter( file, 'Time', 'time_step_method', str)
+    time_stepper = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL          = get_ini_parameter( file, 'Time', 'CFL', float, default=0.5)
     CFL_nu       = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2) )
     CFL_eta      = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
     filter_type  = get_ini_parameter( file, 'Discretization', 'filter_type', str, default='no_filter')
     filter_freq  = get_ini_parameter( file, 'Discretization', 'filter_freq', int, default=-1)
-    coarseWins   = get_ini_parameter( file, 'Debug', 'ghost_nodes_redundant_point_coarseWins', int, default=1)
-    iterGhosts   = get_ini_parameter( file, 'Debug', 'iter_ghosts', int, default=0)
     
     
-    dx = L[0]*2**-jmax/(bs[0]-1)
+    dx = L[0]*2**-jmax/(bs[0])
     keta = np.sqrt(ceta*nu)/dx
     
     
     print("======================================================================================")
-    print("Bs= %i   g= %i   dim= %i   Jmax= %i   L= %2.2f %s==> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
-          (bs[0],g,dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
+    print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s==> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
+          (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
+    print("equidistant grids: Jmin=%i^%i, Jmax=%i^%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
     print("discretization= %s" % (discretization))
     print("T_max = %2.2f   CFL= %2.2f   CFL_eta= %2.2f   CFL_nu= %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
     
     
     print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ==> K_eta = %2.2f%s" % 
           (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
-    print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
-          (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
+    if sponged:
+        print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
+              (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
     print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
-    print("C_eps = %2.2e   wavelet-transform= %s   wavelet= %s    dealias=%i    adapt_mesh=%i" % (ceps, transform, wavelet, dealias, adapt_mesh))
+    print("C_eps = %2.2e   wavelet= %s    dealias=%i    adapt_mesh=%i" % (ceps, wavelet, dealias, adapt_mesh))
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
-    print("coarseWins=%i iterGhosts=%i" % (coarseWins, iterGhosts))
     print("======================================================================================")
     
     
@@ -139,33 +153,16 @@ def check_parameters_for_stupid_errors( file ):
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
         
-    if discretization  == "FD_2nd_central" and order_predictor != "multiresolution_2nd":
-        warn('You try to use 2nd order discretization but not 2nd order multiresolution')
+          
+    if (wavelet == "CDF22") and g<3:
+        warn("Not enough ghost nodes for wavelet %s g=%i < 3" % (wavelet, g) )
+    if (wavelet == "CDF42") and g<5:
+        warn("Not enough ghost nodes for wavelet %s g=%i < 5" % (wavelet, g) )        
+    if (wavelet == "CDF44" or wavelet == "CDF62") and g<7:
+        warn("Not enough ghost nodes for wavelet %s g=%i < 7" % (wavelet, g) )
+    if (wavelet == "CDF40") and g<4:
+        warn("Not enough ghost nodes for wavelet %s g=%i < 4" % (wavelet, g) )
         
-    if discretization  == "FD_4th_central_optimized" and order_predictor != "multiresolution_4th":
-        warn('You try to use 4th order discretization but not 4th order multiresolution')
-        
-
-    if transform == "harten-multiresolution":    
-        if discretization == "FD_2nd_central" and g != 1:
-            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
-    
-        if discretization == "FD_4th_central_optimized" and g != 3:
-            warn('For a 4th order scheme you did not set ghosts=3 (NOTE: this is no longer 4)')
-            
-    elif transform == "biorthogonal":
-        if discretization == "FD_2nd_central" and g != 2:
-            warn('For a 2nd order scheme you did not set ghosts=1 (Note: this is no longer 2')
-    
-        if discretization == "FD_4th_central_optimized" and g != 6:
-            warn('For a 4th order scheme you did not set ghosts=6 (NOTE: this is no longer 4)')
-            
-        if (wavelet == "CDF22" and wavelet == "CDF2,2") and discretization != "FD_2nd_central":
-            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
-            
-        if (wavelet == "CDF44" or wavelet == "CDF4,4") and discretization != "FD_4th_central_optimized":
-            warn("Wrong combination of wavelet and discretization %s %s %s" % (transform, wavelet, discretization) )
-
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
@@ -215,7 +212,9 @@ def check_parameters_for_stupid_errors( file ):
         
     if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
         warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
-        
+    
+    if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
+        warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
@@ -440,7 +439,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     if (value_string==";" or 'UNKNOWN' in value_string) and default is None:
         raise ValueError("NOT FOUND! file=%s section=%s keyword=%s" % (inifile, section, keyword) )
 
-    if (value_string==";" or 'UNKNOWN' in value_string) and default is not None:
+    if (value_string==";" or 'UNKNOWN' in value_string or value_string=='') and default is not None:
         if verbose:
             print("Returning default!")
         return dtype(default)
@@ -637,7 +636,7 @@ def prepare_resuming_backup( inifile ):
         if abs(t1-t0) < 1.0e-4:
             print('Good news: timestamp in H5 file and time in log file match!')
 
-        if t1 >= 0.99*Tmax or t0 >= 0.99*Tmax:
+        if t1 >= 0.9999*Tmax or t0 >= 0.9999*Tmax:
             raise ValueError( "Something is wrong: the run seems to be already finnished!" )
 
     # check if all required input files exist
@@ -717,6 +716,7 @@ def block_level_distribution_file( file ):
 
     return counter
 
+
 #
 def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     """ Read a wabbit-type HDF5 of block-structured data.
@@ -763,9 +763,9 @@ def read_wabbit_hdf5(file, verbose=True, return_iteration=False):
     Bs = data.shape[1:]
     Bs = np.asarray(Bs[::-1]) # we have to flip the array since hdf5 stores in [Nz, Ny, Nx] order
     
-    if version == 20200408:
+    if version == 20200408 or version == 20231602:
         Bs = Bs-1
-        print("!!!Warning old (old branch: newGhostNodes) version of wabbit format detected!!!")
+        #print("!!!Warning old (old branch: newGhostNodes) version of wabbit format detected!!!")
     else:
         print("This file includes redundant points")
         
@@ -1178,7 +1178,26 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                     y = Bs[0]/2*dx[i,0]+x0[i,0]
                 else:
                     y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
+                
                 plt.text( x, y, tag, fontsize=6, horizontalalignment='center', verticalalignment='center')
+                
+            elif gridonly_coloring == 'treecode':
+                    color = 'w'
+                    tag = ""
+                    for jj in range(treecode.shape[1]):
+                        if treecode[i,jj] != -1:
+                            tag += "%1.1i" % treecode[i,jj]
+
+                    print(tag)
+                                        
+                    x = Bs[1]/2*dx[i,1]+x0[i,1]
+                    if not flipud:
+                        y = Bs[0]/2*dx[i,0]+x0[i,0]
+                    else:
+                        y = box[0] - Bs[0]/2*dx[i,0]+x0[i,0]
+                    plt.text( x, y, tag, fontsize=6, horizontalalignment='center', verticalalignment='center')
+                
+                
             elif gridonly_coloring == 'none':
                 color = 'w'
             else:
@@ -1408,7 +1427,6 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
             
         norm : scalar, float
             Can be either 2, 1, or np.inf (passed to np.linalg.norm)
-
     
     Output:
     -------
@@ -1431,7 +1449,6 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     
         data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
         data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
-        #plt.pcolormesh(data1-data2)
         
         if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
            raise ValueError("ERROR! Both fields are not a the same resolution")
@@ -1532,16 +1549,17 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
     returns the full matrix and the domain size. Note matrix is periodic and can
     directly be compared to FLUSI-style results (x=L * 0:nx-1/nx)
     """
+    
     # number of blocks
     N = data.shape[0]
     # size of each block
     Bs = np.asarray(data.shape[1:])
     
-    if np.any(Bs % 2 != 0) and new_format:
-        # Note: skipping of redundant points, hence the -1
-        # Note: this is still okay after Apr 2020: we save one extra point in the HDF5 file
-        # for visualization. However, now, the Bs must be odd!
-        raise ValueError("For the new code without redundant points, the block size should be even!")
+    # if np.any(Bs % 2 != 0) and new_format:
+    #     # Note: skipping of redundant points, hence the -1
+    #     # Note: this is still okay after Apr 2020: we save one extra point in the HDF5 file
+    #     # for visualization. However, now, the Bs must be odd!
+    #     raise ValueError("For the new code without redundant points, the block size should be even!")
 
     # check if all blocks are on the same level or not
     jmin, jmax = get_max_min_level( treecode )
@@ -1550,8 +1568,8 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
 
     
     if dim==2:
-        # in both new and old grid format, a redundant point is included (it is the first ghost 
-        # node in the new format!)
+        # in both uniqueGrid and redundantGrid format, a redundant point is included (it is the first ghost 
+        # node in the uniqueGrid format!)
         nx = [int( np.sqrt(N)*(Bs[d]-1) ) for d in range(np.size(Bs))]
     else:
         nx = [int( round( (N)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
@@ -1559,6 +1577,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
 
     # all spacings should be the same - it does not matter which one we use.
     ddx = dx[0,:]
+    
     if verbose:
         print("Nblocks :" , (N))
         print("Bs      :" , Bs[::-1])
@@ -1705,10 +1724,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     import insect_tools
     import matplotlib.pyplot as plt
 
-#    if dim==3:
-#        print('I think due to fft2usapmle, this routine works only in 2D')
-#        raise ValueError
-        
+
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
     box = box[1:]
@@ -1848,17 +1864,19 @@ def is_power2(num):
     return num != 0 and ((num & (num - 1)) == 0)
 
 ###
-def field_shape_to_bs(Nshape,level):
+def field_shape_to_bs(Nshape, level):
     """
      For a given shape of a dense field and maxtreelevel return the
      number of points per block wabbit uses
     """
 
     n = np.asarray(Nshape)
+    
     for d in range(n.ndim):
         # check if Block is devidable by Bs
         if (np.remainder(n[d], 2**level) != 0):
             err("Number of Grid points has to be a power of 2!")
+            
     # Note we have to flip  n here because Bs = [BsX, BsY]
     # The order of Bs is choosen like it is in WABBIT.
     return n[::-1]//2**level + 1

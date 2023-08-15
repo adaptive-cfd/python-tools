@@ -373,10 +373,11 @@ def RKC_stability_map( s=4, eps=10.0, fig=None, color='k' ):
     if fig is None:
         fig = plt.figure()
 
+    fig.gca().contourf(RE, IM, Pj, levels=[0.0, 1.0], colors=color, alpha=0.25)
     fig.gca().contour(RE, IM, Pj, levels=[1.0], colors=color)
 
 
-def RK4_stability_map( fig=None ):
+def RK4_stability_map( fig=None, **kwargs  ):
     """
     plot the stability map for a conventional RK4 scheme
     """
@@ -394,8 +395,69 @@ def RK4_stability_map( fig=None ):
     if fig is None:
         fig = plt.figure()
 
-    fig.gca().contour(RE, IM, Pj, levels=[1.0], colors='k',  linestyles='--')
+    fig.gca().contour(RE, IM, Pj, levels=[1.0], **kwargs)
 
+def EE1_stability_map( fig=None, **kwargs ):
+    """
+    plot the stability map for a conventional RK4 scheme
+    """
+    im = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+    re = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+
+    RE, IM = np.meshgrid(re, im)
+
+    z = RE + 1j * IM
+
+    # this if the growth rate (<1 means stable)
+    Pj = np.abs(  1 + z )
+
+
+    if fig is None:
+        fig = plt.figure()
+
+    fig.gca().contour(RE, IM, Pj, levels=[1.0], **kwargs)
+    
+
+def RK2_stability_map( fig=None, **kwargs  ):
+    """
+    plot the stability map for a conventional RK4 scheme
+    """
+    im = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+    re = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+
+    RE, IM = np.meshgrid(re, im)
+
+    z = RE + 1j * IM
+
+    # this if the growth rate (<1 means stable)
+    Pj = np.abs(  1 + z + (1/2)*z**2 )
+
+
+    if fig is None:
+        fig = plt.figure()
+
+    fig.gca().contour(RE, IM, Pj, levels=[1.0], **kwargs)
+    
+
+def RK3_stability_map( fig=None, **kwargs  ):
+    """
+    plot the stability map for a conventional RK4 scheme
+    """
+    im = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+    re = np.linspace(-5.0, 5.0, 100, endpoint=True, dtype=np.float64)
+
+    RE, IM = np.meshgrid(re, im)
+
+    z = RE + 1j * IM
+
+    # this if the growth rate (<1 means stable)
+    Pj = np.abs(  1 + z + (1/2)*z**2 + (1/6)*z**3  )
+
+
+    if fig is None:
+        fig = plt.figure()
+
+    fig.gca().contour(RE, IM, Pj, levels=[1.0], **kwargs)
 
 def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
     """
@@ -468,7 +530,7 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False ):
     z = eigenvalues
 
     S      = np.arange(4, 52+1, 1)
-    EPS    = np.linspace(2.0/13.0, 20, 75) # was 20, 75
+    EPS    = np.linspace(2.0/13.0, 50, 200) # was 20, 75
     S, EPS = np.meshgrid(S, EPS)
     stable = S*0.0
 
@@ -562,6 +624,9 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False ):
         RKC_stability_map(s_best, eps_best)
         RK4_stability_map( fig=plt.gcf() )
         plt.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
+        plt.title('s=%i eps=%f Cost=%i NRHS/T' % (s_best, eps_best, s_best/dt))
+        # plt.xlim([np.min(np.real(eigenvalues)), np.max(np.real(eigenvalues))])
+        # plt.ylim([np.min(np.imag(eigenvalues)), np.max(np.imag(eigenvalues))])
 
     return s_best, eps_best
 
