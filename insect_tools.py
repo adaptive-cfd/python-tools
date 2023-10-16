@@ -11,6 +11,12 @@ import numpy as np
 import numpy.ma as ma
 import glob
 
+def change_color_opacity(color, alpha):
+    import matplotlib
+    color = list(matplotlib.colors.to_rgba(color))
+    color[-1] = alpha
+    return color
+
 # I cannot learn this by heart....
 def change_figure_dpi(dpi):
     import matplotlib.pyplot as plt
@@ -180,7 +186,12 @@ def ylim_auto(ax, x, y):
 # set axis spacing to equal by modifying only the axis limits, not touching the
 # size of the figure
 def axis_equal_keepbox( fig, ax ):
-    w, h = fig.get_size_inches()
+    # w, h = fig.get_size_inches()
+    
+    bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    w, h = bbox.width, bbox.height
+
+    
     x1, x2 = ax.get_xlim()
     y1, y2 = ax.get_ylim()
     if (x2-x1)/w > (y2-y1)/h:
@@ -319,6 +330,16 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
                 # did we already figure out how many cols the file has?
                 if ncols is None:
                     ncols = len(tmp)
+                    
+                # try if we can convert the list entries to float
+                # sometimes suff like '-8.28380559-104' happens and that cannot be
+                # converted. in this case, we set zero
+                for j in range(len(tmp)):
+                    try:
+                        dummy = float(tmp[j])
+                    except:
+                        print( "WARNING %s cannot be converted to float, returning zero instead" % (tmp[j]) )
+                        tmp[j] = "0.0"
 
                 if len(tmp) == ncols:
                     dat.append( tmp )
@@ -347,9 +368,8 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
         # skip first time stamp
         for it in np.arange( 1, nt_raw ):
             t0, t1 = time_raw[it-1], time_raw[it]
-            if t1 <= t0:
-                # we have found a jump (which is often quite big so we must not worry about <=)
-                # now, figure out the index where we duplicate time stamps began
+            if t1 < t0:
+                # we have found a jump. now, figure out the index where we duplicate time stamps began
                 istart = np.argmin( np.abs(time_raw[0:it-1]-t1) )                
                 tstart = time_raw[istart]
                 
@@ -508,7 +528,7 @@ def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None, force_fullstroke=Tr
     # allocate stroke average matrix
     nt, ncols = d.shape
 
-    navgs = np.int( np.round((t2-t1)/tstroke) )
+    navgs = int( np.round((t2-t1)/tstroke) )
 
     D = np.zeros([navgs,ncols])
     # running index of strokes
@@ -618,7 +638,9 @@ def fseries(y, n):
     symmetry of real input data. The zeroth mode is multiplied by a factor of
     two, i.e., mean = a0/2.0.
     
-    If you request N=20 modes, we return a0 and ai[0:19] so a total of 21 numbers.
+    If you request N=20 modes, we return a0 and ai[0:19] so a total of 20 numbers.
+    
+    Zero mode is returned separately
     
     Input:
     ------
@@ -632,7 +654,7 @@ def fseries(y, n):
     
     Output:
     -------
-        ai, bi: numpy arrays containing the real (ai) and imaginary (bi) parts of the n Fourier coefficients.
+        a0, ai, bi: numpy arrays containing the real (ai) and imaginary (bi) parts of the n Fourier coefficients.
         
     """ 
     # perform fft
@@ -855,13 +877,13 @@ def eval_angles_kinematics_file(fname, time=None):
     ----------
     fname : TYPE
         DESCRIPTION.
-    time : TYPE, optional
-        DESCRIPTION. The default is None.
+    time : array, optional
+        Time arry. If none is passed, we sample [0.0, 1.0) with n=1000 samples and return this as well
 
     Returns
     -------
     t : array
-        time.
+        time. A copy of the input array or the default if no input time vector is given.
     phi : array
         flapping angle.
     alpha : array
@@ -940,9 +962,9 @@ def Rmirror( x0, n):
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
-                             draw_true_chord=False, meanflow=None, reverse_x_axis=False, 
-                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40) ):
-    """ visualize the wing chord
+                             draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
+                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None):
+    """ Lollipop-diagram. visualize the wing chord
     
     give all angles in degree
     
@@ -989,7 +1011,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
 
     # array of color (note normalization to 1 for query values)
-    colors = plt.cm.jet( (np.arange(time.size) / time.size) )
+    if cmap is None:
+        cmap = plt.cm.jet
+    colors = cmap( (np.arange(time.size) / time.size) )
     
            
     if kine_type == "fourier":
@@ -1097,16 +1121,11 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     # this is a manually set size, which should be the same as what is produced by visualize kinematics file
     # plt.gcf().set_size_inches([4.71, 2.75] )
-    plt.gcf().set_size_inches([4.0, 4.0] )
+    plt.gcf().set_size_inches([4.0, 3.6] )
     plt.gcf().subplots_adjust(hspace=0.0, right=0.88, bottom=0.12, left=0.16, top=0.92)
     
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), plt.gca() )
-
-    # annotate plot
-#    plt.rcParams["text.usetex"] = False
-#    plt.xlabel('$x^{(g)}$')
-#    plt.ylabel('$z^{(g)}$')
 
     if meanflow is not None:
         x0, y0 = 0.0, 0.0
@@ -1115,15 +1134,20 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     if reverse_x_axis:
         plt.gca().invert_xaxis()
+        
+    if colorbar:
+        sm = plt.cm.ScalarMappable( cmap=cmap, norm=plt.Normalize(vmin=0,vmax=1) )
+        sm._A =[]
+        plt.colorbar(sm)
 
     
     ax = plt.gca()
-    ax.set_ylim([-1.1, 1.1])
-    ax.set_xlim([-1.1, 1.1])
     ax.set_yticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xlabel('x/R')
-    ax.set_ylabel('y/R')
+    ax.set_ylabel('z/R')
+    
+    axis_equal_keepbox(plt.gcf(), ax)
     
     # modify ticks in matlab-style.
     ax.tick_params( which='both', direction='in', top=True, right=True )
@@ -1172,23 +1196,11 @@ def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0
 def wingtip_velocity( fname_kinematics, time=None ):
     """ Compute wingtip velocity as a function of time, given a wing kinematics parameter
     file. Note we assume the body at rest (hence relative to body).
-    """
-    # # read kinematics data:
-    # a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname_kinematics )
-    
+    """    
     if time is None:
-        time = np.linspace(0, 1.0, 200, endpoint=True)
+        time = np.linspace(0, 1.0, 1000, endpoint=True)
     
-    # if kine_type == "fourier":
-    #     alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-    #     phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-    #     theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
-        
-    # elif kine_type == "hermite":
-    #     alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-    #     phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-    #     theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
-        
+    # evaluate kinematics file (may be hermite or Fourier file)        
     t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname_kinematics, time=time)
     
     # wing tip in wing coordinate system
@@ -1907,7 +1919,7 @@ def visualize_wing_shape_file(fname, fig=None):
 
     wtype = wabbit_tools.get_ini_parameter(fname, "Wing", "type", str)
     
-    if wtype != "fourier":
+    if wtype != "fourier" and wtype != "linear":
         print(wtype)
         raise ValueError("Not a fourier wing. This function currently only supports a "+
                          "Fourier encoded wing (maybe with bristles)")
@@ -1943,16 +1955,45 @@ def visualize_wing_shape_file(fname, fig=None):
     x0 = wabbit_tools.get_ini_parameter(fname, "Wing", "x0w", float)
     y0 = wabbit_tools.get_ini_parameter(fname, "Wing", "y0w", float)
     
-    a0 = wabbit_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-    ai = wabbit_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-    bi = wabbit_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+    if wtype == "fourier":
+        a0 = wabbit_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+        ai = wabbit_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+        bi = wabbit_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+        
+        # compute outer wing shape (membraneous part)
+        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
+        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+        
+        xc = x0 + np.cos(theta2)*r_fft
+        yc = y0 + np.sin(theta2)*r_fft
+        
+        area = 0.0
+        dtheta = theta2[1]-theta2[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta2.shape[0]):
+            area += dtheta * (r_fft[j]**2 / 2.0)
+        
+        
+        
+    elif wtype == "linear":
+        R_i = wabbit_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
+        theta_i = wabbit_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
+        # theta_i = theta_i * 2.0*np.pi - np.pi
+        theta_i = theta_i - np.pi
     
-    # compute outer wing shape (membraneous part)
-    theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
-    r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+        xc = x0 + np.cos(theta_i)*R_i
+        yc = y0 + np.sin(theta_i)*R_i        
+        
+        area = 0.0
+        dtheta = theta_i[1]-theta_i[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta_i.shape[0]):
+            area += dtheta * (R_i[j]**2 / 2.0)
     
-    xc = x0+np.cos(theta2)*r_fft
-    yc = y0+np.sin(theta2)*r_fft
     
     d = 0.1
     
@@ -1966,7 +2007,7 @@ def visualize_wing_shape_file(fname, fig=None):
     plt.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
     plt.grid()
     plt.legend()
-    plt.title("wing shape visualization: \n"+fname)
+    plt.title("wing shape visualization: \n%s\nA=%f" % (fname, area))
     
     # -------------------------------------------------------------------------
     # bristles (if present)
@@ -1986,6 +2027,91 @@ def visualize_wing_shape_file(fname, fig=None):
     # plt.savefig( fname.replace('.ini','.svg') )
     plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     
+def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37.0, time=None ):
+    """
+    Kinematics model for musca wing with 3 parameters (used for compensation model + 2 parameters, the angle
+    of attack during up an downstroke). 
+
+    Parameters
+    ----------
+    PHI : float, scalar
+        Stroke amplitude
+    phi_m : float, scalar
+        Mean stroke angle
+    dTau : float, scalar
+        Delay parameter of supination/pronation
+    alpha_down : float, scalar, optional
+        Featherng angle during downstroke. The default is 61.0.
+    alpha_up : float, scalar, optional
+        Feathering angle during upstroke. The default is -37.0.
+    time : vector of time, optional
+        Time vector. The default is 1000 samples between 0 and 1.
+    
+
+    Returns
+    -------
+    time, alpha, phi, theta
+    """
+    
+    if time is None:
+        time = np.linspace(0.0, 1.0, endpoint=False, num=1000)
+        
+    # baseline kinematics file
+    fname_baseline = '/home/engels/Documents/Research/Insects/3D/projects/musca_model/kinematics/compensation_model_new_PHImax/kinematics_baseline.ini'
+    
+    # evaluate baseline kinematics
+    time, phi, alpha, theta = eval_angles_kinematics_file(fname_baseline, time=time)
+    
+    # modify phi with input parameters
+    phi = phi - np.mean(phi)
+    phi *= PHI / (np.max(phi)-np.min(phi))
+    phi += phi_m
+    
+    # theta is not modified 
+    theta = theta
+    
+    # alpha is a new function
+    # d_tau is the timing of pronation and supination, which Muijres2016 identified as important parameter in the compensation
+    # degrees
+    alpha_tau  = 0.225 # fixed parameters (rotation duration) upstroke->downstroke
+    alpha_tau1 = 0.200 # downstroke->upstroke
+    
+    T1 = alpha_tau1/2.0
+    T2 = 0.5 - alpha_tau/2.0
+    T3 = T2  + alpha_tau
+    T4 = 1.0 - alpha_tau1/2.0
+    
+    pi = np.pi
+    a  = (alpha_up-alpha_down)/alpha_tau     
+    a1 = (alpha_up-alpha_down)/alpha_tau1   
+    
+    alpha = np.zeros(time.shape)
+   
+    for it, t in enumerate(time):
+        if t < T1:
+            alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
+            
+        elif t>=T1 and t < T2:
+            alpha[it] = alpha_down
+                            
+        elif t>=T2 and t < T3:
+            alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
+            
+        elif t>=T3 and t < T4:
+            alpha[it] = alpha_up
+            
+        elif t >= T4:
+            TT = 1.0-alpha_tau1/2.0
+            alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
+       
+    # this now is the important part that circularily shifts the entire vector. 
+    # it thus changes the "timing of pronation and supination"
+    dt = time[1]-time[0]
+    shift = int( np.round(dTau/dt) )
+    alpha = np.roll(alpha, shift)
+
+    return time, alpha, phi, theta
+
 
 
 

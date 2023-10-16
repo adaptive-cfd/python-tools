@@ -74,7 +74,7 @@ def spectrum1(u):
     # Only consider one half of spectrum (due to symmetry)
     halfDim = int( np.floor(dimMax/2) + 1 )
 
-    k = np.asarray( range(0, halfDim ), dtype=np.float )
+    k = np.asarray( range(0, halfDim ), dtype=float )
     ek = ek[0:halfDim]
 
 
