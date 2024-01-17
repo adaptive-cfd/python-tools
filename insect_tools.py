@@ -22,12 +22,29 @@ def change_figure_dpi(dpi):
     import matplotlib.pyplot as plt
     plt.rcParams['figure.dpi'] = dpi
     
-
+icolor = 0
 def get_next_color(ax=None):
     import matplotlib.pyplot as plt
-    if ax is None:
-        ax = plt.gca()
-    return next(ax._get_lines.prop_cycler)['color']
+    
+    # as of 01/2024, the method below is not available anymore, because PROP_CYCLER
+    # has vannished. This current version is a hack.
+    
+    # if ax is None:
+    #     ax = plt.gca()
+    # return next(ax._get_lines.prop_cycler)['color']
+    
+    global icolor
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    this_color = colors[icolor]
+    icolor += 1
+    if icolor>len(colors)-1:
+        icolor=0
+
+    return this_color
+
+def reset_colorcycle( ax=None ):
+    global icolor
+    icolor = 0
 
 def get_next_marker():
     import itertools
@@ -169,6 +186,7 @@ def deg2rad(value):
 
 # construct a column-vector for math operatrions. I hate python.
 def vct(x):
+    # use the squeeze function in case x is a [3,1] or [1,3]
     v = np.matrix(x)
     v = v[np.newaxis]
     v = v.reshape(len(x),1)
@@ -219,13 +237,7 @@ def write_pointcloud(file, data, header):
     write_csv_file( file, data, header=header, sep=' ')
 
 
-def reset_colorcycle( ax=None ):
-    import matplotlib.pyplot as plt
-    # reset color cycle
-    if ax is None:
-        plt.gca().set_prop_cycle(None)
-    else:
-        ax.set_prop_cycle(None)
+
 
 
 def load_t_file( fname, interp=False, time_out=None, return_header=False,
