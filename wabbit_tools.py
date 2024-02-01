@@ -88,7 +88,7 @@ def check_parameters_for_stupid_errors( file ):
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
     jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int)
-    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int)
+    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
     g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
