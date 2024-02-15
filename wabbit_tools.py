@@ -141,6 +141,12 @@ def check_parameters_for_stupid_errors( file ):
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
+    
+    if geometry == "Insect":
+        h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
+        print('--- insect ----')
+        print('h_wing/dx = %2.2f' % (h_wing/dx))
+    
     print("======================================================================================")
     
     
@@ -528,6 +534,76 @@ def exists_ini_section( inifile, section ):
 
     return found_section
 
+
+def replace_ini_value(file, section, keyword, new_value):
+    """
+    replace ini value: Sets a value in an INI file. Useful for scripting of preprocessing
+    
+
+    Parameters
+    ----------
+    file : string
+        The INI file
+    section : string
+        Parameter file section.
+    keyword : string
+        Actual parameter to set/change.
+    new_value : string
+        The new value. Note we use strings here but WABBIT/FLUSI may interpret the value as number
+
+    Returns
+    -------
+    None.
+
+    """
+    found_section, found_keyword = False, False
+    i = 0
+
+
+    with open(file, 'r') as f:
+        # read a list of lines into data
+        data = f.readlines()
+       
+        
+
+    # loop over all lines
+    for line in data:
+        line = line.lstrip().rstrip()
+        if len(line) > 0:
+            if line[0] != ';':
+                if '['+section+']' in line:
+                    found_section = True
+                    
+                if ';' in line:
+                    line_nocomments = line[0:line.index(';')]
+                else:
+                    line_nocomments = ""
+                
+                    
+                if '[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section:
+                    # left section again
+                    found_section = False         
+                    break
+                    
+                if keyword+'=' in line and found_section:
+                    # found keyword in section
+                    found_keyword = True
+                    old_value = line[ line.index(keyword+"="):line.index(";") ]
+     
+                    line = line.replace(old_value, keyword+'='+new_value)
+                    data[i] = line+'\n'
+                    
+                    print("changed: "+old_value+" to: "+keyword+'='+new_value)
+                    break
+        i += 1
+       
+                    
+    if found_keyword:
+        # .... and write everything back
+        with open(file, 'w') as f:
+            f.writelines( data )
+
+
 #
 def prepare_resuming_backup( inifile ):
     """ we look for the latest *.h5 files
@@ -834,7 +910,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
 
     fid = h5py.File(file,'a')
     dset_id = fid.get( 'blocks' )
-    dset_id.attrs.create( "version", 20200902) # this is used to distinguish wabbit file formats
+    dset_id.attrs.create( "version", 20231602) # this is used to distinguish wabbit file formats
     dset_id.attrs.create('time', time, dtype=dtype)
     dset_id.attrs.create('iteration', iteration)
     dset_id.attrs.create('domain-size', box, dtype=dtype )
@@ -1067,7 +1143,10 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
                      colorbar=True, dpi=300, block_edge_color='k',
                      block_edge_alpha=1.0, shading='auto',
                      colorbar_orientation="vertical",
-                     gridonly_coloring='mpirank', flipud=False, fileContainsGhostNodes=False):
+                     gridonly_coloring='mpirank', flipud=False, 
+                     fileContainsGhostNodes=False, 
+                     filename_png=None,
+                     filename_pdf=None):
     """
     Read and plot a 2D wabbit file. Not suitable for 3D data, use Paraview for that.
     
@@ -1087,7 +1166,13 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
     import matplotlib.patches as patches
     import matplotlib.pyplot as plt
     import h5py
+    
+    if filename_pdf is None:
+        filename_pdf = file.replace('h5','pdf')
+    if filename_png is None:
+        filename_png = file.replace('h5','png')
 
+    
     cb = []
     # read procs table, if we want to draw the grid only
     if gridonly:
@@ -1278,7 +1363,9 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
             cb = plt.colorbar(h[0], ax=ax, orientation=colorbar_orientation)
 
     if title:
-        plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[1],Bs[0]) )
+        # note Bs in the file and Bs in wabbit are different (uniqueGrid vs redundantGrid
+        # definition)
+        plt.title( "t=%f Nb=%i Bs=(%i,%i)" % (time,N,Bs[1]-1,Bs[0]-1) )
 
 
     if not ticks:
@@ -1307,10 +1394,10 @@ def plot_wabbit_file( file, savepng=False, savepdf=False, cmap='rainbow', caxis=
 
     if not gridonly:
         if savepng:
-            plt.savefig( file.replace('h5','png'), dpi=dpi, transparent=True, bbox_inches='tight' )
+            plt.savefig( filename_png, dpi=dpi, transparent=True, bbox_inches='tight' )
 
         if savepdf:
-            plt.savefig( file.replace('h5','pdf'), bbox_inches='tight', dpi=dpi )
+            plt.savefig( filename_pdf, bbox_inches='tight', dpi=dpi )
     else:
         if savepng:
             plt.savefig( file.replace('.h5','-grid.png'), dpi=dpi, transparent=True, bbox_inches='tight' )
@@ -1879,6 +1966,9 @@ def field_shape_to_bs(Nshape, level):
             
     # Note we have to flip  n here because Bs = [BsX, BsY]
     # The order of Bs is choosen like it is in WABBIT.
+    # NB: while this definition is the one from a redundant grid,
+    # it is used the same in the uniqueGrid ! The funny thing is that in the latter
+    # case, we store the 1st ghost node to the H5 file - this is required for visualization.
     return n[::-1]//2**level + 1
 
 

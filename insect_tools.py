@@ -834,36 +834,40 @@ def read_kinematics_file( fname ):
 
 
 
-def visualize_kinematics_file(fname):
+def visualize_kinematics_file(fname, ax=None):
     """ Read an INI file with wingbeat kinematics and plot the 3 angles over the period. Output written to a PDF and PNG file.
     """
 
     import matplotlib.pyplot as plt
+    
+    if ax is None:
+        plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
+        plt.subplots_adjust(bottom=0.16, left=0.14)
+        
+        ax = plt.gca()        
 
     t, phi, alpha, theta = eval_angles_kinematics_file(fname)
 
-    plt.rcParams["text.usetex"] = False
+    # plt.rcParams["text.usetex"] = False
 
-    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
-    plt.subplots_adjust(bottom=0.16, left=0.14)
+    
 
-    plt.plot(t, phi  , label='$\\phi$ (flapping)')
-    plt.plot(t, alpha, label='$\\alpha$ (feathering)')
-    plt.plot(t, theta, label='$\\theta$ (deviation)')
+    ax.plot(t, phi  , label='$\\phi$ (flapping)')
+    ax.plot(t, alpha, label='$\\alpha$ (feathering)')
+    ax.plot(t, theta, label='$\\theta$ (deviation)')
 
-    plt.legend()
-    plt.xlim([0,1])
-    plt.xlabel('$t/T$')
+    ax.legend()
+    ax.set_xlim([0,1])
+    ax.set_xlabel('$t/T$')
         
     # axis y in degree
     from matplotlib.ticker import EngFormatter
-    plt.gca().yaxis.set_major_formatter(EngFormatter(unit="°"))
+    ax.yaxis.set_major_formatter(EngFormatter(unit="°"))
 
-    plt.title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$ $\\phi_\\mathrm{max}=%2.2f^\\circ$ $\\phi_\\mathrm{min}=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi), np.max(phi), np.min(phi)))
+    ax.set_title('$\\Phi=%2.2f^\\circ$ $\\phi_m=%2.2f^\\circ$ $\\phi_\\mathrm{max}=%2.2f^\\circ$ $\\phi_\\mathrm{min}=%2.2f^\\circ$' % (np.max(phi)-np.min(phi), np.mean(phi), np.max(phi), np.min(phi)))
     
-    indicate_strokes()
+    indicate_strokes(ax=ax)
     
-    ax = plt.gca()
     ax.tick_params( which='both', direction='in', top=True, right=True )
     plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
 
@@ -975,7 +979,7 @@ def Rmirror( x0, n):
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
-                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None):
+                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, ax=None):
     """ Lollipop-diagram. visualize the wing chord
     
     give all angles in degree
@@ -991,6 +995,17 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     if not os.path.isfile(fname):
         raise ValueError("The file "+fname+" does not exist.")
+        
+    if ax is None:
+        plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
+        plt.subplots_adjust(bottom=0.16, left=0.14)
+        ax = plt.gca() # we need that to draw lines...
+        
+        # this is a manually set size, which should be the same as what is produced by visualize kinematics file
+        # plt.gcf().set_size_inches([4.71, 2.75] )
+        plt.gcf().set_size_inches([4.0, 3.6] )
+        plt.gcf().subplots_adjust(hspace=0.0, right=0.88, bottom=0.12, left=0.16, top=0.92)
+        
 
     # read kinematics data:
     a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
@@ -1007,20 +1022,12 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     x_pivot_b = vct(x_pivot_b)
     x_body_g  = vct(x_body_g)
 
-
     # body transformation matrix
     M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
-
 
     # rotation matrix from body to stroke coordinate system:
     M_stroke_l = Ry(deg2rad(eta_stroke))
     M_stroke_r = Rx(np.pi)*Ry(deg2rad(eta_stroke))
-
-
-    plt.figure( figsize=(cm2inch(12), cm2inch(7)) )
-    plt.subplots_adjust(bottom=0.16, left=0.14)
-    ax = plt.gca() # we need that to draw lines...
-
 
     # array of color (note normalization to 1 for query values)
     if cmap is None:
@@ -1070,10 +1077,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
             x_te_g = x_tip_g + e_chord * wing_chord/2.0
 
         # mark leading edge with a marker
-        plt.plot( x_le_g[0], x_le_g[2], marker='o', color=colors[i], markersize=4 )
+        ax.plot( x_le_g[0], x_le_g[2], marker='o', color=colors[i], markersize=4 )
 
         # draw wing chord
-        plt.plot( [x_te_g[0,0], x_le_g[0,0]], [x_te_g[2,0], x_le_g[2,0]], '-', color=colors[i])
+        ax.plot( [x_te_g[0,0], x_le_g[0,0]], [x_te_g[2,0], x_le_g[2,0]], '-', color=colors[i])
 
 
     # step 2: draw the path of the wingtip
@@ -1109,7 +1116,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
             xpath[i] = (x_tip_g[0])
             zpath[i] = (x_tip_g[2])
-        plt.plot( xpath, zpath, linestyle='--', color='k', linewidth=1.0 )
+        ax.plot( xpath, zpath, linestyle='--', color='k', linewidth=1.0 )
 
 
     # Draw stroke plane as a dashed line
@@ -1125,16 +1132,13 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
     x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
 
-    plt.ylim([-1, 1])
+    ax.set_ylim([-1, 1])
 
     # remember we're in the x-z plane
     l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
     ax.add_line(l)
 
-    # this is a manually set size, which should be the same as what is produced by visualize kinematics file
-    # plt.gcf().set_size_inches([4.71, 2.75] )
-    plt.gcf().set_size_inches([4.0, 3.6] )
-    plt.gcf().subplots_adjust(hspace=0.0, right=0.88, bottom=0.12, left=0.16, top=0.92)
+
     
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), plt.gca() )
@@ -1145,7 +1149,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         plt.text(x0+meanflow[0]*1.4, y0+meanflow[2]*1.4, '$u_\infty$' )
 
     if reverse_x_axis:
-        plt.gca().invert_xaxis()
+        ax.invert_xaxis()
         
     if colorbar:
         sm = plt.cm.ScalarMappable( cmap=cmap, norm=plt.Normalize(vmin=0,vmax=1) )
@@ -1899,7 +1903,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
     
   
     
-def visualize_wing_shape_file(fname, fig=None):
+def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -1933,12 +1937,15 @@ def visualize_wing_shape_file(fname, fig=None):
     
     if wtype != "fourier" and wtype != "linear":
         print(wtype)
-        raise ValueError("Not a fourier wing. This function currently only supports a "+
-                         "Fourier encoded wing (maybe with bristles)")
+        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
+                         "Fourier or linear encoded wing (maybe with bristles)")
     
     # open the new figure:
-    if fig is None:
+    if fig is None and ax is None:
         fig = plt.figure()    
+        
+    if ax is None:
+        ax = plt.gca()
         
     # -------------------------------------------------------------------------
     # damage (if present)
@@ -1959,14 +1966,15 @@ def visualize_wing_shape_file(fname, fig=None):
         x1, x2 = np.linspace(bbox[0], bbox[1], num=n2, endpoint=True), np.linspace(bbox[2], bbox[3], num=n1, endpoint=True)
         X, Y = np.meshgrid(x2, x1)
         
-        plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')
-        
-        
-    
+        plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')    
         
     x0 = wabbit_tools.get_ini_parameter(fname, "Wing", "x0w", float)
     y0 = wabbit_tools.get_ini_parameter(fname, "Wing", "y0w", float)
     
+    
+    #--------------------------------------------------------------------------
+    # planform (contour)
+    #--------------------------------------------------------------------------
     if wtype == "fourier":
         a0 = wabbit_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
         ai = wabbit_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
@@ -1985,9 +1993,7 @@ def visualize_wing_shape_file(fname, fig=None):
         # the formula is: 
         # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
         for j in np.arange(theta2.shape[0]):
-            area += dtheta * (r_fft[j]**2 / 2.0)
-        
-        
+            area += dtheta * (r_fft[j]**2 / 2.0)        
         
     elif wtype == "linear":
         R_i = wabbit_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
@@ -2006,20 +2012,20 @@ def visualize_wing_shape_file(fname, fig=None):
         for j in np.arange(theta_i.shape[0]):
             area += dtheta * (R_i[j]**2 / 2.0)
     
-    
+    # draw rotation axis a bit longer than the wing
     d = 0.1
     
     # plots wing outline
-    plt.plot( xc, yc, 'r-', label='wing')
+    ax.plot( xc, yc, 'r-', label='wing')
     
-    plt.axis('equal')
+    ax.axis('equal')
     
     # plot the rotation axes
-    plt.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
-    plt.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
-    plt.grid()
-    plt.legend()
-    plt.title("wing shape visualization: \n%s\nA=%f" % (fname, area))
+    ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
+    ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
+    ax.grid()
+    ax.legend()
+    ax.set_title("wing shape visualization: \n%s\nA=%f" % (fname, area))
     
     # -------------------------------------------------------------------------
     # bristles (if present)
@@ -2030,14 +2036,15 @@ def visualize_wing_shape_file(fname, fig=None):
         bristles_coords = wabbit_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
         print(bristles_coords.shape)
         for j in range( bristles_coords.shape[0]):
-            plt.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
-            
-            
+            ax.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
     
-        
+    # -------------------------------------------------------------------------
+    # save to image file
+    # -------------------------------------------------------------------------
     # plt.savefig( fname.replace('.ini','.pdf') )
     # plt.savefig( fname.replace('.ini','.svg') )
-    plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
+    if savePNG:
+        plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     
 def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37.0, time=None ):
     """

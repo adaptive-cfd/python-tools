@@ -65,9 +65,7 @@ for line in data:
                 print("changed: "+old_value+" to: "+keyword+'='+new_value)
                 break
     i += 1
-                
-    
-    
+   
                 
 if found_keyword:
     # .... and write everything back
