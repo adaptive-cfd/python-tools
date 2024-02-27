@@ -87,7 +87,7 @@ def check_parameters_for_stupid_errors( file ):
         g_default = 1
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
-    jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int)
+    jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int, default=1)
     adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
@@ -904,7 +904,7 @@ def write_wabbit_hdf5( file, time, x0, dx, box, data, treecode, iteration = 0, d
     fid.create_dataset( 'coords_origin', data=x0, dtype=dtype )
     fid.create_dataset( 'coords_spacing', data=dx, dtype=dtype )
     fid.create_dataset( 'blocks', data=data, dtype=dtype )
-    fid.create_dataset( 'block_treecode', data=treecode, dtype=dtype )
+    fid.create_dataset( 'block_treecode', data=treecode, dtype=int )
 
     fid.close()
 
@@ -1062,11 +1062,12 @@ def plot_wabbit_dir(d, **kwargs):
 
 # given a treecode tc, return its level
 def treecode_level( tc ):
-    for j in range(len(tc)):
-            if (tc[j]==-1):
-                break
-
-    level = j - 1 + 1 # note one-based level indexing.
+    level = 0
+    for k in range(len(tc)):        
+        if (tc[k] >= 0):
+            level += 1
+        else:
+            break
     return(level)
 
 
@@ -1078,8 +1079,9 @@ def get_max_min_level( treecode ):
     max_level = -99
     N = treecode.shape[0]
     for i in range(N):
-        tc = treecode[i,:].copy()
+        tc = np.asarray( treecode[i,:].copy(), dtype=int)
         level = treecode_level(tc)
+
         min_level = min([min_level,level])
         max_level = max([max_level,level])
 
@@ -1534,8 +1536,8 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
         time1, x01, dx1, box1, data1, treecode1 = read_wabbit_hdf5( fname_ref )
         time2, x02, dx2, box2, data2, treecode2 = read_wabbit_hdf5( fname_dat )
     
-        data1, box1 = dense_matrix( x01, dx1, data1, treecode1, 2 )
-        data2, box2 = dense_matrix( x02, dx2, data2, treecode2, 2 )
+        data1, box1 = dense_matrix( x01, dx1, data1, treecode1, dim )
+        data2, box2 = dense_matrix( x02, dx2, data2, treecode2, dim )
         
         if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
            raise ValueError("ERROR! Both fields are not a the same resolution")
@@ -1694,7 +1696,7 @@ def dense_matrix(  x0, dx, data, treecode, dim=2, verbose=True, new_format=False
 
 
         # domain size
-        box = [ddx[0]*nx[0], ddx[1]*nx[1], ddx[2]*nx[2]]
+        box = np.asarray([ddx[0]*nx[0], ddx[1]*nx[1], ddx[2]*nx[2]])
 
         for i in range(N):
             # get starting index of block
@@ -1869,7 +1871,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     if (type(Bs) is int):
         Bs = [Bs]*Ndim
-        
+           
     # 2) check if number of lattice points is block decomposable
     # loop over all dimensions
     for d in range(Ndim):
@@ -1888,7 +1890,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     #########################################################
 
     # assume periodicity:
-    data = np.zeros(Nsize+1,dtype=dtype)
+    data = np.zeros(Nsize+1, dtype=dtype)
     if Ndim == 2:
         data[:-1, :-1] = ddata
         # copy first row and column for periodicity
@@ -1918,27 +1920,30 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     x0.append([ibx, iby, ibz]*Lintervals)
                     dx.append(Lintervals/(Bs-1))
 
-                    lower = [ibx, iby, ibz]* (Bs - 1)
+                    # lower = [ibx, iby, ibz]* (Bs - 1)
+                    lower = [ibx, iby, ibz]* (Bs-1)
                     lower = np.asarray(lower, dtype=int)
                     upper = lower + Bs
 
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
-                    bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
+                    bdata.append( data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]] )
     else:
         for ibx in range(Nintervals[0]):
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
+                
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
+                
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
-                bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
+                bdata.append( data[lower[0]:upper[0], lower[1]:upper[1]] )
 
 
-    x0 = np.asarray(x0,dtype=dtype)
-    dx = np.asarray(dx,dtype=dtype)
-    treecode = np.asarray(treecode, dtype=dtype)
+    x0 = np.asarray(x0, dtype=dtype)
+    dx = np.asarray(dx, dtype=dtype)
+    treecode   = np.asarray(treecode, dtype=int)
     block_data = np.asarray(bdata, dtype=dtype)
 
     write_wabbit_hdf5(fname, time, x0, dx, box, block_data, treecode, iteration, dtype )
