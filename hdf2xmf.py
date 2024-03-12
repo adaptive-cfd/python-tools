@@ -74,6 +74,7 @@ def uniquelist( l ):
 
 def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory):
     import numpy as np
+    import wabbit_tools
     
     print('-------------------------')
     print('- WABBIT module         -')
@@ -128,7 +129,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             f = h5py.File(file)
             dset_id = f.get('blocks')
             Nb = dset_id.shape[0]
-            print("timestamp "+timestamps[i]+" has Nb=%i blocks" % (Nb) )
+            treecode = wabbit_tools.read_treecode_hdf5(file)
+            Jmin, Jmax = wabbit_tools.get_max_min_level( treecode )
+            print("timestamp "+timestamps[i]+" has Nb=%i blocks J=(%i,%i)" % (Nb, Jmin, Jmax) )
             
             b = f['coords_origin'][:]
             x0 = np.array(b, dtype=float)
