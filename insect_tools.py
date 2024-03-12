@@ -1146,7 +1146,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     if meanflow is not None:
         x0, y0 = 0.0, 0.0
         plt.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
-        plt.text(x0+meanflow[0]*1.4, y0+meanflow[2]*1.4, '$u_\infty$' )
+        plt.text(x0+meanflow[0]*1.4, y0+meanflow[2]*1.4, '$u_\\infty$' )
 
     if reverse_x_axis:
         ax.invert_xaxis()
@@ -1375,151 +1375,149 @@ def make_white_plot( ax ):
 
 
 
-def hit_analysis():
-    import glob
-
-    # Take all analyis files from ./flusi --turbulence-analysis and put all
-    # data in one csv file
-
-    showed_header=False
-
-    fid = open('complete_analysis.csv', 'w')
-
-    for file in sorted( glob.glob('analysis_*.txt') ):
-        print(file)
-        # read entire file to list of lines
-        with open (file, "r") as myfile:
-            data = myfile.readlines()
-
-        # remove header lines
-        del data[0:2+1]
-        del data[1]
-
-        # fetch viscosity from remaining header
-        header = data[0].split()
-        nu = float(header[7])
-
-        if not showed_header:
-            showed_header = True
-            # write header
-            fid.write('name;')
-            for line in data[1:]:
-                fid.write("%15s; " % (line[20:-1]))
-            fid.write('viscosity;\n')
-
-        # read remaining data items
-        fid.write("%s; " % (file))
-        for line in data[1:]:
-            fid.write("%e; " % (float(line[0:20])))
-
-        fid.write("%e;" % (nu) )
-        fid.write("\n")
-
-    fid.close()
-
-
-def plot_a_col( data, col ):
-    D = stroke_average_matrix( data, tstroke=0.5 )
-    plt.plot( data[:,0], data[:,col] )
-    plt.plot( D[:,0], D[:,col], linestyle='None', marker='o', markerfacecolor='none', color=h[-1].get_color())
-
-
-
-def forces_g2b( data, kinematics ):
-    """ Transform timeseries data (forces.t) to body system defined by kinematics.t
-    """
-
-    # they are not necessarily at the same times t -> interpolation
-    time = data[:,0]
-
-    # interpolate kinematics to data time vector
-    k = interp_matrix( kinematics, time )
-    psi = k[:,4]
-    beta  = k[:,5]
-    gamma  = k[:,6]
-
-    data_new = data.copy()
-
-    for it in range(data.shape[0]):
-        M_body = Rx(psi[it]) * Ry(beta[it]) * Rz(gamma[it])
-        # forces
-        Fg = vct( [data[it,1], data[it,2], data[it,3]] )
-        Fb = M_body*Fg
-        data_new[it,1:3+1] = Fb.transpose()
-
-        # moments, if present
-        if data.shape[1] >= 10:
-            Mg = vct( [data[it,7],data[it,8],data[it,9]] )
-            Mb = M_body*Mg
-            data_new[it,7:9+1] = Mb.transpose()
-
-        # unsteady corrections (rarely used)
-        if data.shape[1] >= 6:
-            Fg = vct( [data[it,4],data[it,5],data[it,6]] )
-            Fb = M_body*Fg
-            data_new[it,4:6+1] = Fb.transpose()
-
-        if data.shape[1] >= 12:
-            Mg = vct( [data[it,10],data[it,11],data[it,12]] )
-            Mb = M_body*Mg
-            data_new[it,10:12+1] = Mb.transpose()
-
-    return(data_new)
-
-
-def forces_g2wr( data, kinematics ):
-    """ Transform timeseries data (forces.t) to right wing system defined by kinematics.t
+def insectSimulation_postProcessing( run_directory='./', output_filename='data_wingsystem.csv', plot=True, filename_plot='forcesMoments_wingSystem.pdf' ):
+    """ 
+    Post-Processes an existing insect simulation done with WABBIT.
+    
+    Reads the forces_XXwing.t, moments_XX_wing.t and kinematics.t (XX=left/right)
+    and computes the forces and moments in the respective wing reference frame.
+    
+    Output is saved to CSV file and ploted to PDF file.
     """
     import numpy as np
+    import glob
+    import wabbit_tools
+    
+    # avoid silly mistakes and be sure there is a slash at the end of the string
+    run_directory += '/'
+ 
+    # indices [zero-based] in kinematics.t:
+    # 0	time
+    # 1	xc_body_g_x
+    # 2	xc_body_g_y
+    # 3	xc_body_g_z
+    # 4	psi
+    # 5	beta
+    # 6	gamma
+    # 7	eta_stroke
+    # 8	alpha_l
+    # 9	phi_l
+    # 10	theta_l
+    # 11	alpha_r
+    # 12	phi_r
+    # 13	theta_r    
+    # 14	rot_rel_l_w_x
+    # 15	rot_rel_l_w_y
+    # 16	rot_rel_l_w_z    
+    # 17	rot_rel_r_w_x
+    # 18	rot_rel_r_w_y
+    # 19	rot_rel_r_w_z   
+    # 20	rot_dt_l_w_x
+    # 21	rot_dt_l_w_y
+    # 22	rot_dt_l_w_z    
+    # 23	rot_dt_r_w_x
+    # 24	rot_dt_r_w_y
+    # 25	rot_dt_r_w_z
+    k = load_t_file( run_directory+'kinematics.t' )
+    
+    # works only for two winged insects at the moment
+    if (k.shape[1] > 26):
+        raise ValueError("This kinematics.t file appears to be for a 4-winged insect, not yet implemented")
 
-    # they are not necessarily at the same times t -> interpolation
-    time = data[:,0]
-
-    # interpolate kinematics to data time vector
-    k = interp_matrix( kinematics, time )
-
+    time    = k[:,0]
     psi     = k[:,4]
     beta    = k[:,5]
     gamma   = k[:,6]
-    eta_stroke = k[:,7]
+    eta_stroke = k[:,7]    
+    alpha_l    = k[:,8]
+    phi_l      = k[:,9]
+    theta_l    = k[:,10]    
     alpha_r    = k[:,11]
     phi_r      = k[:,12]
     theta_r    = k[:,13]
+    
+    forces_R  = load_t_file( run_directory+'forces_rightwing.t' )
+    forces_L  = load_t_file( run_directory+'forces_leftwing.t'  )    
+    moments_R = load_t_file( run_directory+'moments_rightwing.t')
+    moments_L = load_t_file( run_directory+'moments_leftwing.t' )
 
-    data_new = data.copy()
-
-    for it in range(data.shape[0]):
-
+    data_new = np.zeros( [k.shape[0], 13] )
+    
+    for it in range(k.shape[0]):
+        data_new[it, 0] = time[it]
+        
+        #--- body rotation matrix
         M_body = Rx(psi[it])*Ry(beta[it])*Rz(gamma[it])
-        # rotation matrix from body to stroke coordinate system:
+        
+        #--- rotation matrix from body to stroke coordinate system:
+        M_stroke_l = Ry(eta_stroke[it])
         M_stroke_r = Rx(np.pi)*Ry(eta_stroke[it])
-
-        # rotation matrix from body to wing coordinate system
+       
+        #--- rotation matrix from body to wing coordinate system
         M_wing_r = Ry(-alpha_r[it])*Rz(+theta_r[it])*Rx(-phi_r[it])*M_stroke_r
+        M_wing_l = Ry(+alpha_l[it])*Rz(+theta_l[it])*Rx(+phi_l[it])*M_stroke_l
+
+        #--- right wing
+        F = M_wing_r*M_body * vct( [forces_R[it,1], forces_R[it,2], forces_R[it,3]] )
+        M = M_wing_r*M_body * vct( [moments_R[it,1], moments_R[it,2], moments_R[it,3]] )
+
+        data_new[it,1], data_new[it,2], data_new[it,3] = F[0], F[1], F[2]
+        data_new[it,4], data_new[it,5], data_new[it,6] = M[0], M[1], M[2]
+        
+        #--- left wing
+        F = M_wing_l*M_body * vct( [forces_L[it,1], forces_L[it,2], forces_L[it,3]] )
+        M = M_wing_l*M_body * vct( [moments_L[it,1], moments_L[it,2], moments_L[it,3]] )
+        
+        data_new[it,1+6], data_new[it,2+6], data_new[it,3+6] = F[0], F[1], F[2]
+        data_new[it,4+6], data_new[it,5+6], data_new[it,6+6] = M[0], M[1], M[2]
 
 
-        # usual forces
-        Fg = vct( [data[it,1],data[it,2],data[it,3]] )
-#        Mg = vct( [data[it,7],data[it,8],data[it,9]] )
-
-        Fb = M_wing_r*M_body*Fg
-#        Mb = M_wing_r*M_body*Mg
-
-        data_new[it,1:3+1] = Fb.transpose()
-#        data_new[it,7:9+1] = Mb.transpose()
-#
-#        # unsteady corrections (rarely used)
-#        Fg = vct( [data[it,4],data[it,5],data[it,6]] )
-#        Mg = vct( [data[it,10],data[it,11],data[it,12]] )
-#
-#        Fb = M_wing_r*M_body*Fg
-#        Mb = M_wing_r*M_body*Mg
-#
-#        data_new[it,4:6+1] = Fb.transpose()
-#        data_new[it,10:12+1] = Mb.transpose()
-
-    return(data_new)
-
+    #--- save output to CSV file
+    if not output_filename is None:
+        fid = open( output_filename, 'w' ) #open file, erase existing
+        for it in range(k.shape[0]):
+            for j in range(13-1):
+                fid.write('%e;' % (data_new[it,j]))
+            fid.write('%e\n' % (data_new[it,-1]))
+        fid.close()
+    
+    
+    #--- create and save a plot
+    if plot:
+        d = data_new
+        import matplotlib.pyplot as plt    
+        
+        plt.figure()
+        plt.subplot(2,2,2)
+        plt.plot(d[:,0], d[:,1], label='$F_{R,x}^{(w)}$')
+        plt.plot(d[:,0], d[:,2], label='$F_{R,y}^{(w)}$')
+        plt.plot(d[:,0], d[:,3], label='$F_{R,z}^{(w)}$')
+        indicate_strokes()
+        plt.legend()
+        
+        plt.subplot(2,2,4)
+        plt.plot(d[:,0], d[:,4], label='$M_{R,x}^{(w)}$')
+        plt.plot(d[:,0], d[:,5], label='$M_{R,y}^{(w)}$')
+        plt.plot(d[:,0], d[:,6], label='$M_{R,z}^{(w)}$')
+        indicate_strokes()
+        plt.legend()
+        
+        plt.subplot(2,2,1)
+        plt.plot(d[:,0], d[:,7], label='$F_{L,x}^{(w)}$')
+        plt.plot(d[:,0], d[:,8], label='$F_{L,y}^{(w)}$')
+        plt.plot(d[:,0], d[:,9], label='$F_{L,z}^{(w)}$')
+        indicate_strokes()
+        plt.legend()
+        
+        plt.subplot(2,2,3)
+        plt.plot(d[:,0], d[:,10], label='$M_{L,x}^{(w)}$')
+        plt.plot(d[:,0], d[:,11], label='$M_{L,y}^{(w)}$')
+        plt.plot(d[:,0], d[:,12], label='$M_{L,z}^{(w)}$')
+        indicate_strokes()
+        plt.legend()
+        plt.gcf().set_size_inches([10,10])
+        plt.tight_layout()
+        plt.savefig( run_directory+filename_plot)
 
 
 def read_flusi_HDF5( fname, dtype=np.float64):
