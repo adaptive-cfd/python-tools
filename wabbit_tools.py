@@ -16,6 +16,47 @@ class bcolors:
         ENDC = '\033[0m'
         BOLD = '\033[1m'
         UNDERLINE = '\033[4m'
+        
+        
+def find_WABBIT_main_inifile(run_directory='./'):
+    """
+    find_WABBIT_main_inifile: In a folder, there are usually several INI files,
+    one of which describes the simulation (this is the main one) and others (wing shape, etc).
+    This routine figures out the main INI file in a folder.
+
+    Parameters
+    ----------
+    run_directory : string
+        Path of the simulation
+
+    Raises
+    ------
+    ValueError
+        If none is found, error is raised.
+
+    Returns
+    -------
+    inifile : TYPE
+        If found, this is the main INI file.
+
+    """
+    import glob
+    
+    found_main_inifile = False
+    for inifile in glob.glob( run_directory+"/*.ini" ):
+        section1 = exists_ini_section(inifile, 'Blocks')
+        section2 = exists_ini_section(inifile, 'Insects')
+        
+        # if we find both sections, we likely found the INI file
+        if section1 and section2:
+            found_main_inifile = True
+            print('Found simulations main INI file: '+inifile)
+            return inifile
+        
+    if not found_main_inifile:
+        raise ValueError("Did not find simulations main INI file - unable to proceed")
+        
+        
 
 def warn( msg ):
     print( bcolors.WARNING + "WARNING! " + bcolors.ENDC + msg)
@@ -1799,7 +1840,7 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
     files.sort()
     for file in files:
 
-        fname_wabbit = dir_wabbit + "/" + re.split("_\d+.h5",os.path.basename(file))[0]
+        fname_wabbit = dir_wabbit + "/" + re.split("_\\d+.h5",os.path.basename(file))[0]
 
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
 
