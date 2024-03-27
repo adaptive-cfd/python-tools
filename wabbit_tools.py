@@ -135,9 +135,11 @@ def check_parameters_for_stupid_errors( file ):
     g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
     g_rhs           = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes_rhs', int, default=g)
     dealias         = get_ini_parameter(file, 'Blocks', 'force_maxlevel_dealiasing', int)
+    Neqn            = get_ini_parameter(file, 'Blocks', 'number_equations', int)
     dim             = get_ini_parameter(file, 'Domain', 'dim', int)
     L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
     discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
+    physics_type    = get_ini_parameter(file, 'Physics', 'physics_type', str)
     time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
     CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
@@ -190,16 +192,20 @@ def check_parameters_for_stupid_errors( file ):
     
     print("======================================================================================")
     
+    if physics_type == 'ACM-new' and dim == 3 and Neqn != 4:
+        err("For 3D ACM, you MUST set number_equations=4 (ux,uy,uz,p)")
+        
+    if physics_type == 'ACM-new' and dim == 2 and Neqn != 3:
+        err("For 2D ACM, you MUST set number_equations=3 (ux,uy,p)")
     
     if len(bs) > 1:
         bs = bs[0]
 
-    if bs % 2 == 0:
-        warn('The block size is bs=%i which is an EVEN number.' % (bs) )
+    if bs % 2 != 0:
+        warn('The block size is bs=%i which is an ODD number.' % (bs) )
 
     if bs < 3:
-        warn('The block size is bs=%i is very small or even negative.' % (bs) )
-        
+        warn('The block size is bs=%i is very small or even negative.' % (bs) )        
           
     if (wavelet == "CDF22") and g<3:
         warn("Not enough ghost nodes for wavelet %s g=%i < 3" % (wavelet, g) )

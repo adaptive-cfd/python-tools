@@ -1436,10 +1436,25 @@ def insectSimulation_postProcessing( run_directory='./', output_filename='data_w
     phi_r      = k[:,12]
     theta_r    = k[:,13]
     
-    forces_R  = load_t_file( run_directory+'forces_rightwing.t' )
-    forces_L  = load_t_file( run_directory+'forces_leftwing.t'  )    
-    moments_R = load_t_file( run_directory+'moments_rightwing.t')
-    moments_L = load_t_file( run_directory+'moments_leftwing.t' )
+    import os
+    
+    forces_R = np.zeros(k.shape)
+    forces_L = np.zeros(k.shape)
+    moments_R = np.zeros(k.shape)
+    moments_L = np.zeros(k.shape)
+    
+    
+    if os.path.isfile(run_directory+'forces_rightwing.t'):    
+        forces_R  = load_t_file( run_directory+'forces_rightwing.t' )        
+        
+    if os.path.isfile(run_directory+'forces_leftwing.t'):    
+        forces_L  = load_t_file( run_directory+'forces_leftwing.t'  )    
+        
+    if os.path.isfile(run_directory+'moments_rightwing.t'):            
+        moments_R = load_t_file( run_directory+'moments_rightwing.t')
+        
+    if os.path.isfile(run_directory+'moments_leftwing.t'):    
+        moments_L = load_t_file( run_directory+'moments_leftwing.t' )
 
     data_new = np.zeros( [k.shape[0], 13] )
     
