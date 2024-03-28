@@ -326,11 +326,13 @@ def RKC_coefficients( s, eps=10.0 ):
     return mu, mu_tilde, nu, gamma_tilde, c, eps
 
 
-def RKC_stability_map( s=4, eps=10.0, fig=None, color='k' ):
+def RKC_stability_map( s=4, eps=10.0, color='k', ax=None ):
     """
     Plot a stability map of an RKC scheme with given parameters
     in a given figure (or open new figure)
     """
+    import matplotlib.pyplot as plt
+    
     s = np.float64(s)
     eps = np.float64(eps)
 
@@ -368,16 +370,15 @@ def RKC_stability_map( s=4, eps=10.0, fig=None, color='k' ):
     Ts = cheby_first_kind( s, w0 + w1*z )
     # this if the growth rate (<1 means stable)
     Pj = np.abs( aj + bj*Ts )
+    
+    if ax is None:
+        ax = plt.gca()
+
+    ax.contourf(RE, IM, Pj, levels=[0.0, 1.0], colors=color, alpha=0.25)
+    ax.contour(RE, IM, Pj, levels=[1.0], colors=color)
 
 
-    if fig is None:
-        fig = plt.figure()
-
-    fig.gca().contourf(RE, IM, Pj, levels=[0.0, 1.0], colors=color, alpha=0.25)
-    fig.gca().contour(RE, IM, Pj, levels=[1.0], colors=color)
-
-
-def RK4_stability_map( fig=None, **kwargs  ):
+def RK4_stability_map( ax=plt.gca()  ):
     """
     plot the stability map for a conventional RK4 scheme
     """
@@ -391,11 +392,7 @@ def RK4_stability_map( fig=None, **kwargs  ):
     # this if the growth rate (<1 means stable)
     Pj = np.abs(  1 + z + 0.5*z**2 +(1/6)*z**3 + (1/24)*z**4 )
 
-
-    if fig is None:
-        fig = plt.figure()
-
-    fig.gca().contour(RE, IM, Pj, levels=[1.0], **kwargs)
+    ax.contour(RE, IM, Pj, levels=[1.0])
 
 def EE1_stability_map( fig=None, **kwargs ):
     """
@@ -504,7 +501,7 @@ def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
 
     return dt
 
-def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False ):
+def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca() ):
     """
     Given operator eigenvalues, select best stable RKC scheme.
 
@@ -621,12 +618,13 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False ):
     print(';-------------------')
 
     if plot:
-        RKC_stability_map(s_best, eps_best)
-        RK4_stability_map( fig=plt.gcf() )
-        plt.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
-        plt.title('s=%i eps=%f Cost=%i NRHS/T' % (s_best, eps_best, s_best/dt))
-        # plt.xlim([np.min(np.real(eigenvalues)), np.max(np.real(eigenvalues))])
-        # plt.ylim([np.min(np.imag(eigenvalues)), np.max(np.imag(eigenvalues))])
+        RKC_stability_map(s_best, eps_best, ax=ax)
+        RK4_stability_map( ax=ax )
+        ax.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
+        ax.set_title('s=%i eps=%2.2f Cost=%i NRHS/T' % (s_best, eps_best, s_best/dt))
+        
+        ax.set_xlim([2.0*np.min(np.real(eigenvalues)), 2.0* np.max(np.real(eigenvalues))])
+        ax.set_ylim([2.0*np.min(np.imag(eigenvalues)), 2.0* np.max(np.imag(eigenvalues))])
 
     return s_best, eps_best
 
