@@ -8,6 +8,8 @@ Created on Mon Jun 15 13:53:26 2020
 
 import glob
 import numpy as np
+import sys, os
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import insect_tools
 import argparse
 

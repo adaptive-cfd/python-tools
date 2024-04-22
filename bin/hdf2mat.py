@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # I really hate python already:
 from __future__ import print_function
-import glob, os
+import glob, os, sys
 import h5py
 import argparse
 import numpy as np
 from scipy.io import savemat
-from wabbit_tools import read_wabbit_hdf5
-from wabbit_tools import dense_matrix
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import wabbit_tools, wabbit_dense_error_tools
 import shutil
 
 
@@ -117,8 +117,13 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             if (ierr > 0):
                 warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. export PATH=$PATH:/path/to/wabbit/" )
                 return 0
-            time, x0, dx, box, data, treecode = read_wabbit_hdf5( file_dense )
-            data_dense, box_dense = dense_matrix( x0, dx, data, treecode, dim )
+            w_obj = wabbit_tools.WabbitState()
+            w_obj.read(file_dense)
+            x0 = w_obj.coords_origin
+            dx = w_obj.coords_spacing
+            data = w_obj.blocks
+            treecode = w_obj.block_treecode
+            data_dense, box_dense = wabbit_dense_error_tools.dense_matrix( x0, dx, data, treecode, dim )
             data_tmp.append(data_dense)
             if os.path.isfile(file_dense):
                 os.remove(file_dense)

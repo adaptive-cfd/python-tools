@@ -88,10 +88,10 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
     # get the dataset handle
     dset_id = f.get('blocks')
     
-    
-    
-
     res = dset_id.shape
+
+    # close file
+    f.close()
 
     if (len(res) == 3):
         # ------------------------------------------------------
@@ -137,6 +137,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             x0 = np.array(b, dtype=float)
             b = f['coords_spacing'][:]
             dx = np.array(b, dtype=float)
+
+            # close file
+            f.close()
 
             # all blocks for this timestep
             for b  in range(Nb):
@@ -243,6 +246,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             b = f['coords_spacing'][:]
             dx = np.array(b, dtype=float)
 
+            # close file
+            f.close()
+
             # all blocks for this timestep
             for b  in range(Nb):
                 fid.write('          <!-- ***************************************************************** -->\n')
@@ -345,6 +351,9 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             origin = dset_id.attrs.get('origin')
             if origin is None or args.ignore_origin:
                 origin = [0.0, 0.0, 0.0]
+
+            # close file
+            f.close()
 
             nnx.append(res[0])
             nny.append(res[1])
