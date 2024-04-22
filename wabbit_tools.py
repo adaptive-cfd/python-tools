@@ -90,7 +90,7 @@ class WabbitState:
             print(f"Reading {read_var} of file= {file}")
         fid = h5py.File(file,'r')
         dset_id = fid.get('blocks')
-        
+
         # read attributes - always read all attributes
         self.version = dset_id.attrs.get('version', default=[None])[0]
         self.periodic_BC = dset_id.attrs.get('periodic_BC')
@@ -109,7 +109,7 @@ class WabbitState:
         if read_var in ["coords_spacing", "all", "meta"]:
             self.coords_spacing = np.array(fid['coords_spacing'][:])
         if read_var in ["blocks", "all"]:
-            self.blocks = np.array(fid['blocks'])
+            self.blocks = np.array(fid['blocks'], dtype=np.float64)
         if read_var in ["refinement_status", "all", "meta"]:
             self.refinement_status = np.array(fid['refinement_status'])
         if read_var in ["procs", "all", "meta"]:
@@ -199,17 +199,17 @@ class WabbitState:
         fid = h5py.File( file, 'w')
 
         # those are necessary for wabbit
-        fid.create_dataset( 'blocks', data=self.blocks)
-        fid.create_dataset( 'block_treecode_num', data=self.block_treecode_num)
-        fid.create_dataset( 'level', data=self.level)
+        fid.create_dataset( 'blocks', data=self.blocks, dtype=np.float64)
+        fid.create_dataset( 'block_treecode_num', data=self.block_treecode_num, dtype=np.int64)
+        fid.create_dataset( 'level', data=self.level, dtype=np.int32)
 
         # those are optional and not read in from wabbit
-        fid.create_dataset( 'coords_origin', data=self.coords_origin)
-        fid.create_dataset( 'coords_spacing', data=self.coords_spacing)
-        fid.create_dataset( 'block_treecode', data=self.block_treecode)
-        fid.create_dataset( 'refinement_status', data=self.refinement_status)
-        fid.create_dataset( 'procs', data=self.procs)
-        fid.create_dataset( 'lgt_ids', data=self.lgt_ids)
+        fid.create_dataset( 'coords_origin', data=self.coords_origin, dtype=np.float64)
+        fid.create_dataset( 'coords_spacing', data=self.coords_spacing, dtype=np.float64)
+        fid.create_dataset( 'block_treecode', data=self.block_treecode, dtype=np.int32)
+        fid.create_dataset( 'refinement_status', data=self.refinement_status, dtype=np.int32)
+        fid.create_dataset( 'procs', data=self.procs, dtype=np.int32)
+        fid.create_dataset( 'lgt_ids', data=self.lgt_ids, dtype=np.int32)
 
         fid.close()
 
@@ -217,16 +217,16 @@ class WabbitState:
         # those are necessary for wabbit
         fid = h5py.File(file,'a')
         dset_id = fid.get( 'blocks' )
-        dset_id.attrs.create( "version", [20240410]) # this is used to distinguish wabbit file formats
-        dset_id.attrs.create( "block-size", self.block_size+1) # this is used to distinguish wabbit file formats
-        dset_id.attrs.create('time', [self.time])
-        dset_id.attrs.create('iteration', [self.iteration])
-        dset_id.attrs.create('max_level', [self.max_level])
-        dset_id.attrs.create('dim', [self.dim])
-        dset_id.attrs.create('domain-size', self.domain_size)
-        dset_id.attrs.create('total_number_blocks', [self.total_number_blocks] )
-        dset_id.attrs.create('periodic_BC', self.periodic_BC)
-        dset_id.attrs.create('symmetry_BC', self.symmetry_BC)
+        dset_id.attrs.create( "version", [20240410], dtype=np.int32) # this is used to distinguish wabbit file formats
+        dset_id.attrs.create( "block-size", self.block_size+1, dtype=np.int32) # this is used to distinguish wabbit file formats
+        dset_id.attrs.create('time', [self.time], dtype=np.float64)
+        dset_id.attrs.create('iteration', [self.iteration], dtype=np.int32)
+        dset_id.attrs.create('max_level', [self.max_level], dtype=np.int32)
+        dset_id.attrs.create('dim', [self.dim], dtype=np.int32)
+        dset_id.attrs.create('domain-size', self.domain_size, dtype=np.float64)
+        dset_id.attrs.create('total_number_blocks', [self.total_number_blocks], dtype=np.int32)
+        dset_id.attrs.create('periodic_BC', self.periodic_BC, dtype=np.int32)
+        dset_id.attrs.create('symmetry_BC', self.symmetry_BC, dtype=np.int32)
 
         # those are optional and not read in from wabbit
         # currently none
