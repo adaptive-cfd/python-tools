@@ -76,7 +76,7 @@ def dense_matrix(  x0, dx, data, level, dim=2, verbose=True, new_format=False ):
 
 
         # domain size
-        box = [ddx[0]*nx[0], ddx[1]*nx[1], ddx[2]*nx[2]]
+        box = np.asarray([ddx[0]*nx[0], ddx[1]*nx[1], ddx[2]*nx[2]])
 
         for i in range(N):
             # get starting index of block
@@ -232,8 +232,8 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
         treecode_num1, treecodenum2 = wabbit_ref.block_treecode_num, wabbit_dat.block_treecode_num
         level1, level2 = wabbit_ref.level, wabbit_dat.level
     
-        data1, box1 = dense_matrix( x01, dx1, data1, level1, 2 )
-        data2, box2 = dense_matrix( x02, dx2, data2, level2, 2 )
+        data1, box1 = dense_matrix( x01, dx1, data1, level1, dim )
+        data2, box2 = dense_matrix( x02, dx2, data2, level2, dim )
         
         if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
            raise ValueError(bcolors.FAIL + "ERROR! Both fields are not a the same resolution" + bcolors.ENDC)
@@ -305,7 +305,7 @@ def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
     files.sort()
     for file in files:
 
-        fname_wabbit = dir_wabbit + "/" + re.split("_\d+.h5",os.path.basename(file))[0]
+        fname_wabbit = dir_wabbit + "/" + re.split("_\\d+.h5",os.path.basename(file))[0]
 
         flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
 
@@ -437,7 +437,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
             for iby in range(Nintervals[1]):
                 x0.append([ibx, iby]*Lintervals)
                 dx.append(Lintervals/(Bs-1))
-                lower = [ibx, iby]* (Bs - 1)
+                # lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
                 treecode.append(wabbit_tools.blockindex2treecode([ibx, iby], 2, level))
@@ -446,7 +446,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     x0 = np.asarray(x0,dtype=dtype)
     dx = np.asarray(dx,dtype=dtype)
-    treecode = np.asarray(treecode, dtype=dtype)
+    treecode = np.asarray(treecode, dtype=int)
     block_data = np.asarray(bdata, dtype=dtype)
 
     treecode_num = wabbit_tools.tca_2_tcb(treecode, dim=Ndim, max_level=treecode.shape[1])

@@ -85,16 +85,18 @@ def check_parameters_for_stupid_errors( file ):
         g_default = 1
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
-    jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int)
+    jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int, default=1)
     adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
     g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
     g_rhs           = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes_rhs', int, default=g)
     dealias         = get_ini_parameter(file, 'Blocks', 'force_maxlevel_dealiasing', int)
+    Neqn            = get_ini_parameter(file, 'Blocks', 'number_equations', int)
     dim             = get_ini_parameter(file, 'Domain', 'dim', int)
     L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
     discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
+    physics_type    = get_ini_parameter(file, 'Physics', 'physics_type', str)
     time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL              = get_ini_parameter( file, 'Time', 'CFL', float, default=1.0)
     CFL_eta          = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
@@ -147,12 +149,17 @@ def check_parameters_for_stupid_errors( file ):
     
     print("======================================================================================")
     
-    
+    if physics_type == 'ACM-new' and dim == 3 and Neqn != 4:
+        err("For 3D ACM, you MUST set number_equations=4 (ux,uy,uz,p)")
+        
+    if physics_type == 'ACM-new' and dim == 2 and Neqn != 3:
+        err("For 2D ACM, you MUST set number_equations=3 (ux,uy,p)")
+   
     if len(bs) > 1:
         bs = bs[0]
 
-    if bs % 2 == 0:
-        warn('The block size is bs=%i which is an EVEN number.' % (bs) )
+    if bs % 2 != 0:
+        warn('The block size is bs=%i which is an ODD number.' % (bs) )
 
     if bs < 3:
         warn('The block size is bs=%i is very small or even negative.' % (bs) )
@@ -757,3 +764,42 @@ def prepare_resuming_backup( inifile ):
 
     if okay1 and okay2:
         os.rename( inifile+'.tmptmp', inifile )
+
+#
+def find_WABBIT_main_inifile(run_directory='./'):
+    """
+    find_WABBIT_main_inifile: In a folder, there are usually several INI files,
+    one of which describes the simulation (this is the main one) and others (wing shape, etc).
+    This routine figures out the main INI file in a folder.
+
+    Parameters
+    ----------
+    run_directory : string
+        Path of the simulation
+
+    Raises
+    ------
+    ValueError
+        If none is found, error is raised.
+
+    Returns
+    -------
+    inifile : TYPE
+        If found, this is the main INI file.
+
+    """
+    import glob
+    
+    found_main_inifile = False
+    for inifile in glob.glob( run_directory+"/*.ini" ):
+        section1 = exists_ini_section(inifile, 'Blocks')
+        section2 = exists_ini_section(inifile, 'Insects')
+        
+        # if we find both sections, we likely found the INI file
+        if section1 and section2:
+            found_main_inifile = True
+            print('Found simulations main INI file: '+inifile)
+            return inifile
+        
+    if not found_main_inifile:
+        raise ValueError("Did not find simulations main INI file - unable to proceed")

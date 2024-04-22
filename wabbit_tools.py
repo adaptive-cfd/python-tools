@@ -90,7 +90,7 @@ class WabbitState:
             print(f"Reading {read_var} of file= {file}")
         fid = h5py.File(file,'r')
         dset_id = fid.get('blocks')
-
+        
         # read attributes - always read all attributes
         self.version = dset_id.attrs.get('version', default=[None])[0]
         self.periodic_BC = dset_id.attrs.get('periodic_BC')
