@@ -765,13 +765,15 @@ def Hserieseval(a0, ai, bi, time):
     if ai.shape[0] != bi.shape[0]:
         raise ValueError("length of ai and bi must be the same")
 
+    time2 = time.copy()
+
     # time periodization
-    while ( np.max(time) >= 1.0 ):
-        time[ time >= 1.0 ] -= 1.0
+    while ( np.max(time2) >= 1.0 ):
+        time2[ time2 >= 1.0 ] -= 1.0
         
     n = ai.shape[0]
     dt = 1.0 / n
-    j1 = np.floor(time/dt) # zero-based indexing in python
+    j1 = np.floor(time2/dt) # zero-based indexing in python
     j1 = np.asarray(j1, dtype=int)
     j2 = j1 + 1
     
@@ -779,7 +781,7 @@ def Hserieseval(a0, ai, bi, time):
     j2[ j2 > n-1 ] = 0 # zero-based indexing in python
     
     # normalized time (between two data points)
-    t = (time - j1*dt) / dt
+    t = (time2 - j1*dt) / dt
 
     # values of hermite interpolant
     h00 = (1.0+2.0*t)*((1.0-t)**2)
@@ -915,7 +917,7 @@ def eval_angles_kinematics_file(fname, time=None):
         # time vector for plotting
         t = np.linspace(0.0, 1.0, 1000, endpoint=False)
     else:
-        t = time
+        t = time.copy()
         
     if kine_type == "fourier":
         alpha = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t)
@@ -979,7 +981,8 @@ def Rmirror( x0, n):
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
-                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, ax=None):
+                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, 
+                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True):
     """ Lollipop-diagram. visualize the wing chord
     
     give all angles in degree
@@ -1125,18 +1128,17 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     elif wing == 'right':
         M_stroke = M_stroke_r
 
-    # we draw the line between [0,0,-1] and [0,0,1] in the stroke system
-    xs1 = vct([0.0, 0.0, +1.0])
-    xs2 = vct([0.0, 0.0, -1.0])
-    # bring these points back to the global system
-    x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
-    x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
-
-    ax.set_ylim([-1, 1])
-
-    # remember we're in the x-z plane
-    l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
-    ax.add_line(l)
+    if draw_stoke_plane:
+        # we draw the line between [0,0,-1] and [0,0,1] in the stroke system        
+        xs1 = vct([0.0, 0.0, +1.0])
+        xs2 = vct([0.0, 0.0, -1.0])
+        # bring these points back to the global system
+        x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
+        x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
+    
+        # remember we're in the x-z plane
+        l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
+        ax.add_line(l)
 
 
     
@@ -1167,18 +1169,21 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     
     # modify ticks in matlab-style.
     ax.tick_params( which='both', direction='in', top=True, right=True )
-    plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
-#    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
+    
+    if savePDF:
+        plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
+    if savePNG:
+        plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
 
-def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0):
+def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0]):
    
     if time is None:
         time = np.linspace(0, 1.0, 1000, endpoint=True)
         
     # wing tip in wing coordinate system
     x_tip_w   = vct([0.0, 1.0, 0.0])
-    x_pivot_b = vct([0.0, 0.0, 0.0])
     x_body_g  = vct([0.0, 0.0, 0.0])
+    x_pivot_b = vct(x_pivot_b)
         
     # body transformation matrix
     M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
@@ -1916,7 +1921,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
     
   
     
-def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
+def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -2031,6 +2036,10 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     # plots wing outline
     ax.plot( xc, yc, 'r-', label='wing')
     
+    if fill:
+        color = change_color_opacity('r', fillAlpha)
+        ax.fill( np.append(xc, xc[0]), np.append(yc, yc[0]), color=color )
+    
     ax.axis('equal')
     
     # plot the rotation axes
@@ -2054,8 +2063,6 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     # -------------------------------------------------------------------------
     # save to image file
     # -------------------------------------------------------------------------
-    # plt.savefig( fname.replace('.ini','.pdf') )
-    # plt.savefig( fname.replace('.ini','.svg') )
     if savePNG:
         plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     
