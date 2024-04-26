@@ -2,7 +2,11 @@
 This file contains functions that deal with flusi vs wabbit and dense grids
 """
 
-from wabbit_tools import WabbitHDF5file, tca_2_level, tca_2_tcb
+import sys
+# wabbit_tools also loads this file, so a circular dependency is created
+# we circumvent this by ensuring this file only loads the needed functions when they are not present
+if 'wabbit_tools' not in sys.modules:
+    from wabbit_tools import WabbitHDF5file, tca_2_level, tca_2_tcb
 import numpy as np
 import bcolors
 
@@ -504,3 +508,12 @@ def blockindex2treecode(ix, dim, treeN):
 
     # flip again befor returning array
     return treecode[::-1]
+
+
+
+# debugging tests
+if __name__ == "__main__":
+
+    # test if functions work
+    file_equidist = "../WABBIT/TESTING/conv/blob_3D_equi_4th/phi_000000180422.h5"
+    wabbit_error_vs_wabbit(file_equidist, file_equidist, dim=3)
