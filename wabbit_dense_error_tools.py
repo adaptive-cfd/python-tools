@@ -116,7 +116,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     ny = data_ref.shape[1]
 
     # wabbit field to be analyzed: note has to be full already
-    wabbit_obj = wabbit_tools.WabbitState()
+    wabbit_obj = wabbit_tools.WabbitHDF5file()
     wabbit_obj.read(fname_wabbit)
     x0 = wabbit_obj.coords_origin
     dx = wabbit_obj.coords_spacing
@@ -220,9 +220,9 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     assert len(fname_dat_list) == len(fname_ref_list) 
         
     for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
-        wabbit_ref = wabbit_tools.WabbitState()
+        wabbit_ref = wabbit_tools.WabbitHDF5file()
         wabbit_ref.read(fname_ref)
-        wabbit_dat = wabbit_tools.WabbitState()
+        wabbit_dat = wabbit_tools.WabbitHDF5file()
         wabbit_dat.read(fname_dat)
         time1, time2 = wabbit_ref.time, wabbit_dat.time
         x01, x02 = wabbit_ref.coords_origin, wabbit_dat.coords_origin
@@ -265,7 +265,7 @@ def to_dense_grid( fname_in, fname_out = None, dim=2 ):
     import matplotlib.pyplot as plt
 
     # read data
-    wabbit_obj = wabbit_tools.WabbitState()
+    wabbit_obj = wabbit_tools.WabbitHDF5file()
     wabbit_obj.read(fname_in)
     time = wabbit_obj.time
     x0 = wabbit_obj.coords_origin
@@ -453,7 +453,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     # blocks are dense so level is the same everywhere
     level = wabbit_tools.tca_2_level(treecode)
 
-    w_obj = wabbit_tools.WabbitState()
+    w_obj = wabbit_tools.WabbitHDF5file()
     w_obj.fill_vars(box, block_data, treecode_num, level, time, iteration)
     w_obj.coords_origin = x0
     w_obj.coords_spacing = dx

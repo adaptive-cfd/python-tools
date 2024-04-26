@@ -16,7 +16,7 @@ sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import wabbit_tools
 
 def plot_wabbit_tree(file):
-    w_obj = wabbit_tools.WabbitState()
+    w_obj = wabbit_tools.WabbitHDF5file()
     w_obj.read(file, read_var="meta")
     wabbit_tools.plot_wabbit_file(w_obj, gridonly=True, gridonly_coloring='level')
 

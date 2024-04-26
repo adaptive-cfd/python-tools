@@ -36,7 +36,7 @@ def keyvalues(x0, dx, data):
 # everything is neat and at one position and simplifies things
 # A grid is uniquely defined by its dimension, block size, domain size
 # The individual grid partition is uniquely defined by the number of blocks, treecode and level arrays
-class WabbitState:
+class WabbitHDF5file:
     # lets define all objects it can possess
     # first all attributes, those will always be set
     # should be consistent with write attribute list in saveHDF5_tree
@@ -387,7 +387,7 @@ class WabbitState:
 
 
 #
-def block_level_distribution( wabbit_obj: WabbitState ):
+def block_level_distribution( wabbit_obj: WabbitHDF5file ):
     """ Read a 2D/3D wabbit file and return a list of how many blocks are at the different levels
     """
     counter = np.zeros(wabbit_obj.max_level)
@@ -419,7 +419,7 @@ def read_wabbit_hdf5_dir(dir):
             # from the file we can get the fieldname
             fieldname=re.split('_',file)[0]
             print(fieldname)
-            wabbit_obj = WabbitState()
+            wabbit_obj = WabbitHDF5file()
             wabbit_obj.read(os.path.join(dir, file))
             w_obj_list.append(wabbit_obj)
             var_list.append(wabbit_obj.var_from_filename())
@@ -608,7 +608,7 @@ def get_max_min_level( treecode ):
     return min_level, max_level
 
 #
-def plot_1d_cut( wabbit_obj: WabbitState, y ):    
+def plot_1d_cut( wabbit_obj: WabbitHDF5file, y ):    
     if wabbit_obj.dim != 2:
         raise ValueError("Sadly, we do this only for 2D fields right now")
         
@@ -651,7 +651,7 @@ def plot_1d_cut( wabbit_obj: WabbitState, y ):
 #    plt.plot(x_values, f_values, '-')
 
 #
-def plot_wabbit_file( wabbit_obj:WabbitState, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
+def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
                      colorbar=True, dpi=300, block_edge_color='k',
@@ -1053,11 +1053,11 @@ def find_WABBIT_main_inifile(run_directory='./'):
 
 # debugging tests
 if __name__ == "__main__":
-    state1 = WabbitState()
+    state1 = WabbitHDF5file()
     state1.read("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
-    state3 = WabbitState()
+    state3 = WabbitHDF5file()
     state3.read("../WABBIT/TESTING/jul/test_3D/phi_000000051549.h5")
-    state_2D = WabbitState()
+    state_2D = WabbitHDF5file()
     state_2D.read("../WABBIT/TESTING/jul/test_2D/phi_000000250000.h5")
     
     print(block_level_distribution(state1))

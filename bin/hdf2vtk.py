@@ -49,7 +49,7 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
 
 
 
-def hdf2htg(w_obj: wabbit_tools.WabbitState, save_file=None, verbose=True, save_mode="appended"):
+def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended"):
   """
   Create a HTG containing all block information
   Creating a HTG for actual block data is not possible and very expensive as each point in a hypertreegrid cannot be further divided
@@ -60,10 +60,10 @@ def hdf2htg(w_obj: wabbit_tools.WabbitState, save_file=None, verbose=True, save_
     save_mode   - Optional  : how to encode data - "ascii", "binary" or "appended"
   """
   correct_input = False
-  if isinstance(w_obj, wabbit_tools.WabbitState):
+  if isinstance(w_obj, wabbit_tools.WabbitHDF5file):
     w_obj_list = [w_obj]
     correct_input = True
-  if isinstance(w_obj, list) and all(isinstance(elem, wabbit_tools.WabbitState) for elem in w_obj):
+  if isinstance(w_obj, list) and all(isinstance(elem, wabbit_tools.WabbitHDF5file) for elem in w_obj):
     w_obj_list = w_obj
     correct_input = True
   if not correct_input:
@@ -231,7 +231,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitState, save_file=None, verbose=True, save_
   writer.Write()
 
 
-def hdf2vtm(w_obj: wabbit_tools.WabbitState, save_file=None, verbose=True, save_mode="appended", scalars=False):
+def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False):
   """
   Create a multi block dataset from the available data
   This creates many many sub-files but will be changed to a hdf-based implementation soon
@@ -245,11 +245,11 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitState, save_file=None, verbose=True, save_
   """
   correct_input = False
   # if w_obj is only one obj, simply transcribe this one
-  if isinstance(w_obj, wabbit_tools.WabbitState):
+  if isinstance(w_obj, wabbit_tools.WabbitHDF5file):
     w_obj_list = [w_obj]
     correct_input = True
   # if w_obj is list: create list of variables
-  if isinstance(w_obj, list) and all(isinstance(elem, wabbit_tools.WabbitState) for elem in w_obj):
+  if isinstance(w_obj, list) and all(isinstance(elem, wabbit_tools.WabbitHDF5file) for elem in w_obj):
     w_obj_list = w_obj
     correct_input = True
   if not correct_input:
@@ -445,7 +445,7 @@ if __name__ == "__main__":
   # for one file we simply read in this file and process it
   time_process = {}
   if os.path.isfile(args.infile) and args.infile.endswith(".h5"):
-    state_1 = wabbit_tools.WabbitState()
+    state_1 = wabbit_tools.WabbitHDF5file()
     state_1.read(args.infile, verbose=args.verbose)
     time_1 = state_1.time
     time_process[time_1] = [state_1]
@@ -456,7 +456,7 @@ if __name__ == "__main__":
   elif os.path.isdir(args.infile):
     filelist = sorted( glob.glob(os.path.join(args.infile,"*.h5")) )
     for i_file in filelist:
-      state_1 = wabbit_tools.WabbitState()
+      state_1 = wabbit_tools.WabbitHDF5file()
       state_1.read(i_file, verbose=args.verbose)
       time_1 = state_1.time
       if not time_1 in time_process:

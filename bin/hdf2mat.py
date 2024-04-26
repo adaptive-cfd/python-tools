@@ -117,7 +117,7 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             if (ierr > 0):
                 warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. export PATH=$PATH:/path/to/wabbit/" )
                 return 0
-            w_obj = wabbit_tools.WabbitState()
+            w_obj = wabbit_tools.WabbitHDF5file()
             w_obj.read(file_dense)
             x0 = w_obj.coords_origin
             dx = w_obj.coords_spacing

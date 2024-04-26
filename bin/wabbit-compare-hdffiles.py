@@ -29,9 +29,9 @@ file2 = sys.argv[2]
 print("*****************************************************")
 print("Comparing wabbit HDF5 files \nfile1 =   %s \nfile2 =   %s" % (file1, file2))
 
-w_obj1 = wabbit_tools.WabbitState()
+w_obj1 = wabbit_tools.WabbitHDF5file()
 w_obj1.read(file1)
-w_obj2 = wabbit_tools.WabbitState()
+w_obj2 = wabbit_tools.WabbitHDF5file()
 w_obj2.read(file2)
 
 bool_similar = w_obj1.isClose(w_obj2, verbose=True)

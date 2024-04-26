@@ -20,9 +20,9 @@ if not (os.path.isfile(sys.argv[1]) and sys.argv[1].endswith(".h5")):
 if not (os.path.isfile(sys.argv[2]) and sys.argv[2].endswith(".h5")):
     print("ERROR: File2 not suitable, are you sure it exists and is a .h5 file?")
 
-w_obj1 = wabbit_tools.WabbitState()
+w_obj1 = wabbit_tools.WabbitHDF5file()
 w_obj1.read(sys.argv[1], read_var='meta', verbose=False)
-w_obj2 = wabbit_tools.WabbitState()
+w_obj2 = wabbit_tools.WabbitHDF5file()
 w_obj2.read(sys.argv[2], read_var='meta', verbose=False)
 
 print(w_obj1.compareGrid(w_obj2))
