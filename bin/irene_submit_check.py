@@ -31,7 +31,7 @@ print("----------------------------------------")
 
 import sys, os
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
-import wabbit_ini_tools
+import inifile_tools
 
 # fetch jobfile from call
 jobfile = sys.argv[1]
@@ -99,7 +99,7 @@ if os.path.isfile( jobfile ):
     print("max memory (safe) = %s%i%s GB" % (bcolors.OKBLUE, maxmem-5.0, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )
     print("wtime (jobfile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
-    wtime_ini = wabbit_ini_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
+    wtime_ini = inifile_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
     # hours to seconds
     wtime_ini *= 3600.0
     print("wtime (inifile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
@@ -125,7 +125,7 @@ if os.path.isfile( jobfile ):
         print('walltime *.SH/INI : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
     print("----------------------------------------")
-    wabbit_ini_tools.check_parameters_for_stupid_errors( paramsfile )
+    inifile_tools.check_parameters_for_stupid_errors( paramsfile )
 
 
 

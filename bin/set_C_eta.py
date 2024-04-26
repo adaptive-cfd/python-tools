@@ -23,12 +23,12 @@ Ntau = args.Ntau
 
 print("K_eta=%f N_tau=%f" % (K_eta, Ntau))
 
-import wabbit_ini_tools
+import inifile_tools
 
-Bs   = wabbit_ini_tools.get_ini_parameter(file, 'Blocks', 'number_block_nodes', vector=True)
-Jmax = wabbit_ini_tools.get_ini_parameter(file, 'Blocks', 'max_treelevel')
-L    = wabbit_ini_tools.get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
-nu   = wabbit_ini_tools.get_ini_parameter(file, 'ACM-new', 'nu')
+Bs   = inifile_tools.get_ini_parameter(file, 'Blocks', 'number_block_nodes', vector=True)
+Jmax = inifile_tools.get_ini_parameter(file, 'Blocks', 'max_treelevel')
+L    = inifile_tools.get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
+nu   = inifile_tools.get_ini_parameter(file, 'ACM-new', 'nu')
 
 dx = L[0]*(2**-Jmax)/Bs[0]
 
@@ -38,11 +38,11 @@ import os
 command = "replace_ini_value.py "+file+" VPM C_eta %e" % (C_eta)
 os.system(command)
 
-use_sponge = wabbit_ini_tools.get_ini_parameter(file, 'Sponge', 'use_sponge', dtype=bool, default=False)
+use_sponge = inifile_tools.get_ini_parameter(file, 'Sponge', 'use_sponge', dtype=bool, default=False)
 
 if (use_sponge):
-    L_sponge = wabbit_ini_tools.get_ini_parameter(file, 'Sponge', 'L_sponge')
-    C0 = wabbit_ini_tools.get_ini_parameter(file, 'ACM-new', 'c_0')
+    L_sponge = inifile_tools.get_ini_parameter(file, 'Sponge', 'L_sponge')
+    C0 = inifile_tools.get_ini_parameter(file, 'ACM-new', 'c_0')
     
     C_sponge = L_sponge / (Ntau*C0)
     

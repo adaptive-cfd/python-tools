@@ -8,26 +8,8 @@ Created on Thu Dec 28 15:41:48 2017
 import os
 import numpy as np
 import h5py
-
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
-
-
-def warn( msg ):
-    print( bcolors.WARNING + "WARNING! " + bcolors.ENDC + msg)
-
-def err( msg ):
-    print( bcolors.FAIL + "CRITICAL! " + bcolors.ENDC + msg)
-
-def info( msg ):
-    print( bcolors.OKBLUE + "Information:  " + bcolors.ENDC + msg)
+import bcolors
+import inifile_tools
 
 
 
@@ -998,7 +980,7 @@ def command_on_each_hdf5_file(directory, command):
     import glob
 
     if not os.path.exists(directory):
-        err("The given directory does not exist!")
+        bcolors.err("The given directory does not exist!")
 
     files = glob.glob(directory+'/*.h5')
     files.sort()
@@ -1022,7 +1004,7 @@ def field_shape_to_bs(Nshape, level):
     for d in range(n.ndim):
         # check if Block is devidable by Bs
         if (np.remainder(n[d], 2**level) != 0):
-            err("Number of Grid points has to be a power of 2!")
+            bcolors.err("Number of Grid points has to be a power of 2!")
             
     # Note we have to flip  n here because Bs = [BsX, BsY]
     # The order of Bs is choosen like it is in WABBIT.
@@ -1035,6 +1017,39 @@ def field_shape_to_bs(Nshape, level):
 # this function takes a float and does the same
 def time2wabbitstr(time):
     return f"{time:013.6f}".replace(".", "")
+
+
+"""
+    Wrapper for functions that have been moved to ini_tools together with deprecation warnings
+"""
+def check_parameters_for_stupid_errors(file):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{check_parameters_for_stupid_errors.__name__} is deprecated. Import and use ini_tools.{check_parameters_for_stupid_errors.__name__}!"))
+    inifile_tools.check_parameters_for_stupid_errors(file)
+
+def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False ):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{get_ini_parameter.__name__} is deprecated. Import and use ini_tools.{get_ini_parameter.__name__}!"))
+    inifile_tools.get_ini_parameter( inifile, section, keyword, dtype=dtype, vector=vector, default=default, matrix=matrix, verbose=verbose )
+
+def exists_ini_parameter( inifile, section, keyword ):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{exists_ini_parameter.__name__} is deprecated. Import and use ini_tools.{exists_ini_parameter.__name__}!"))
+    inifile_tools.exists_ini_parameter( inifile, section, keyword )
+    
+def exists_ini_section( inifile, section ):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{exists_ini_section.__name__} is deprecated. Import and use ini_tools.{exists_ini_section.__name__}!"))
+    inifile_tools.exists_ini_section( inifile, section )
+
+def replace_ini_value(file, section, keyword, new_value):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{replace_ini_value.__name__} is deprecated. Import and use ini_tools.{replace_ini_value.__name__}!"))
+    inifile_tools.replace_ini_value(file, section, keyword, new_value)
+
+def prepare_resuming_backup( inifile ):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{prepare_resuming_backup.__name__} is deprecated. Import and use ini_tools.{prepare_resuming_backup.__name__}!"))
+    inifile_tools.prepare_resuming_backup( inifile )
+
+def find_WABBIT_main_inifile(run_directory='./'):
+    print(bcolors.warn_deprc(f"Using wabbit_tools.{find_WABBIT_main_inifile.__name__} is deprecated. Import and use ini_tools.{find_WABBIT_main_inifile.__name__}!"))
+    inifile_tools.find_WABBIT_main_inifile(run_directory=run_directory)
+
 
 # debugging tests
 if __name__ == "__main__":

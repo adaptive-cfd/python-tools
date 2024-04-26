@@ -31,7 +31,7 @@ print("----------------------------------------")
 
 import sys, os
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
-import wabbit_ini_tools
+import inifile_tools
 import numpy as np
 
 # fetch jobfile from call
@@ -88,7 +88,7 @@ if os.path.isfile( jobfile ):
     print("max memory (safe) = %s%i%s GB" % (bcolors.OKBLUE, maxmem-5.0, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )
     print("wtime (jobfile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
-    wtime_ini = wabbit_ini_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
+    wtime_ini = inifile_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
     # hours to seconds
     wtime_ini *= 3600.0
     print("wtime (inifile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime_ini, bcolors.ENDC, wtime_ini/3600.0) )
@@ -120,21 +120,21 @@ if os.path.isfile( jobfile ):
 
     print("----------------------------------------")
 
-    eps  = wabbit_ini_tools.get_ini_parameter( paramsfile, 'Blocks', 'eps',float )
+    eps  = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'eps',float )
 
-    Jmax = wabbit_ini_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
-    L = wabbit_ini_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
-    Bs = wabbit_ini_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int, vector=True)
-    CFL = wabbit_ini_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
+    Jmax = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
+    L = inifile_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
+    Bs = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int, vector=True)
+    CFL = inifile_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
 
-    c0 =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
-    nu =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
-    ceta =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float, default=0.0)
-    penalized = wabbit_ini_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
-    csponge =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float, default=0.0)
-    sponged =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
+    c0 =  inifile_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
+    nu =  inifile_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
+    ceta =  inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float, default=0.0)
+    penalized = inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
+    csponge =  inifile_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float, default=0.0)
+    sponged =  inifile_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
 
-    geometry =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str, default='none')
+    geometry =  inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str, default='none')
 
     if len(Bs)==1:
         dx = L[0]*(2**-Jmax)/(Bs[0]-1)
@@ -152,13 +152,13 @@ if os.path.isfile( jobfile ):
     print( "C_sponge         = %2.2e" % (csponge))
 
     if geometry == "Insect":
-        t =  wabbit_ini_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float, default=0.0)
+        t =  inifile_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float, default=0.0)
         print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
 
     print("----------------------------------------")
     print('Launching wabbit_tools ini file check now:')
     print("----------------------------------------")
-    wabbit_ini_tools.check_parameters_for_stupid_errors( paramsfile )
+    inifile_tools.check_parameters_for_stupid_errors( paramsfile )
 
 
 

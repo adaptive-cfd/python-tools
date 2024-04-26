@@ -15,6 +15,9 @@ UNDERLINE = '\033[4m'
 def warn( msg ):
     print( WARNING + "WARNING! " + ENDC + msg)
 
+def warn_deprc( msg ):
+    print( WARNING + "DEPRECATION WARNING! " + ENDC + msg)
+
 def err( msg ):
     print( FAIL + "CRITICAL! " + ENDC + msg)
 

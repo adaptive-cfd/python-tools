@@ -1932,7 +1932,7 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
         Written to file (png/svg/pdf) directly.
     """
     import os
-    import wabbit_ini_tools
+    import inifile_tools
     import matplotlib.pyplot as plt
     
     
@@ -1942,11 +1942,11 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     if not os.path.isfile(fname):
         raise ValueError("Inifile: %s not found!" % (fname))
         
-    if not wabbit_ini_tools.exists_ini_section(fname, "Wing"):
+    if not inifile_tools.exists_ini_section(fname, "Wing"):
         raise ValueError("The ini file you specified does not contain the [Wing] section "+
                          "so maybe it is not a wing-shape file after all?")
 
-    wtype = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "type", str)
+    wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     
     if wtype != "fourier" and wtype != "linear":
         print(wtype)
@@ -1964,15 +1964,15 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     # damage (if present)
     # Drawn first as a background
     # -------------------------------------------------------------------------  
-    damaged = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "damaged", bool, default=False)
+    damaged = inifile_tools.get_ini_parameter(fname, "Wing", "damaged", bool, default=False)
     
     if damaged:
         # actual 0/1 damage mask:
-        mask = wabbit_ini_tools.get_ini_parameter( fname, 'Wing', 'damage_mask', dtype=float, vector=False, default=None, matrix=True )
+        mask = inifile_tools.get_ini_parameter( fname, 'Wing', 'damage_mask', dtype=float, vector=False, default=None, matrix=True )
         mask = mask.T
         
         # the bounding box of the mask is set here:
-        bbox = wabbit_ini_tools.get_ini_parameter( fname, 'Wing', 'corrugation_array_bbox', dtype=float, vector=True, default=None )
+        bbox = inifile_tools.get_ini_parameter( fname, 'Wing', 'corrugation_array_bbox', dtype=float, vector=True, default=None )
         
         n1, n2 = mask.shape[0], mask.shape[1]
         
@@ -1981,17 +1981,17 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
         
         plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')    
         
-    x0 = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "x0w", float)
-    y0 = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float)
+    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
     
     
     #--------------------------------------------------------------------------
     # planform (contour)
     #--------------------------------------------------------------------------
     if wtype == "fourier":
-        a0 = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-        ai = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-        bi = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
         
         # compute outer wing shape (membraneous part)
         theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
@@ -2009,8 +2009,8 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
             area += dtheta * (r_fft[j]**2 / 2.0)        
         
     elif wtype == "linear":
-        R_i = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
-        theta_i = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
+        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
+        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
         # theta_i = theta_i * 2.0*np.pi - np.pi
         theta_i = theta_i - np.pi
     
@@ -2044,9 +2044,9 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     # bristles (if present)
     # -------------------------------------------------------------------------
     # if present, add bristles    
-    bristles = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False)
+    bristles = inifile_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False)
     if bristles:
-        bristles_coords = wabbit_ini_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
+        bristles_coords = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
         print(bristles_coords.shape)
         for j in range( bristles_coords.shape[0]):
             ax.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')

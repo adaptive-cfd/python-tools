@@ -2,7 +2,7 @@
 This script contains functions that deal with modfying the ini files
 """
 import numpy as np
-
+import bcolors
 
 class bcolors:
         HEADER = '\033[95m'
@@ -13,16 +13,6 @@ class bcolors:
         ENDC = '\033[0m'
         BOLD = '\033[1m'
         UNDERLINE = '\033[4m'
-
-
-def warn( msg ):
-    print( bcolors.WARNING + "WARNING! " + bcolors.ENDC + msg)
-
-def err( msg ):
-    print( bcolors.FAIL + "CRITICAL! " + bcolors.ENDC + msg)
-
-def info( msg ):
-    print( bcolors.OKBLUE + "Information:  " + bcolors.ENDC + msg)
 
 #
 def check_parameters_for_stupid_errors( file ):
@@ -150,100 +140,100 @@ def check_parameters_for_stupid_errors( file ):
     print("======================================================================================")
     
     if physics_type == 'ACM-new' and dim == 3 and Neqn != 4:
-        err("For 3D ACM, you MUST set number_equations=4 (ux,uy,uz,p)")
+        bcolors.err("For 3D ACM, you MUST set number_equations=4 (ux,uy,uz,p)")
         
     if physics_type == 'ACM-new' and dim == 2 and Neqn != 3:
-        err("For 2D ACM, you MUST set number_equations=3 (ux,uy,p)")
+        bcolors.err("For 2D ACM, you MUST set number_equations=3 (ux,uy,p)")
    
     if len(bs) > 1:
         bs = bs[0]
 
     if bs % 2 != 0:
-        warn('The block size is bs=%i which is an ODD number.' % (bs) )
+        bcolors.warn('The block size is bs=%i which is an ODD number.' % (bs) )
 
     if bs < 3:
-        warn('The block size is bs=%i is very small or even negative.' % (bs) )
+        bcolors.warn('The block size is bs=%i is very small or even negative.' % (bs) )
         
           
     if (wavelet == "CDF22") and g<3:
-        warn("Not enough ghost nodes for wavelet %s g=%i < 3" % (wavelet, g) )
+        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 3" % (wavelet, g) )
     if (wavelet == "CDF42") and g<5:
-        warn("Not enough ghost nodes for wavelet %s g=%i < 5" % (wavelet, g) )        
+        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 5" % (wavelet, g) )        
     if (wavelet == "CDF44" or wavelet == "CDF62") and g<7:
-        warn("Not enough ghost nodes for wavelet %s g=%i < 7" % (wavelet, g) )
+        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 7" % (wavelet, g) )
     if (wavelet == "CDF40") and g<4:
-        warn("Not enough ghost nodes for wavelet %s g=%i < 4" % (wavelet, g) )
+        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 4" % (wavelet, g) )
         
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
-            warn('are you sure you did not forget to adjustl CFL_eta for the RKC scheme???')
+            bcolors.warn('are you sure you did not forget to adjustl CFL_eta for the RKC scheme???')
         if CFL_nu < 999:
-            warn('are you sure you did not forget to adjustl CFL_nu for the RKC scheme???')
+            bcolors.warn('are you sure you did not forget to adjustl CFL_nu for the RKC scheme???')
         if CFL != 0.75:
-            warn('are you sure you did not forget to adjustl CFL for the RKC scheme??? often we used 0.75.')    
+            bcolors.warn('are you sure you did not forget to adjustl CFL for the RKC scheme??? often we used 0.75.')    
             
     if time_step_method == "RungeKuttaGeneric":
         if CFL_eta > 1.0:
-            warn('are you sure you did not forget to adjustl CFL_eta for the RK scheme? it may be unstable.')
+            bcolors.warn('are you sure you did not forget to adjustl CFL_eta for the RK scheme? it may be unstable.')
         if CFL_nu > 0.99*2.79/(float(dim)*np.pi**2):
-            warn('are you sure you did not forget to adjustl CFL_nu for the RK scheme? it may be unstable.')
+            bcolors.warn('are you sure you did not forget to adjustl CFL_nu for the RK scheme? it may be unstable.')
         if CFL >  1.0:
-            warn('are you sure you did not forget to adjustl CFL for the RK scheme? it may be unstable.')    
+            bcolors.warn('are you sure you did not forget to adjustl CFL for the RK scheme? it may be unstable.')    
             
     # if somebody modifies the standard parameter file, users have to update their
     # ini files they use. this is often forgoten and obnoxious. Hence, if we find
     # value sthat no longer exist, warn the user.
     if exists_ini_parameter( file, "Blocks", "number_data_fields" ) :
-        warn('Found deprecated parameter: [Blocks]::number_data_fields')
+        bcolors.warn('Found deprecated parameter: [Blocks]::number_data_fields')
 
     if exists_ini_parameter( file, "Physics", "initial_cond" ) :
-        warn('Found deprecated parameter: [Physics]::initial_cond')
+        bcolors.warn('Found deprecated parameter: [Physics]::initial_cond')
 
     if exists_ini_parameter( file, "Dimensionality", "dim" ) :
-        warn('Found deprecated parameter: [Dimensionality]::dim')
+        bcolors.warn('Found deprecated parameter: [Dimensionality]::dim')
 
     if exists_ini_parameter( file, "DomainSize", "Lx" ) :
-        warn('Found deprecated parameter: [DomainSize]::Lx')
+        bcolors.warn('Found deprecated parameter: [DomainSize]::Lx')
 
     if exists_ini_parameter( file, "Time", "time_step_calc" ) :
-        warn('Found deprecated parameter: [Time]::time_step_calc')
+        bcolors.warn('Found deprecated parameter: [Time]::time_step_calc')
         
     if exists_ini_parameter( file, "ACM", "forcing" ):
-        warn('Found deprecated parameter: [ACM]::forcing')
+        bcolors.warn('Found deprecated parameter: [ACM]::forcing')
         
     if exists_ini_parameter( file, "ACM", "forcing_type" ):
-        warn('Found deprecated parameter: [ACM]::forcing_type')
+        bcolors.warn('Found deprecated parameter: [ACM]::forcing_type')
         
     if exists_ini_parameter( file, "ACM", "p_mean_zero" ):
-        warn('Found deprecated parameter: [ACM]::p_mean_zero')
+        bcolors.warn('Found deprecated parameter: [ACM]::p_mean_zero')
         
     if exists_ini_parameter( file, "ACM", "compute_laplacian" ):
-        warn('Found deprecated parameter: [ACM]::compute_laplacian')
+        bcolors.warn('Found deprecated parameter: [ACM]::compute_laplacian')
         
     if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
-        warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
+        bcolors.warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
     
     if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
-        warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
+        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
         print(type(HIT))
         print(HIT)
-        warn('You use HIT linear forcing, which is HIGHLY EXPERIMENTAL')
+        bcolors.warn('You use HIT linear forcing, which is HIGHLY EXPERIMENTAL')
 
     jmax = get_ini_parameter( file, 'Blocks', 'max_treelevel', int)
 
     if jmax > 18:
-        warn('WABBIT can compute at most 18 refinement levels, you set more!')
+        bcolors.warn('WABBIT can compute at most 18 refinement levels, you set more!')
 
     if sponged:
         # default value is TRUE so if not found, all is well
         mask_time_dependent = get_ini_parameter( file, 'VPM', 'mask_time_dependent_part', int, default=1)
 
         if mask_time_dependent != 1:
-            warn("""you use sponge, but mask_time_dependent_part=0! The sponge
+            bcolors.warn("""you use sponge, but mask_time_dependent_part=0! The sponge
             is treated as if it were time dependent because it does not have
             to be at the maximum refinement level.""")
 
@@ -260,13 +250,13 @@ def check_parameters_for_stupid_errors( file ):
             if line != "" :
                 if line[0] != "!" and line[0] != "#" and line[0] != ";" :
                     if "=" in line and ";" not in line:
-                        warn('It appears the line #%i does not contain the semicolon' % (linenumber) )
+                        bcolors.warn('It appears the line #%i does not contain the semicolon' % (linenumber) )
 
     restart = get_ini_parameter( file, 'Physics', 'read_from_files', int)
     print("read_from_files=%i" %(restart))
 
     if restart == 1:
-        info("This simulation is being resumed from file")
+        bcolors.info("This simulation is being resumed from file")
 
         infiles = get_ini_parameter( file, 'Physics', 'input_files', str)
         infiles = infiles.split()
@@ -275,7 +265,7 @@ def check_parameters_for_stupid_errors( file ):
             if not os.path.isfile(file):
                 raise ValueError("CRUTIAL: read_from_files=1 but infiles NOT found!.")
     else:
-        info("This simulation is being started from initial condition (and not from file)")
+        bcolors.info("This simulation is being started from initial condition (and not from file)")
 
 #
 def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False ):
