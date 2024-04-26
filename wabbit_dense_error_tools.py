@@ -2,7 +2,7 @@
 This file contains functions that deal with flusi vs wabbit and dense grids
 """
 
-import wabbit_tools
+from wabbit_tools import WabbitHDF5file, tca_2_level, tca_2_tcb
 import numpy as np
 import bcolors
 
@@ -116,7 +116,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     ny = data_ref.shape[1]
 
     # wabbit field to be analyzed: note has to be full already
-    wabbit_obj = wabbit_tools.WabbitHDF5file()
+    wabbit_obj = WabbitHDF5file()
     wabbit_obj.read(fname_wabbit)
     x0 = wabbit_obj.coords_origin
     dx = wabbit_obj.coords_spacing
@@ -220,9 +220,9 @@ def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
     assert len(fname_dat_list) == len(fname_ref_list) 
         
     for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
-        wabbit_ref = wabbit_tools.WabbitHDF5file()
+        wabbit_ref = WabbitHDF5file()
         wabbit_ref.read(fname_ref)
-        wabbit_dat = wabbit_tools.WabbitHDF5file()
+        wabbit_dat = WabbitHDF5file()
         wabbit_dat.read(fname_dat)
         time1, time2 = wabbit_ref.time, wabbit_dat.time
         x01, x02 = wabbit_ref.coords_origin, wabbit_dat.coords_origin
@@ -265,7 +265,7 @@ def to_dense_grid( fname_in, fname_out = None, dim=2 ):
     import matplotlib.pyplot as plt
 
     # read data
-    wabbit_obj = wabbit_tools.WabbitHDF5file()
+    wabbit_obj = WabbitHDF5file()
     wabbit_obj.read(fname_in)
     time = wabbit_obj.time
     x0 = wabbit_obj.coords_origin
@@ -325,7 +325,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
     box = box[1:]
     
     data_flusi = np.squeeze(data_flusi).T
-    Bs = wabbit_tools.field_shape_to_bs(data_flusi.shape,level)
+    Bs = field_shape_to_bs(data_flusi.shape,level)
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time, dtype=dtype)
 
 
@@ -383,7 +383,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     for d in range(Ndim):
         # check if Block is devidable by Bs
         if (np.remainder(Nsize[d], Bs[d]-1) == 0):
-            if(wabbit_tools.is_power2(Nsize[d]//(Bs[d]-1))):
+            if(is_power2(Nsize[d]//(Bs[d]-1))):
                 level = int(max(level, np.log2(Nsize[d]/(Bs[d]-1))))
             else:
                 bcolors.err("Number of Intervals must be a power of 2!")
@@ -430,7 +430,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     lower = np.asarray(lower, dtype=int)
                     upper = lower + Bs
 
-                    treecode.append(wabbit_tools.blockindex2treecode([ibx, iby, ibz], 3, level))
+                    treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
     else:
         for ibx in range(Nintervals[0]):
@@ -440,7 +440,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                 # lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
-                treecode.append(wabbit_tools.blockindex2treecode([ibx, iby], 2, level))
+                treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 bdata.append(data[lower[0]:upper[0], lower[1]:upper[1]])
 
 
@@ -449,14 +449,58 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
     treecode = np.asarray(treecode, dtype=int)
     block_data = np.asarray(bdata, dtype=dtype)
 
-    treecode_num = wabbit_tools.tca_2_tcb(treecode, dim=Ndim, max_level=treecode.shape[1])
+    treecode_num = tca_2_tcb(treecode, dim=Ndim, max_level=treecode.shape[1])
     # blocks are dense so level is the same everywhere
-    level = wabbit_tools.tca_2_level(treecode)
+    level = tca_2_level(treecode)
 
-    w_obj = wabbit_tools.WabbitHDF5file()
+    w_obj = WabbitHDF5file()
     w_obj.fill_vars(box, block_data, treecode_num, level, time, iteration)
     w_obj.coords_origin = x0
     w_obj.coords_spacing = dx
     w_obj.write(fname)
 
     return fname
+
+
+def is_power2(num):
+    'states if a number is a power of two'
+    return num != 0 and ((num & (num - 1)) == 0)
+
+###
+def field_shape_to_bs(Nshape, level):
+    """
+     For a given shape of a dense field and maxtreelevel return the
+     number of points per block wabbit uses
+    """
+
+    n = np.asarray(Nshape)
+    
+    for d in range(n.ndim):
+        # check if Block is devidable by Bs
+        if (np.remainder(n[d], 2**level) != 0):
+            bcolors.err("Number of Grid points has to be a power of 2!")
+            
+    # Note we have to flip  n here because Bs = [BsX, BsY]
+    # The order of Bs is choosen like it is in WABBIT.
+    # NB: while this definition is the one from a redundant grid,
+    # it is used the same in the uniqueGrid ! The funny thing is that in the latter
+    # case, we store the 1st ghost node to the H5 file - this is required for visualization.
+    return n[::-1]//2**level + 1
+
+#
+# calculates treecode array from the index of the block
+# Note: other then in fortran we start counting from 0
+def blockindex2treecode(ix, dim, treeN):
+
+    treecode = np.zeros(treeN)
+    for d in range(dim):
+        # convert block index to binary
+        binary = list(format(ix[d],"b"))
+        # flip array and convert to numpy
+        binary = np.asarray(binary[::-1],dtype=int)
+        # sum up treecodes
+        lt = np.size(binary)
+        treecode[:lt] = treecode[:lt] + binary *2**d
+
+    # flip again befor returning array
+    return treecode[::-1]

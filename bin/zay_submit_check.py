@@ -5,32 +5,14 @@ Created on Wed Oct  3 14:00:31 2018
 
 @author: engels
 """
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
-
-def err( msg ):
-    print("")
-    print( bcolors.FAIL + "ERROR! " + bcolors.ENDC + msg)
-    print("")
-
-def warn( msg ):
-    print("")
-    print( bcolors.WARNING + "WARNING! " + bcolors.ENDC + msg)
-    print("")
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import bcolors
 
 print("----------------------------------------")
 print("%sZAY%s submission preflight  " %(bcolors.OKGREEN, bcolors.ENDC))
 print("----------------------------------------")
 
 import sys, os
-sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import inifile_tools
 import numpy as np
 
@@ -163,6 +145,6 @@ if os.path.isfile( jobfile ):
 
 
 else:
-    err("Jobfile %s not found" % (jobfile))
+    bcolors.err("Jobfile %s not found" % (jobfile))
     raise ValueError( )
 

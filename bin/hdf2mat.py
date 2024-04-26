@@ -9,18 +9,7 @@ from scipy.io import savemat
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import wabbit_tools, wabbit_dense_error_tools
 import shutil
-
-
-
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
+import bcolors
 
 def strictly_increasing(L):
     return all(x<y for x, y in zip(L, L[1:]))

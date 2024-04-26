@@ -1,5 +1,11 @@
 # Python-tools
-A collection of python scripts for WABBIT, FLUSI and insects
+A collection of python scripts for WABBIT, FLUSI and insects.
+Following packages might be needed:
+- `numpy`
+- `matplotlib`
+- `scipy`
+- `h5py` - reading and writing with hdf5 files
+- `vtk` - converting files to be read in with paraview
 
 ## Main tools
 <details>

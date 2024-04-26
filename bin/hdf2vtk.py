@@ -14,16 +14,7 @@ import glob, os, sys
 
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import wabbit_tools
-
-class bcolors:
-  HEADER = '\033[95m'
-  OKBLUE = '\033[94m'
-  OKGREEN = '\033[92m'
-  WARNING = '\033[93m'
-  FAIL = '\033[91m'
-  ENDC = '\033[0m'
-  BOLD = '\033[1m'
-  UNDERLINE = '\033[4m'
+import bcolors
 
 # Progress bar function
 def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):

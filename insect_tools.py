@@ -1592,7 +1592,7 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
         print( "Data dimension is %i %i %i" % (nx,ny,nz))
 
         # allocate (single precision) data
-        data = np.zeros([nx,ny,nz], dtype=float32)
+        data = np.zeros([nx,ny,nz], dtype=np.float32)
 
         # it is useful to now use the entire array, so python can crash here if
         # out of memory, and not after waiting a long time...
@@ -1668,7 +1668,7 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
 #    dref_drag2 = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
 
     # read actual data
-    data = insect_tools.load_t_file( filename, T0=T0 )
+    data = load_t_file( filename, T0=T0 )
 
     # Suzuki et al. eq. in appendix B.5.2
     L = 0.833
@@ -1691,8 +1691,8 @@ def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
         data_flusi = interp_matrix(data_flusi, dref_drag[:,0])
 
         # interpolate actual data on ref data points
-        data1 = insect_tools.interp_matrix( data, dref_lift[:,0] )
-        data2 = insect_tools.interp_matrix( data, dref_drag[:,0] )
+        data1 = interp_matrix( data, dref_lift[:,0] )
+        data2 = interp_matrix( data, dref_drag[:,0] )
 
 
         plt.figure()

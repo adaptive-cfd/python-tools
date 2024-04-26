@@ -945,23 +945,6 @@ def prediction1D( signal1, order=4 ):
     return signal_interp
 
 
-#
-# calculates treecode array from the index of the block
-# Note: other then in fortran we start counting from 0
-def blockindex2treecode(ix, dim, treeN):
-
-    treecode = np.zeros(treeN)
-    for d in range(dim):
-        # convert block index to binary
-        binary = list(format(ix[d],"b"))
-        # flip array and convert to numpy
-        binary = np.asarray(binary[::-1],dtype=int)
-        # sum up treecodes
-        lt = np.size(binary)
-        treecode[:lt] = treecode[:lt] + binary *2**d
-
-    # flip again befor returning array
-    return treecode[::-1]
 
 #
 def command_on_each_hdf5_file(directory, command):
@@ -988,31 +971,6 @@ def command_on_each_hdf5_file(directory, command):
     for file in files:
         c = command % file
         os.system(c)
-
-def is_power2(num):
-    'states if a number is a power of two'
-    return num != 0 and ((num & (num - 1)) == 0)
-
-###
-def field_shape_to_bs(Nshape, level):
-    """
-     For a given shape of a dense field and maxtreelevel return the
-     number of points per block wabbit uses
-    """
-
-    n = np.asarray(Nshape)
-    
-    for d in range(n.ndim):
-        # check if Block is devidable by Bs
-        if (np.remainder(n[d], 2**level) != 0):
-            bcolors.err("Number of Grid points has to be a power of 2!")
-            
-    # Note we have to flip  n here because Bs = [BsX, BsY]
-    # The order of Bs is choosen like it is in WABBIT.
-    # NB: while this definition is the one from a redundant grid,
-    # it is used the same in the uniqueGrid ! The funny thing is that in the latter
-    # case, we store the 1st ghost node to the H5 file - this is required for visualization.
-    return n[::-1]//2**level + 1
 
 # for wabbit files we always save the time in the name as 6 digits before . and 6 digits after
 # this function takes a float and does the same

@@ -4,16 +4,8 @@ from __future__ import print_function
 import glob, os
 import h5py
 import argparse
-
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import bcolors
 
 def strictly_increasing(L):
     return all(x<y for x, y in zip(L, L[1:]))
