@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import wabbit_tools
+import sys, os
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import inifile_tools
 import insect_tools
+import bcolors
 import glob
 import datetime
-import os
 import argparse
 
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
 
 # this is a peculiar oddity for IRENE, she spits out some runtime warnings....
 np.seterr(invalid='ignore')
@@ -76,7 +69,7 @@ if args.paramsfile is None:
 
     while right_inifile != True:
         inifile = l[i]
-        right_inifile = wabbit_tools.exists_ini_parameter( inifile, "Time", "time_max" )
+        right_inifile = inifile_tools.exists_ini_parameter( inifile, "Time", "time_max" )
         i += 1
 
     if not right_inifile:
@@ -107,7 +100,7 @@ if args.last_m_time_steps is not None:
 
 
 # figure out how many RHS evaluatins we do per time step
-method = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
+method = inifile_tools.get_ini_parameter( inifile, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
 
 # default is one (even though that might be wrong...)
 nrhs = 1
@@ -116,19 +109,19 @@ if method == "RungeKuttaGeneric" or method == "RungeKuttaGeneric-FSI":
     # this is not always true, but most of the time (butcher_tableau)
     nrhs = 4.0
 elif method == "RungeKuttaChebychev":
-    nrhs = wabbit_tools.get_ini_parameter( inifile, 'Time', 's', float)
+    nrhs = inifile_tools.get_ini_parameter( inifile, 'Time', 's', float)
     
 if nrhs == 1:
     print("\n\n\n%sWe assume 1 rhs eval per time step, but that is likely not correct.%s\n\n\n" % (bcolors.FAIL, bcolors.ENDC))
     
 # if we perform more than one dt on the same grid, this must be taken into account as well
-N_dt_per_grid = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'N_dt_per_grid', float, default=1.0)
+N_dt_per_grid = inifile_tools.get_ini_parameter( inifile, 'Blocks', 'N_dt_per_grid', float, default=1.0)
 nrhs *= N_dt_per_grid
 
 
-T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
-bs = wabbit_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int, vector=True)
-dim = wabbit_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
+T = inifile_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
+bs = inifile_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int, vector=True)
+dim = inifile_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 
 
 if len(bs) == 1:

@@ -6,12 +6,11 @@ Created on Sun Dec  2 18:15:19 2018
 @author: engels
 """
 
-import numpy as np
-import wabbit_tools
+import sys, os
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import inifile_tools
 import insect_tools
 import glob
-import os
-import sys
 import argparse
 
 #------------------------------------------------------------------------------
@@ -47,7 +46,7 @@ if args.paramsfile is None:
 
     while right_inifile != True:
         inifile = l[i]
-        right_inifile = wabbit_tools.exists_ini_parameter( inifile, "Time", "time_max" )
+        right_inifile = inifile_tools.exists_ini_parameter( inifile, "Time", "time_max" )
         i += 1
 else:
     inifile = args.paramsfile
@@ -61,7 +60,7 @@ if not os.path.isfile(dir + 'performance.t'):
 d = insect_tools.load_t_file(dir + 'performance.t', verbose=False)
 
 # final time to reach according to paramsfile
-T = wabbit_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
+T = inifile_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
 
 if d[-1,0] >= 0.99*T:
     # run is done

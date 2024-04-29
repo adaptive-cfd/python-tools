@@ -14,7 +14,8 @@ as its intended use is the command line)
 import matplotlib as mpl
 mpl.use('Agg')
 
-import numpy as np
+import sys, os
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import insect_tools
 import matplotlib.pyplot as plt
 import argparse

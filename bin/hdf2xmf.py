@@ -4,16 +4,8 @@ from __future__ import print_function
 import glob, os
 import h5py
 import argparse
-
-class bcolors:
-        HEADER = '\033[95m'
-        OKBLUE = '\033[94m'
-        OKGREEN = '\033[92m'
-        WARNING = '\033[93m'
-        FAIL = '\033[91m'
-        ENDC = '\033[0m'
-        BOLD = '\033[1m'
-        UNDERLINE = '\033[4m'
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+import bcolors
 
 def strictly_increasing(L):
     return all(x<y for x, y in zip(L, L[1:]))
@@ -88,10 +80,10 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
     # get the dataset handle
     dset_id = f.get('blocks')
     
-    
-    
-
     res = dset_id.shape
+
+    # close file
+    f.close()
 
     if (len(res) == 3):
         # ------------------------------------------------------
@@ -129,14 +121,18 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             f = h5py.File(file)
             dset_id = f.get('blocks')
             Nb = dset_id.shape[0]
-            treecode = wabbit_tools.read_treecode_hdf5(file)
-            Jmin, Jmax = wabbit_tools.get_max_min_level( treecode )
+            w_obj = wabbit_tools.WabbitHDF5file()
+            w_obj.read(file, verbose=False, read_var='meta')
+            Jmin, Jmax = w_obj.get_max_min_level()
             print("timestamp "+timestamps[i]+" has Nb=%i blocks J=(%i,%i)" % (Nb, Jmin, Jmax) )
             
             b = f['coords_origin'][:]
             x0 = np.array(b, dtype=float)
             b = f['coords_spacing'][:]
             dx = np.array(b, dtype=float)
+
+            # close file
+            f.close()
 
             # all blocks for this timestep
             for b  in range(Nb):
@@ -243,6 +239,9 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             b = f['coords_spacing'][:]
             dx = np.array(b, dtype=float)
 
+            # close file
+            f.close()
+
             # all blocks for this timestep
             for b  in range(Nb):
                 fid.write('          <!-- ***************************************************************** -->\n')
@@ -345,6 +344,9 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             origin = dset_id.attrs.get('origin')
             if origin is None or args.ignore_origin:
                 origin = [0.0, 0.0, 0.0]
+
+            # close file
+            f.close()
 
             nnx.append(res[0])
             nny.append(res[1])

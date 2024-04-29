@@ -7,9 +7,9 @@ Created on Wed Apr 10 17:46:24 2019
 """
 
 import numpy as np
-import wabbit_tools
+import sys, os
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import insect_tools
-import sys
 
 print("----------------------------------------")
 print(" jobfile2perf: [infile] [infile:timesteps_info.t] [outfile]")
