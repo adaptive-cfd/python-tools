@@ -1918,8 +1918,77 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
         i += 1
 
     f.close()
-    
   
+    
+def wing_contour_from_file(fname):
+    """
+    Compute wing outline (shape) from an *.INI file. Returns: xc, yc, the coordinates
+    of outline points.
+    """
+    import os
+    import inifile_tools
+    
+    # does the ini file exist?
+    if not os.path.isfile(fname):
+        raise ValueError("Inifile: %s not found!" % (fname))
+        
+    if not inifile_tools.exists_ini_section(fname, "Wing"):
+        raise ValueError("The ini file you specified does not contain the [Wing] section "+
+                         "so maybe it is not a wing-shape file after all?")
+
+    wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
+    
+    if wtype != "fourier" and wtype != "linear":
+        print(wtype)
+        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
+                         "Fourier or linear encoded wing (maybe with bristles)")
+        
+    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float)
+    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+    
+    #--------------------------------------------------------------------------
+    # planform (contour)
+    #--------------------------------------------------------------------------
+    if wtype == "fourier":
+        # description with fourier series
+        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+        
+        # compute outer wing shape (membraneous part)
+        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
+        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+        
+        xc = x0 + np.cos(theta2)*r_fft
+        yc = y0 + np.sin(theta2)*r_fft
+        
+        area = 0.0
+        dtheta = theta2[1]-theta2[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta2.shape[0]):
+            area += dtheta * (r_fft[j]**2 / 2.0)        
+        
+    elif wtype == "linear":
+        # description with points (not a radius)
+        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
+        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
+        # theta_i = theta_i * 2.0*np.pi - np.pi
+        theta_i = theta_i - np.pi
+    
+        xc = x0 + np.cos(theta_i)*R_i
+        yc = y0 + np.sin(theta_i)*R_i        
+        
+        area = 0.0
+        dtheta = theta_i[1]-theta_i[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta_i.shape[0]):
+            area += dtheta * (R_i[j]**2 / 2.0)
+  
+    return xc, yc, area
     
 def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15):
     """
@@ -1943,20 +2012,7 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     
     plt.rcParams["text.usetex"] = False
 
-    # does the ini file exist?
-    if not os.path.isfile(fname):
-        raise ValueError("Inifile: %s not found!" % (fname))
-        
-    if not inifile_tools.exists_ini_section(fname, "Wing"):
-        raise ValueError("The ini file you specified does not contain the [Wing] section "+
-                         "so maybe it is not a wing-shape file after all?")
-
-    wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     
-    if wtype != "fourier" and wtype != "linear":
-        print(wtype)
-        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
-                         "Fourier or linear encoded wing (maybe with bristles)")
     
     # open the new figure:
     if fig is None and ax is None:
@@ -1986,53 +2042,11 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         
         plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')    
         
-    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float)
-    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
-    
-    
-    #--------------------------------------------------------------------------
-    # planform (contour)
-    #--------------------------------------------------------------------------
-    if wtype == "fourier":
-        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
-        
-        # compute outer wing shape (membraneous part)
-        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
-        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
-        
-        xc = x0 + np.cos(theta2)*r_fft
-        yc = y0 + np.sin(theta2)*r_fft
-        
-        area = 0.0
-        dtheta = theta2[1]-theta2[0]
-        
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta2.shape[0]):
-            area += dtheta * (r_fft[j]**2 / 2.0)        
-        
-    elif wtype == "linear":
-        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
-        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
-        # theta_i = theta_i * 2.0*np.pi - np.pi
-        theta_i = theta_i - np.pi
-    
-        xc = x0 + np.cos(theta_i)*R_i
-        yc = y0 + np.sin(theta_i)*R_i        
-        
-        area = 0.0
-        dtheta = theta_i[1]-theta_i[0]
-        
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta_i.shape[0]):
-            area += dtheta * (R_i[j]**2 / 2.0)
-    
-    # draw rotation axis a bit longer than the wing
-    d = 0.1
-    
+    # -------------------------------------------------------------------------  
+    # contour
+    # -------------------------------------------------------------------------    
+    xc, yc, area = wing_contour_from_file(fname)
+            
     # plots wing outline
     ax.plot( xc, yc, 'r-', label='wing')
     
@@ -2042,6 +2056,8 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     
     ax.axis('equal')
     
+    # draw rotation axis a bit longer than the wing
+    d = 0.1
     # plot the rotation axes
     ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
     ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
