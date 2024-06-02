@@ -1938,13 +1938,13 @@ def wing_contour_from_file(fname):
 
     wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     
-    if wtype != "fourier" and wtype != "linear":
+    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier':
         print(wtype)
         raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
                          "Fourier or linear encoded wing (maybe with bristles)")
         
-    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float)
-    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float, default=0.0)
+    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float, default=0.0)
     
     #--------------------------------------------------------------------------
     # planform (contour)
@@ -1987,6 +1987,11 @@ def wing_contour_from_file(fname):
         # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
         for j in np.arange(theta_i.shape[0]):
             area += dtheta * (R_i[j]**2 / 2.0)
+    elif wtype == "kleemeier":
+        B, H = 8.6/130, 100/130
+        xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
+        yc = [0.0, H, H, 0.0, 0.0]
+        area = B*H
   
     return xc, yc, area
     
@@ -2167,6 +2172,85 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
 
     return time, alpha, phi, theta
 
+
+def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.0, alpha_up=-40.0, tau=0.22, theta=12.55, time=None):
+    """
+    Kinematics model for a bumblebee bombus terrestris [Engels et al PRL 2016, PRF 2019]
+
+    Note motion starts with downstroke.
+
+    Parameters
+    ----------
+    PHI : float, scalar
+        Stroke amplitude
+    phi_m : float, scalar
+        Mean stroke angle
+    dTau : float, scalar
+        Delay parameter of supination/pronation
+    alpha_down : float, scalar, optional
+        Featherng angle during downstroke.
+    alpha_up : float, scalar, optional
+        Feathering angle during upstroke.
+    tau : 
+        duration of wing rotation
+    theta : 
+        constant deviation angle
+    time : vector of time, optional
+        Time vector. The default is 1000 samples between 0 and 1.
+    
+
+    Returns
+    -------
+    time, alpha, phi, theta
+    """
+    
+    if time is None:
+        time = np.linspace(0.0, 1.0, endpoint=False, num=1000)
+
+    phi = phi_m + (PHI/2.0)*np.sin(2.0*np.pi*(time+0.25))
+    theta = np.zeros_like(time) + theta
+    
+    # alpha is a new function
+    # d_tau is the timing of pronation and supination, which Muijres2016 identified as important parameter in the compensation
+    # degrees
+    alpha_tau  = tau # fixed parameters (rotation duration) upstroke->downstroke
+    alpha_tau1 = tau # downstroke->upstroke
+    
+    T1 = alpha_tau1/2.0
+    T2 = 0.5 - alpha_tau/2.0
+    T3 = T2  + alpha_tau
+    T4 = 1.0 - alpha_tau1/2.0
+    
+    pi = np.pi
+    a  = (alpha_up-alpha_down)/alpha_tau     
+    a1 = (alpha_up-alpha_down)/alpha_tau1   
+    
+    alpha = np.zeros(time.shape)
+   
+    for it, t in enumerate(time):
+        if t < T1:
+            alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
+            
+        elif t>=T1 and t < T2:
+            alpha[it] = alpha_down
+                            
+        elif t>=T2 and t < T3:
+            alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
+            
+        elif t>=T3 and t < T4:
+            alpha[it] = alpha_up
+            
+        elif t >= T4:
+            TT = 1.0-alpha_tau1/2.0
+            alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
+       
+    # this now is the important part that circularily shifts the entire vector. 
+    # it thus changes the "timing of pronation and supination"
+    dt = time[1]-time[0]
+    shift = int( np.round(dTau/dt) )
+    alpha = np.roll(alpha, shift)
+
+    return time, alpha, phi, theta
 
 
 
