@@ -977,6 +977,83 @@ def Rmirror( x0, n):
 
     return(Rmirror)
 
+def M_stroke(eta, wing):
+    """
+    Rotation matrix from body to stroke system, as defined in Engels et al. 2016 SISC
+
+    Parameters
+    ----------
+    eta : rad
+        stroke plane angle
+    wing : str
+        left or right
+
+    Returns
+    -------
+    M_stroke rotation matrix
+    """
+
+    if wing =="left":
+        M_stroke = Ry(eta)
+    elif wing == "right":
+        M_stroke = Rx(np.pi)*Ry(eta)
+    else:
+        raise("Neither right nor left wing")
+        
+    return M_stroke   
+
+
+def M_wing(alpha, theta, phi, wing):
+    """
+    Rotation matrix from stroke to wing system, as defined in Engels et al. 2016 SISC
+
+    Parameters
+    ----------
+    alpha : rad
+        feathering angle
+    theta : rad
+        deviation angle
+    phi : rad
+        flapping angle
+    wing : str
+        left or right
+
+    Returns
+    -------
+    M_wing rotation matrix
+
+    """
+    if wing =="left":
+        M = Ry(alpha)*Rz(theta)*Rx(phi)
+    elif wing == "right":
+        M = Ry(-alpha)*Rz(theta)*Rx(-phi)
+    else:
+        raise("Neither right nor left wing")
+    return M
+
+
+def M_body(psi, beta, gamma):
+    """
+    Rotation matrix from lab to body reference frame, as defined in Engels et al. 2016 SISC
+    
+    Parameters
+    ----------
+    psi : rad
+        roll angle
+    beta : rad
+        pitch angle
+    gamma : rad
+        yaw angle
+
+    Returns
+    -------
+    M_body : TYPE
+        Body rotation matrix
+
+    """
+    M_body = Rx(psi)*Ry(beta)*Rz(gamma)
+    return M_body
+    
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
