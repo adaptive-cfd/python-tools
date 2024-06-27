@@ -13,6 +13,9 @@ import sys, os
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import wabbit_tools
 
+# for now only in development option: Write difference as field
+write_diff = False
+
 if not len(sys.argv) == 3:
     print(f"ERROR: Wrong number of inputs - {len(sys.argv)-1}, usage: wabbit-compare-grids.py [FILE1] [FILE2]")
     sys.exit(1)
@@ -35,6 +38,13 @@ w_obj2 = wabbit_tools.WabbitHDF5file()
 w_obj2.read(file2)
 
 bool_similar = w_obj1.isClose(w_obj2, verbose=True)
+
+if not bool_similar and write_diff:
+    path1 = os.path.split(file1)
+    w_obj_diff = w_obj1 - w_obj2
+    w_obj_new = (w_obj1 * 0) + w_obj2  # sneaky way to interpolate w_obj2 grid onto w_obj_new
+    w_obj_diff.write(os.path.join(path1[0], "diff-" + path1[1]))
+    w_obj_new.write(os.path.join(path1[0], "new-" + path1[1]))
         
 #------------------------------------------------------------------------------
 # return error code

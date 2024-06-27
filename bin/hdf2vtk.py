@@ -200,7 +200,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
 
     # Add the vtkHyperTreeGrid to the multi-block dataset
     multi_block_dataset.SetBlock(i_count, htg)
-    multi_block_dataset.GetMetaData(i_count).Set(vtk.vtkCompositeDataSet.NAME(), f"Time={i_wobj.time}")
+    multi_block_dataset.GetMetaData(i_count).Set(vtk.vtkCompositeDataSet.NAME(), f"Time={np.round(i_wobj.time, 12)}")
 
 
   # Setup the writer
@@ -298,9 +298,11 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   multi_block.SetNumberOfBlocks(w_main.total_number_blocks)
   # amr_block.Initialize(w_main.max_level, wabbit_tools2.block_level_distribution(w_main))
   # amr_block_id = np.zeros(w_main.max_level).astype(int)
-
+  
   start_time = time.time()
   for i_b in range(w_main.total_number_blocks):
+      b_tc, b_lvl = w_main.block_treecode_num[i_b], w_main.level[i_b]
+
       rem_time = (w_main.total_number_blocks - i_b) * (time.time() - start_time) / (i_b + 1e-4*(i_b == 0))
       # Format remaining time in HH:MM:SS format
       hours, rem = divmod(rem_time, 3600)
@@ -314,27 +316,30 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       ###
       block = vtk.vtkUniformGrid()
       if w_main.dim == 2:
-        block.SetDimensions(w_main.block_size[0]+1, w_main.block_size[1]+1, 2)
+        block.SetDimensions(w_main.block_size[0], w_main.block_size[1], 1)
         block.SetOrigin(w_main.coords_origin[i_b, 0], w_main.coords_origin[i_b, 1], 0)
-        spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim]+1)
+        spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim])
         block.SetSpacing(spacing_now[0], spacing_now[1], 0)
       else:
-        block.SetDimensions(w_main.block_size[0]+1, w_main.block_size[1]+1, w_main.block_size[2]+1)
+        block.SetDimensions(w_main.block_size[0], w_main.block_size[1], w_main.block_size[2])
         block.SetOrigin(w_main.coords_origin[i_b, 0], w_main.coords_origin[i_b, 1], w_main.coords_origin[i_b, 2])
-        spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim]+1)
+        spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim])
         block.SetSpacing(spacing_now[0], spacing_now[1], spacing_now[2])
 
       # Attach data vor scalars - currently copying but maybe there is a more clever way
       for i_s, i_n in zip(s_names, s_ind):
+        # files could have different block ordering so lets correct this
+        i_b_now = w_obj_list[i_n].get_block_id(b_tc, b_lvl)
+
         data_now = vtk.vtkDoubleArray()
         data_now.SetName(i_s)
-        data_now.SetNumberOfValues(np.prod(w_main.block_size))
+        data_now.SetNumberOfValues((w_main.block_size[0]-1) * (w_main.block_size[1] -1) * (w_main.block_size[2] - (w_main.dim == 3)))
 
         # Copy the data into the vtkDoubleArray
         if w_main.dim == 2:
-          block_data_flat = w_obj_list[i_n].blocks[i_b, :].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
+          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
         else:
-          block_data_flat = w_obj_list[i_n].blocks[i_b, :].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D    
+          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1, :-1].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D    
         for i in range(block_data_flat.size):
           data_now.SetValue(i, block_data_flat[i])
 
@@ -344,14 +349,16 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       for i_v, i_n in zip(v_names, v_ind):
         data_now = vtk.vtkDoubleArray()
         data_now.SetName(i_v)
-        data_now.SetNumberOfValues(np.prod(w_main.block_size)*w_main.dim)
+        data_now.SetNumberOfValues((w_main.block_size[0]-1) * (w_main.block_size[1] -1) * (w_main.block_size[2] - (w_main.dim == 3))*w_main.dim)
         data_now.SetNumberOfComponents(w_main.dim)
         for i_ind, i_ndim in enumerate(i_n):
+          # files could have different block ordering so lets correct this
+          i_b_now = w_obj_list[i_ndim].get_block_id(b_tc, b_lvl)
           # Copy the data into the vtkDoubleArray
           if w_main.dim == 2:
-            block_data_flat = w_obj_list[i_ndim].blocks[i_b, :].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
+            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
           else:
-            block_data_flat = w_obj_list[i_ndim].blocks[i_b, :].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D  
+            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1, :-1].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D  
           for i in range(block_data_flat.size):
             data_now.SetComponent(i, i_ind, block_data_flat[i])
 
@@ -438,7 +445,7 @@ if __name__ == "__main__":
   if os.path.isfile(args.infile) and args.infile.endswith(".h5"):
     state_1 = wabbit_tools.WabbitHDF5file()
     state_1.read(args.infile, verbose=args.verbose)
-    time_1 = state_1.time
+    time_1 = np.round(state_1.time, 12)  # round to 12 digits to avoid floating points diffrences
     time_process[time_1] = [state_1]
     filelist = [1]  # for verbose
     # set name to var name in case if infile is file and outfile is default, results will be same but with different ending (.htg or .vtm)
@@ -449,7 +456,7 @@ if __name__ == "__main__":
     for i_file in filelist:
       state_1 = wabbit_tools.WabbitHDF5file()
       state_1.read(i_file, verbose=args.verbose)
-      time_1 = state_1.time
+      time_1 = np.round(state_1.time, 12)  # round to 12 digits to avoid floating points diffrences
       if not time_1 in time_process:
         time_process[time_1] = []
       time_process[time_1].append(state_1)
