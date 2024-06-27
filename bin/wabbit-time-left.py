@@ -127,7 +127,7 @@ dim = inifile_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 if len(bs) == 1:
     npoints = bs**dim
 else:
-    npoints = np.product(bs)
+    npoints = np.prod(bs)
 
 
 # how long did this run run already (hours)

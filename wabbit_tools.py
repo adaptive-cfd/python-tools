@@ -27,11 +27,11 @@ def keyvalues(domain_size, dx, data):
     for i in range( data.shape[0] ):
         if len(data.shape) == 3: sum_block = np.sum(data[i,:-1,:-1])  # 2D
         else: sum_block = np.sum(data[i,:-1,:-1, :-1])  ## 3D
-        mean1 = mean1 + np.product(dx[i,:]) * sum_block
-        squares1 = squares1 + np.product(dx[i,:]) * sum_block**2
+        mean1 = mean1 + np.prod(dx[i,:]) * sum_block
+        squares1 = squares1 + np.prod(dx[i,:]) * sum_block**2
     # divide integrals by area to get mean value
-    mean1 /= np.product(domain_size)
-    squares1 /= np.product(domain_size)
+    mean1 /= np.prod(domain_size)
+    squares1 /= np.prod(domain_size)
         
     return(max1, min1, mean1, squares1 )
 
