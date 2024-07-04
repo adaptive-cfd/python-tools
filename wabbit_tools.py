@@ -14,6 +14,7 @@ import copy
 from inifile_tools import *
 from wabbit_dense_error_tools import *
 from analytical_functions import *
+import logging
 
 
 #------------------------------------------------------------------------------
@@ -362,18 +363,24 @@ class WabbitHDF5file:
     
 
     # check if logically two objects are considered to be close to equal
-    def isClose(self, other, verbose=True):
+    def isClose(self, other, verbose=True, logger=None):
         # check if grid attributes are equal
-        attr_similarity = self.compareAttr(other)
+        attr_similarity = self.compareAttr(other, logger=logger)
         if not attr_similarity:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grid attributes are note qual" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Grid attributes are note qual" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         
         # check if grids are equal
-        grid_similarity = self.compareGrid(other)
+        grid_similarity = self.compareGrid(other, logger=logger)
         grid_interpolator = ()
         if not grid_similarity:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grid is not equal, interpolating the difference. This might take a while" + bcolors.ENDC)
+            if verbose: 
+                text_now = bcolors.FAIL + f"ERROR: Grid is not equal, interpolating the difference. This might take a while" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)    
             grid_interpolator = other.create_interpolator()
             # return False
         
@@ -414,18 +421,33 @@ class WabbitHDF5file:
                 error_LInf = diff_LInf
         
         if verbose:
-            print(f"First : max={max1:12.5e}, min   ={min1:12.5e}, mean={mean1:12.5e}, squares={squares1:12.5e}")
-            print(f"Second: max={max2:12.5e}, min   ={min2:12.5e}, mean={mean2:12.5e}, squares={squares2:12.5e}")
-            print(f"Error : L2 ={error_L2:12.5e}, LInfty={error_LInf:12.5e}")
-            if error_L2 <= 1.0e-13: print("GREAT: The files can be deemed as equal")
-            else: print(bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC)
+            text_now = f"First : max={max1:12.5e}, min   ={min1:12.5e}, mean={mean1:12.5e}, squares={squares1:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            text_now = f"Second: max={max2:12.5e}, min   ={min2:12.5e}, mean={mean2:12.5e}, squares={squares2:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            text_now = f"Error : L2 ={error_L2:12.5e}, LInfty={error_LInf:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            if error_L2 <= 1.0e-13: 
+                text_now = "GREAT: The files can be deemed as equal"
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
+            else:
+                text_now = bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
         return error_L2 <= 1.0e-13
 
 
     # check if grid is equal or not, with fractional we compute the fraction of treecodes which are different
-    def compareGrid(self, other, fractional=False, verbose=True):
+    def compareGrid(self, other, fractional=False, verbose=True, logger=None):
         if self.total_number_blocks != other.total_number_blocks:
-            if verbose: print(bcolors.FAIL + f"ERROR: We have a different number of blocks - {self.total_number_blocks} vs {other.total_number_blocks}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: We have a different number of blocks - {self.total_number_blocks} vs {other.total_number_blocks}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
                 
         mismatch_count = 0
@@ -434,7 +456,10 @@ class WabbitHDF5file:
             if (self.block_treecode_num[i], self.level[i]) not in other.tc_dict:
                 mismatch_count += 1
                 if not fractional:
-                    if verbose: print(bcolors.FAIL + f"ERROR: treecode not matching" + bcolors.ENDC)
+                    if verbose:
+                        text_now = bcolors.FAIL + f"ERROR: treecode not matching" + bcolors.ENDC
+                        if logger==None: print(text_now)
+                        else: logger.info(text_now)
                     return False  # Early exit if not computing fractional and a mismatch is found
         
         if fractional:
@@ -445,24 +470,36 @@ class WabbitHDF5file:
     # check if position and other details about the grid are equal
     # A grid is uniquely defined by its dimension, block size, domain size
     # The individual grid partition is uniquely defined by the number of blocks, treecode and level arrays
-    def compareAttr(self, other, verbose=True):
+    def compareAttr(self, other, verbose=True, logger=None):
         # check global grid attributes
         if self.dim != other.dim:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grids are not in the same dimension, we have to leave the matrix - {self.dim} vs {other.dim}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Grids are not in the same dimension, we have to leave the matrix - {self.dim} vs {other.dim}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         if not np.all(self.block_size == other.block_size):
-            if verbose: print(bcolors.FAIL + f"ERROR: Block sizes are different - {self.block_size} vs {other.block_size}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Block sizes are different - {self.block_size} vs {other.block_size}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         if any(self.domain_size != other.domain_size):
-            if verbose: print(bcolors.FAIL + f"ERROR: Domain size is different - {self.domain_size} vs {other.domain_size}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Domain size is different - {self.domain_size} vs {other.domain_size}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         return True
     
     # check if objects are at the same time instant, pretty simple but why not have a function for it
     # round_digits is needed as floating points do not like direct comparisons
-    def compareTime(self, other, verbose=True, round_digits=12):
+    def compareTime(self, other, verbose=True, round_digits=12, logger=None):
         similar_time = (np.round(self.time, round_digits) == np.round(other.time, round_digits))
-        if not similar_time and verbose: print(bcolors.FAIL + f"ERROR: times are not equal" + bcolors.ENDC)
+        if not similar_time and verbose:
+            text_now = bcolors.FAIL + f"ERROR: times are not equal" + bcolors.ENDC
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
         return similar_time
     
     # try to parse the variable name from the file it was read in with
