@@ -4,6 +4,7 @@ from __future__ import print_function
 import glob, os
 import h5py
 import argparse
+import sys
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import bcolors
 

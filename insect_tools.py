@@ -765,13 +765,15 @@ def Hserieseval(a0, ai, bi, time):
     if ai.shape[0] != bi.shape[0]:
         raise ValueError("length of ai and bi must be the same")
 
+    time2 = time.copy()
+
     # time periodization
-    while ( np.max(time) >= 1.0 ):
-        time[ time >= 1.0 ] -= 1.0
+    while ( np.max(time2) >= 1.0 ):
+        time2[ time2 >= 1.0 ] -= 1.0
         
     n = ai.shape[0]
     dt = 1.0 / n
-    j1 = np.floor(time/dt) # zero-based indexing in python
+    j1 = np.floor(time2/dt) # zero-based indexing in python
     j1 = np.asarray(j1, dtype=int)
     j2 = j1 + 1
     
@@ -779,7 +781,7 @@ def Hserieseval(a0, ai, bi, time):
     j2[ j2 > n-1 ] = 0 # zero-based indexing in python
     
     # normalized time (between two data points)
-    t = (time - j1*dt) / dt
+    t = (time2 - j1*dt) / dt
 
     # values of hermite interpolant
     h00 = (1.0+2.0*t)*((1.0-t)**2)
@@ -915,7 +917,7 @@ def eval_angles_kinematics_file(fname, time=None):
         # time vector for plotting
         t = np.linspace(0.0, 1.0, 1000, endpoint=False)
     else:
-        t = time
+        t = time.copy()
         
     if kine_type == "fourier":
         alpha = Fserieseval(a0_alpha, ai_alpha, bi_alpha, t)
@@ -975,11 +977,89 @@ def Rmirror( x0, n):
 
     return(Rmirror)
 
+def M_stroke(eta, wing):
+    """
+    Rotation matrix from body to stroke system, as defined in Engels et al. 2016 SISC
+
+    Parameters
+    ----------
+    eta : rad
+        stroke plane angle
+    wing : str
+        left or right
+
+    Returns
+    -------
+    M_stroke rotation matrix
+    """
+
+    if wing =="left":
+        M_stroke = Ry(eta)
+    elif wing == "right":
+        M_stroke = Rx(np.pi)*Ry(eta)
+    else:
+        raise("Neither right nor left wing")
+        
+    return M_stroke   
+
+
+def M_wing(alpha, theta, phi, wing):
+    """
+    Rotation matrix from stroke to wing system, as defined in Engels et al. 2016 SISC
+
+    Parameters
+    ----------
+    alpha : rad
+        feathering angle
+    theta : rad
+        deviation angle
+    phi : rad
+        flapping angle
+    wing : str
+        left or right
+
+    Returns
+    -------
+    M_wing rotation matrix
+
+    """
+    if wing =="left":
+        M = Ry(alpha)*Rz(theta)*Rx(phi)
+    elif wing == "right":
+        M = Ry(-alpha)*Rz(theta)*Rx(-phi)
+    else:
+        raise("Neither right nor left wing")
+    return M
+
+
+def M_body(psi, beta, gamma):
+    """
+    Rotation matrix from lab to body reference frame, as defined in Engels et al. 2016 SISC
+    
+    Parameters
+    ----------
+    psi : rad
+        roll angle
+    beta : rad
+        pitch angle
+    gamma : rad
+        yaw angle
+
+    Returns
+    -------
+    M_body : TYPE
+        Body rotation matrix
+
+    """
+    M_body = Rx(psi)*Ry(beta)*Rz(gamma)
+    return M_body
+    
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
-                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, ax=None):
+                             time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, 
+                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True):
     """ Lollipop-diagram. visualize the wing chord
     
     give all angles in degree
@@ -1125,18 +1205,17 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     elif wing == 'right':
         M_stroke = M_stroke_r
 
-    # we draw the line between [0,0,-1] and [0,0,1] in the stroke system
-    xs1 = vct([0.0, 0.0, +1.0])
-    xs2 = vct([0.0, 0.0, -1.0])
-    # bring these points back to the global system
-    x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
-    x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
-
-    ax.set_ylim([-1, 1])
-
-    # remember we're in the x-z plane
-    l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
-    ax.add_line(l)
+    if draw_stoke_plane:
+        # we draw the line between [0,0,-1] and [0,0,1] in the stroke system        
+        xs1 = vct([0.0, 0.0, +1.0])
+        xs2 = vct([0.0, 0.0, -1.0])
+        # bring these points back to the global system
+        x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
+        x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
+    
+        # remember we're in the x-z plane
+        l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
+        ax.add_line(l)
 
 
     
@@ -1167,18 +1246,21 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     
     # modify ticks in matlab-style.
     ax.tick_params( which='both', direction='in', top=True, right=True )
-    plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
-#    plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
+    
+    if savePDF:
+        plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
+    if savePNG:
+        plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
 
-def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0):
+def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0]):
    
     if time is None:
         time = np.linspace(0, 1.0, 1000, endpoint=True)
         
     # wing tip in wing coordinate system
     x_tip_w   = vct([0.0, 1.0, 0.0])
-    x_pivot_b = vct([0.0, 0.0, 0.0])
     x_body_g  = vct([0.0, 0.0, 0.0])
+    x_pivot_b = vct(x_pivot_b)
         
     # body transformation matrix
     M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
@@ -1913,10 +1995,84 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
         i += 1
 
     f.close()
-    
   
     
-def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
+def wing_contour_from_file(fname):
+    """
+    Compute wing outline (shape) from an *.INI file. Returns: xc, yc, the coordinates
+    of outline points.
+    """
+    import os
+    import inifile_tools
+    
+    # does the ini file exist?
+    if not os.path.isfile(fname):
+        raise ValueError("Inifile: %s not found!" % (fname))
+        
+    if not inifile_tools.exists_ini_section(fname, "Wing"):
+        raise ValueError("The ini file you specified does not contain the [Wing] section "+
+                         "so maybe it is not a wing-shape file after all?")
+
+    wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
+    
+    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier':
+        print(wtype)
+        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
+                         "Fourier or linear encoded wing (maybe with bristles)")
+        
+    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float, default=0.0)
+    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float, default=0.0)
+    
+    #--------------------------------------------------------------------------
+    # planform (contour)
+    #--------------------------------------------------------------------------
+    if wtype == "fourier":
+        # description with fourier series
+        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+        
+        # compute outer wing shape (membraneous part)
+        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
+        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+        
+        xc = x0 + np.cos(theta2)*r_fft
+        yc = y0 + np.sin(theta2)*r_fft
+        
+        area = 0.0
+        dtheta = theta2[1]-theta2[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta2.shape[0]):
+            area += dtheta * (r_fft[j]**2 / 2.0)        
+        
+    elif wtype == "linear":
+        # description with points (not a radius)
+        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
+        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
+        # theta_i = theta_i * 2.0*np.pi - np.pi
+        theta_i = theta_i - np.pi
+    
+        xc = x0 + np.cos(theta_i)*R_i
+        yc = y0 + np.sin(theta_i)*R_i        
+        
+        area = 0.0
+        dtheta = theta_i[1]-theta_i[0]
+        
+        # the formula is: 
+        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
+        for j in np.arange(theta_i.shape[0]):
+            area += dtheta * (R_i[j]**2 / 2.0)
+    elif wtype == "kleemeier":
+        B, H = 8.6/130, 100/130
+        xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
+        yc = [0.0, H, H, 0.0, 0.0]
+        area = B*H
+  
+    return xc, yc, area
+    
+def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -1938,20 +2094,7 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     
     plt.rcParams["text.usetex"] = False
 
-    # does the ini file exist?
-    if not os.path.isfile(fname):
-        raise ValueError("Inifile: %s not found!" % (fname))
-        
-    if not inifile_tools.exists_ini_section(fname, "Wing"):
-        raise ValueError("The ini file you specified does not contain the [Wing] section "+
-                         "so maybe it is not a wing-shape file after all?")
-
-    wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     
-    if wtype != "fourier" and wtype != "linear":
-        print(wtype)
-        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
-                         "Fourier or linear encoded wing (maybe with bristles)")
     
     # open the new figure:
     if fig is None and ax is None:
@@ -1981,58 +2124,22 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
         
         plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')    
         
-    x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float)
-    y0 = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
-    
-    
-    #--------------------------------------------------------------------------
-    # planform (contour)
-    #--------------------------------------------------------------------------
-    if wtype == "fourier":
-        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
-        
-        # compute outer wing shape (membraneous part)
-        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
-        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
-        
-        xc = x0 + np.cos(theta2)*r_fft
-        yc = y0 + np.sin(theta2)*r_fft
-        
-        area = 0.0
-        dtheta = theta2[1]-theta2[0]
-        
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta2.shape[0]):
-            area += dtheta * (r_fft[j]**2 / 2.0)        
-        
-    elif wtype == "linear":
-        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
-        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
-        # theta_i = theta_i * 2.0*np.pi - np.pi
-        theta_i = theta_i - np.pi
-    
-        xc = x0 + np.cos(theta_i)*R_i
-        yc = y0 + np.sin(theta_i)*R_i        
-        
-        area = 0.0
-        dtheta = theta_i[1]-theta_i[0]
-        
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta_i.shape[0]):
-            area += dtheta * (R_i[j]**2 / 2.0)
-    
-    # draw rotation axis a bit longer than the wing
-    d = 0.1
-    
+    # -------------------------------------------------------------------------  
+    # contour
+    # -------------------------------------------------------------------------    
+    xc, yc, area = wing_contour_from_file(fname)
+            
     # plots wing outline
     ax.plot( xc, yc, 'r-', label='wing')
     
+    if fill:
+        color = change_color_opacity('r', fillAlpha)
+        ax.fill( np.append(xc, xc[0]), np.append(yc, yc[0]), color=color )
+    
     ax.axis('equal')
     
+    # draw rotation axis a bit longer than the wing
+    d = 0.1
     # plot the rotation axes
     ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
     ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
@@ -2054,8 +2161,6 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True):
     # -------------------------------------------------------------------------
     # save to image file
     # -------------------------------------------------------------------------
-    # plt.savefig( fname.replace('.ini','.pdf') )
-    # plt.savefig( fname.replace('.ini','.svg') )
     if savePNG:
         plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     
@@ -2144,6 +2249,85 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
 
     return time, alpha, phi, theta
 
+
+def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.0, alpha_up=-40.0, tau=0.22, theta=12.55, time=None):
+    """
+    Kinematics model for a bumblebee bombus terrestris [Engels et al PRL 2016, PRF 2019]
+
+    Note motion starts with downstroke.
+
+    Parameters
+    ----------
+    PHI : float, scalar
+        Stroke amplitude
+    phi_m : float, scalar
+        Mean stroke angle
+    dTau : float, scalar
+        Delay parameter of supination/pronation
+    alpha_down : float, scalar, optional
+        Featherng angle during downstroke.
+    alpha_up : float, scalar, optional
+        Feathering angle during upstroke.
+    tau : 
+        duration of wing rotation
+    theta : 
+        constant deviation angle
+    time : vector of time, optional
+        Time vector. The default is 1000 samples between 0 and 1.
+    
+
+    Returns
+    -------
+    time, alpha, phi, theta
+    """
+    
+    if time is None:
+        time = np.linspace(0.0, 1.0, endpoint=False, num=1000)
+
+    phi = phi_m + (PHI/2.0)*np.sin(2.0*np.pi*(time+0.25))
+    theta = np.zeros_like(time) + theta
+    
+    # alpha is a new function
+    # d_tau is the timing of pronation and supination, which Muijres2016 identified as important parameter in the compensation
+    # degrees
+    alpha_tau  = tau # fixed parameters (rotation duration) upstroke->downstroke
+    alpha_tau1 = tau # downstroke->upstroke
+    
+    T1 = alpha_tau1/2.0
+    T2 = 0.5 - alpha_tau/2.0
+    T3 = T2  + alpha_tau
+    T4 = 1.0 - alpha_tau1/2.0
+    
+    pi = np.pi
+    a  = (alpha_up-alpha_down)/alpha_tau     
+    a1 = (alpha_up-alpha_down)/alpha_tau1   
+    
+    alpha = np.zeros(time.shape)
+   
+    for it, t in enumerate(time):
+        if t < T1:
+            alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
+            
+        elif t>=T1 and t < T2:
+            alpha[it] = alpha_down
+                            
+        elif t>=T2 and t < T3:
+            alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
+            
+        elif t>=T3 and t < T4:
+            alpha[it] = alpha_up
+            
+        elif t >= T4:
+            TT = 1.0-alpha_tau1/2.0
+            alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
+       
+    # this now is the important part that circularily shifts the entire vector. 
+    # it thus changes the "timing of pronation and supination"
+    dt = time[1]-time[0]
+    shift = int( np.round(dTau/dt) )
+    alpha = np.roll(alpha, shift)
+
+    return time, alpha, phi, theta
 
 
 
