@@ -53,16 +53,15 @@ else:
     dir = args.directory
 
 
-if dir[-1] != '/':
-    dir = dir+'/'
-
-
 #------------------------------------------------------------------------------
 # end time of simulation
 #------------------------------------------------------------------------------
 # look for the ini file, this gives us the information at what time the run is done
 if args.paramsfile is None:
-    l = glob.glob( dir+'*.ini' )
+    l = glob.glob( os.path.join(dir,'*.ini'))
+
+    if len(l) == 0:
+        raise ValueError(f"We did not find any ini file in the directory {dir} . Are you sure you are at the right place?")
 
     right_inifile = False
     i = 0
@@ -86,7 +85,7 @@ if verbose:
 
 
 # load the data file
-d = insect_tools.load_t_file(dir + 'performance.t', verbose=verbose)
+d = insect_tools.load_t_file(os.path.join(dir,'performance.t'), verbose=verbose)
 
 # if we consider only a few time steps, we discard the others:
 if args.first_n_time_steps is not None:
@@ -127,7 +126,7 @@ dim = inifile_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
 if len(bs) == 1:
     npoints = bs**dim
 else:
-    npoints = np.product(bs)
+    npoints = np.prod(bs)
 
 
 # how long did this run run already (hours)
@@ -284,4 +283,4 @@ if args.plot:
     plt.grid(True)
     
     
-    plt.savefig( dir+'/info_performance.png')
+    plt.savefig( os.path.join(dir,'info_performance.png'))

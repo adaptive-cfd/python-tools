@@ -14,11 +14,23 @@ import matplotlib.pyplot as plt
 import sys, os
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import wabbit_tools
+import argparse
 
-def plot_wabbit_tree(file):
+parser = argparse.ArgumentParser()
+parser.add_argument("-a", "--angular", action="store_true",
+                    help="Plot in angular plot")
+parser.add_argument("-i", "--input", type=str, default=None,
+                    help="Input .h5 file to be plotted")
+args = parser.parse_args()
+
+
+
+def plot_wabbit_tree(file, plot_grid=True):
     w_obj = wabbit_tools.WabbitHDF5file()
     w_obj.read(file, read_var="meta")
-    wabbit_tools.plot_wabbit_file(w_obj, gridonly=True, gridonly_coloring='level')
+
+    if plot_grid:
+        wabbit_tools.plot_wabbit_file(w_obj, gridonly=True, gridonly_coloring='level')
 
     dim = w_obj.dim
 
@@ -45,12 +57,53 @@ def plot_wabbit_tree(file):
     plt.gcf().set_size_inches( [20.0, 10.0] )
     plt.show()
 
+
+def plot_wabbit_tree_angular(file, plot_grid=True):
+    w_obj = wabbit_tools.WabbitHDF5file()
+    w_obj.read(file, read_var="meta")
+
+    if plot_grid:
+        wabbit_tools.plot_wabbit_file(w_obj, gridonly=True, gridonly_coloring='level')
+
+    dim = w_obj.dim
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    # for i in range( 1000 ):
+    for i_b in range( w_obj.total_number_blocks ):    
+        r1, t1 = 0.0, 0.0
+
+        tc_now = w_obj.block_treecode_num[i_b]
+        lvl_now = w_obj.level[i_b]
+        
+        for j_l in range( lvl_now ):  
+            digit_now = wabbit_tools.tc_get_digit_at_level(tc_now, j_l, w_obj.max_level, w_obj.dim)
+
+            # r2 = r1 + 2**-(j_l+1)
+            r2 = r1 + 1
+            t2 = t1 + (digit_now - (2**dim-1)/2) * 2*np.pi / (2**(dim*(j_l+1)))
+            
+            plt.plot( [t1,t2], [r1,r2], 'ko-', mfc='w')
+            r1,t1 = r2,t2
+        plt.plot( [t2], [r2], 'ro-')
+    
+    # plt.grid(False)
+
+    ax.set_yticks( np.arange(lvl_now+1))
+    ax.set_xticks( np.arange(2**dim) * 2*np.pi / 2**dim)
+        
+    plt.gcf().set_size_inches( [20.0, 10.0] )
+    plt.show()
+
+
 if __name__ == "__main__":
 
-    if len(sys.argv) == 2:
+    if args.input is not None:
         file = sys.argv[1]
     else:
-        file = '../../WABBIT/TESTING/conv/blob_2D_adaptive_CDF62/phi_000000250000.h5'
-        # file = '../../WABBIT/TESTING/conv/blob_3D_adaptive_CDF40/phi_000000051549.h5'
+        file = '../WABBIT/TESTING/conv/blob_2D_adaptive_CDF62/phi_000000250000.h5'
+        # file = '../WABBIT/TESTING/conv/blob_3D_adaptive_CDF40/phi_000000051549.h5'
 
-    plot_wabbit_tree(file)
+    if not args.angular:
+        plot_wabbit_tree(file, plot_grid=False)
+    else:
+        plot_wabbit_tree_angular(file, plot_grid=False)

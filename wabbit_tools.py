@@ -7,28 +7,32 @@ Created on Thu Dec 28 15:41:48 2017
 """
 import os
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 import h5py
 import bcolors
+import copy
 from inifile_tools import *
 from wabbit_dense_error_tools import *
-
+from analytical_functions import *
+import logging
 
 
 #------------------------------------------------------------------------------
 # compute some keyvalues to compare the files
 #------------------------------------------------------------------------------
-def keyvalues(x0, dx, data):
+def keyvalues(domain_size, dx, data):
     max1, min1 = np.max(data), np.min(data)
     mean1, squares1 = 0.0, 0.0
     
-    # loop over all blocks
+    # loop over all blocks, ignore last point to only use unique grid
     for i in range( data.shape[0] ):
-        if len(data.shape) == 3: ## 2D
-            mean1 = mean1 + np.product(dx[i,:]) * np.sum(data[i,:,:])
-            squares1 = squares1 + np.product(dx[i,:]) * np.sum(data[i,:,:]**2)
-        else: ## 3D
-            mean1 = mean1 + np.product(dx[i,:]) * np.sum(data[i,:,:,:])
-            squares1 = squares1 + np.product(dx[i,:]) * np.sum(data[i,:,:,:]**2)
+        if len(data.shape) == 3: sum_block = np.sum(data[i,:-1,:-1])  # 2D
+        else: sum_block = np.sum(data[i,:-1,:-1, :-1])  ## 3D
+        mean1 = mean1 + np.prod(dx[i,:]) * sum_block
+        squares1 = squares1 + np.prod(dx[i,:]) * sum_block**2
+    # divide integrals by area to get mean value
+    mean1 /= np.prod(domain_size)
+    squares1 /= np.prod(domain_size)
         
     return(max1, min1, mean1, squares1 )
 
@@ -196,12 +200,16 @@ class WabbitHDF5file:
 
         fid.close()
 
+        # watch for block_size
+        if self.version == 20200408 or self.version >= 20231602:
+            self.block_size[:self.dim] -= 1
+
         # write attributes
         # those are necessary for wabbit
         fid = h5py.File(file,'a')
         dset_id = fid.get( 'blocks' )
         dset_id.attrs.create( "version", [20240410], dtype=np.int32) # this is used to distinguish wabbit file formats
-        dset_id.attrs.create( "block-size", self.block_size+1, dtype=np.int32) # this is used to distinguish wabbit file formats
+        dset_id.attrs.create( "block-size", self.block_size, dtype=np.int32) # this is used to distinguish wabbit file formats
         dset_id.attrs.create('time', [self.time], dtype=np.float64)
         dset_id.attrs.create('iteration', [self.iteration], dtype=np.int32)
         dset_id.attrs.create('max_level', [self.max_level], dtype=np.int32)
@@ -242,6 +250,111 @@ class WabbitHDF5file:
 
         # puhhh everything is passed so both are equal
         return True
+    
+    # overwrite + operator, can handle other wabbitstatefiles or scalars as integers/floats
+    def __add__(self, other):
+
+        new_obj = copy.deepcopy(self)
+        if isinstance(other, WabbitHDF5file):
+            equal_grid = self.compareGrid(other)
+            equal_attr = self.compareAttr(other)
+            if not equal_grid:
+                print(bcolors.FAIL + f"WARNING: Grids are not equal, operation interpolated for non-consistent blocks- This might take a while" + bcolors.ENDC)
+                grid_interpolator = other.create_interpolator()
+            if not equal_attr:
+                print(bcolors.WARNING + f"ERROR: Attributes are not equal" + bcolors.ENDC)
+                return None
+
+            # blocks are not structured similarly so we have to apply blockwise
+            for i_blocks in range(new_obj.total_number_blocks):
+                i_other = other.get_block_id(self.block_treecode_num[i_blocks], self.level[i_blocks])
+                if (i_other != -1):
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] + other.blocks[i_other, :]
+                else:
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] + \
+                        other.interpolate_block(new_obj.blocks[i_blocks, :], new_obj.coords_origin[i_blocks], new_obj.coords_spacing[i_blocks], grid_interpolator)
+        elif isinstance(other, (int, float, np.integer, np.floating)):
+            new_obj.blocks[:] += other
+
+        return new_obj
+
+    # overwrite - operator, can handle other wabbitstatefiles or scalars as integers/floats
+    def __sub__(self, other):
+
+        new_obj = copy.deepcopy(self)
+        if isinstance(other, WabbitHDF5file):
+            equal_grid = self.compareGrid(other)
+            equal_attr = self.compareAttr(other)
+            if not equal_grid:
+                print(bcolors.FAIL + f"WARNING: Grids are not equal, operation interpolated for non-consistent blocks- This might take a while" + bcolors.ENDC)
+                grid_interpolator = other.create_interpolator()
+            if not equal_attr:
+                print(bcolors.WARNING + f"ERROR: Attributes are not equal" + bcolors.ENDC)
+                return None
+
+            # blocks are not structured similarly so we have to apply blockwise
+            for i_blocks in range(new_obj.total_number_blocks):
+                i_other = other.get_block_id(self.block_treecode_num[i_blocks], self.level[i_blocks])
+                if (i_other != -1):
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] - other.blocks[i_other, :]
+                else:
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] - \
+                        other.interpolate_block(new_obj.blocks[i_blocks, :], new_obj.coords_origin[i_blocks], new_obj.coords_spacing[i_blocks], grid_interpolator)
+        elif isinstance(other, (int, float, np.integer, np.floating)):
+            new_obj.blocks[:] -= other
+        return new_obj
+    
+    # overwrite * operator, can handle other wabbitstatefiles or scalars as integers/floats
+    def __mul__(self, other):
+        new_obj = copy.deepcopy(self)
+        if isinstance(other, WabbitHDF5file):
+            equal_grid = self.compareGrid(other)
+            equal_attr = self.compareAttr(other)
+            if not equal_grid:
+                print(bcolors.FAIL + f"WARNING: Grids are not equal, operation interpolated for non-consistent blocks- This might take a while" + bcolors.ENDC)
+                grid_interpolator = other.create_interpolator()
+            if not equal_attr:
+                print(bcolors.WARNING + f"ERROR: Attributes are not equal" + bcolors.ENDC)
+                return None
+
+            new_obj = copy.deepcopy(self)
+            # blocks are not structured similarly so we have to apply blockwise
+            for i_blocks in range(new_obj.total_number_blocks):
+                i_other = other.get_block_id(self.block_treecode_num[i_blocks], self.level[i_blocks])
+                if (i_other != -1):
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] * other.blocks[i_other, :]
+                else:
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] * \
+                        other.interpolate_block(new_obj.blocks[i_blocks, :], new_obj.coords_origin[i_blocks], new_obj.coords_spacing[i_blocks], grid_interpolator)
+        elif isinstance(other, (int, float, np.integer, np.floating)):
+            new_obj.blocks[:] *= other
+        return new_obj
+    
+    # overwrite / operator, can handle other wabbitstatefiles or scalars as integers/floats
+    def __truediv__(self, other):
+        new_obj = copy.deepcopy(self)
+        if isinstance(other, WabbitHDF5file):
+            equal_grid = self.compareGrid(other)
+            equal_attr = self.compareAttr(other)
+            if not equal_grid:
+                print(bcolors.FAIL + f"WARNING: Grids are not equal, operation interpolated for non-consistent blocks- This might take a while" + bcolors.ENDC)
+                grid_interpolator = other.create_interpolator()
+            if not equal_attr:
+                print(bcolors.WARNING + f"ERROR: Attributes are not equal" + bcolors.ENDC)
+                return None
+
+            new_obj = copy.deepcopy(self)
+            # blocks are not structured similarly so we have to apply blockwise
+            for i_blocks in range(new_obj.total_number_blocks):
+                i_other = other.get_block_id(self.block_treecode_num[i_blocks], self.level[i_blocks])
+                if (i_other != -1):
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] / other.blocks[i_other, :]
+                else:
+                    new_obj.blocks[i_blocks, :] = new_obj.blocks[i_blocks, :] / \
+                        other.interpolate_block(new_obj.blocks[i_blocks, :], new_obj.coords_origin[i_blocks], new_obj.coords_spacing[i_blocks], grid_interpolator)
+        elif isinstance(other, (int, float, np.integer, np.floating)):
+            new_obj.blocks[:] /= other
+        return new_obj
 
     # given a level and treecode, give me the block ID
     def get_block_id(self, treecode, level):
@@ -250,63 +363,91 @@ class WabbitHDF5file:
     
 
     # check if logically two objects are considered to be close to equal
-    def isClose(self, other, verbose=True):
+    def isClose(self, other, verbose=True, logger=None):
         # check if grid attributes are equal
-        attr_similarity = self.compareAttr(other)
+        attr_similarity = self.compareAttr(other, logger=logger)
         if not attr_similarity:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grid attributes are not qual" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Grid attributes are note qual" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         
         # check if grids are equal
-        grid_similarity = self.compareGrid(other)
+        grid_similarity = self.compareGrid(other, logger=logger)
+        grid_interpolator = ()
         if not grid_similarity:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grid is not equal" + bcolors.ENDC)
-            return False
+            if verbose: 
+                text_now = bcolors.FAIL + f"ERROR: Grid is not equal, interpolating the difference. This might take a while" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)    
+            grid_interpolator = other.create_interpolator()
+            # return False
         
         # check key values of data
-        max1, min1, mean1, squares1 = keyvalues(self.coords_origin, self.coords_spacing, self.blocks)
-        max2, min2, mean2, squares2 = keyvalues(other.coords_origin, other.coords_spacing, other.blocks)
+        max1, min1, mean1, squares1 = keyvalues(self.domain_size, self.coords_spacing, self.blocks)
+        max2, min2, mean2, squares2 = keyvalues(other.domain_size, other.coords_spacing, other.blocks)
         
         #------------------------------------------------------------------------------
         # compute L2 norm of difference, but only if the grids are identical
         #------------------------------------------------------------------------------
         diff_L2 = 0.0
+        diff_LInf = 0.0
         norm_L2 = 0.0
         error_L2 = np.nan
+        error_LInf = np.nan
 
         for i in range(self.total_number_blocks):
             # normalization is norm of data1
-            if self.dim == 2: ## 2D
-                norm_L2 = norm_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:,:]) )
-            else: ## 3D
-                norm_L2 = norm_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:,:,:]) )
+            norm_L2 = norm_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]) )
         
             # L2 difference
             j = other.get_block_id(self.block_treecode_num[i], self.level[i])
-            if self.dim == 2: ## 2D
-                diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:,:]-other.blocks[j,:,:]) )
+            if j != -1:
+                diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]-other.blocks[j,:]) )
+                diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]-other.blocks[j,:]) , ord=np.inf)])
             else:
-                diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:,:,:]-other.blocks[j,:,:,:]) )
+                diff_block = self.blocks[i, :] - other.interpolate_block(self.blocks[i, :], self.coords_origin[i], self.coords_spacing[i], grid_interpolator)
+                diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(diff_block) )
+                diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(diff_block) , ord=np.inf)])
                     
             if norm_L2 >= 1.0e-10:
                 # relative error
                 error_L2 = diff_L2 / norm_L2
+                error_LInf = diff_LInf  # not normed
             else:
                 # absolute error
                 error_L2 = diff_L2
+                error_LInf = diff_LInf
         
         if verbose:
-            print("First : max=%2.5e min=%2.5e mean=%2.5e, squares=%2.5e, L2_error=%2.5e" % (max1, min1, mean1, squares1, error_L2))
-            print("Second: max=%2.5e min=%2.5e mean=%2.5e, squares=%2.5e" % (max2, min2, mean2, squares2))
-            if error_L2 <= 1.0e-13: print("GREAT: The files can be deemed as equal")
-            else: print(bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC)
+            text_now = f"First : max={max1:12.5e}, min   ={min1:12.5e}, mean={mean1:12.5e}, squares={squares1:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            text_now = f"Second: max={max2:12.5e}, min   ={min2:12.5e}, mean={mean2:12.5e}, squares={squares2:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            text_now = f"Error : L2 ={error_L2:12.5e}, LInfty={error_LInf:12.5e}"
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
+            if error_L2 <= 1.0e-13: 
+                text_now = "GREAT: The files can be deemed as equal"
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
+            else:
+                text_now = bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
         return error_L2 <= 1.0e-13
 
 
     # check if grid is equal or not, with fractional we compute the fraction of treecodes which are different
-    def compareGrid(self, other, fractional=False, verbose=True):
+    def compareGrid(self, other, fractional=False, verbose=True, logger=None):
         if self.total_number_blocks != other.total_number_blocks:
-            if verbose: print(bcolors.FAIL + f"ERROR: We have a different number of blocks - {self.total_number_blocks} vs {other.total_number_blocks}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: We have a different number of blocks - {self.total_number_blocks} vs {other.total_number_blocks}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
                 
         mismatch_count = 0
@@ -315,7 +456,10 @@ class WabbitHDF5file:
             if (self.block_treecode_num[i], self.level[i]) not in other.tc_dict:
                 mismatch_count += 1
                 if not fractional:
-                    if verbose: print(bcolors.FAIL + f"ERROR: treecode not matching" + bcolors.ENDC)
+                    if verbose:
+                        text_now = bcolors.FAIL + f"ERROR: treecode not matching" + bcolors.ENDC
+                        if logger==None: print(text_now)
+                        else: logger.info(text_now)
                     return False  # Early exit if not computing fractional and a mismatch is found
         
         if fractional:
@@ -326,23 +470,36 @@ class WabbitHDF5file:
     # check if position and other details about the grid are equal
     # A grid is uniquely defined by its dimension, block size, domain size
     # The individual grid partition is uniquely defined by the number of blocks, treecode and level arrays
-    def compareAttr(self, other, verbose=True):
+    def compareAttr(self, other, verbose=True, logger=None):
         # check global grid attributes
         if self.dim != other.dim:
-            if verbose: print(bcolors.FAIL + f"ERROR: Grids are not in the same dimension, we have to leave the matrix - {self.dim} vs {other.dim}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Grids are not in the same dimension, we have to leave the matrix - {self.dim} vs {other.dim}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         if not np.all(self.block_size == other.block_size):
-            if verbose: print(bcolors.FAIL + f"ERROR: Block sizes are different - {self.block_size} vs {other.block_size}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Block sizes are different - {self.block_size} vs {other.block_size}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         if any(self.domain_size != other.domain_size):
-            if verbose: print(bcolors.FAIL + f"ERROR: Domain size is different - {self.domain_size} vs {other.domain_size}" + bcolors.ENDC)
+            if verbose:
+                text_now = bcolors.FAIL + f"ERROR: Domain size is different - {self.domain_size} vs {other.domain_size}" + bcolors.ENDC
+                if logger==None: print(text_now)
+                else: logger.info(text_now)
             return False
         return True
     
     # check if objects are at the same time instant, pretty simple but why not have a function for it
-    def compareTime(self, other, verbose=True):
-        similar_time = (self.time == other.time)
-        if not similar_time and verbose: print(bcolors.FAIL + f"ERROR: times are not equal" + bcolors.ENDC)
+    # round_digits is needed as floating points do not like direct comparisons
+    def compareTime(self, other, verbose=True, round_digits=12, logger=None):
+        similar_time = (np.round(self.time, round_digits) == np.round(other.time, round_digits))
+        if not similar_time and verbose:
+            text_now = bcolors.FAIL + f"ERROR: times are not equal" + bcolors.ENDC
+            if logger==None: print(text_now)
+            else: logger.info(text_now)
         return similar_time
     
     # try to parse the variable name from the file it was read in with
@@ -385,6 +542,63 @@ class WabbitHDF5file:
         return np.min(self.level), np.max(self.level)
         
 
+    # interpolate the values of a block given by its position and spacing to compute norm difference with different grids
+    def interpolate_block(self, block, coords_origin, coords_spacing, interpolator):
+        block_out = np.zeros_like(block)
+
+        # compute ends of blocks to find in which block a point lays
+        self_coords_end = self.coords_origin + self.coords_spacing * (np.array(self.blocks.shape[1:]) -1)
+
+        for i_x in range(block.shape[0]):
+            for i_y in range(block.shape[1]):
+                if len(block.shape) == 3: range_z = range(block.shape[2])
+                else: range_z = [0]
+                for i_z in range_z:
+                    # coord of this point
+                    if len(block.shape) == 3: i_xyz = np.array((i_x, i_y, i_z))
+                    else: i_xyz = np.array((i_x, i_y))
+                    coords_point = coords_origin + i_xyz * coords_spacing
+                    # find corresponding block
+                    b_id = np.where(np.all(coords_point >= self.coords_origin, axis=1) & np.all(coords_point <= self_coords_end, axis=1))[0]
+                    # interpolate in this block
+                    if len(block.shape) == 3: block_out[i_x, i_y, i_z] = interpolator[b_id[0]](coords_point)
+                    else: block_out[i_x, i_y] = interpolator[b_id[0]](coords_point)
+        return block_out
+    
+    # create regular grid interpolators for every single block so that we can reuse it
+    def create_interpolator(self):
+        # compute ends of blocks to find in which block a point lays
+        self_coords_end = self.coords_origin + self.coords_spacing * (np.array(self.blocks.shape[1:]) -1)
+
+        interpolators = []
+        for i_block in range(self.total_number_blocks):
+            x_coords = []
+            for i_dim in range(self.dim):
+                x_coords.append(np.linspace(self.coords_origin[i_block, i_dim], self_coords_end[i_block, i_dim], self.blocks.shape[1+i_dim]))
+
+            interpolators.append(RegularGridInterpolator(x_coords, self.blocks[i_block, :]))
+        
+        return interpolators
+    
+    # in order to create analytical results on the same grid we might want to replace all values with that to study it
+    def replace_values_with_function(self, function):
+        for i_block in range(self.total_number_blocks):
+            block = self.blocks[i_block, :]
+            for i_x in range(block.shape[0]):
+                for i_y in range(block.shape[1]):
+                    if len(block.shape) == 3: range_z = range(block.shape[2])
+                    else: range_z = [0]
+                    for i_z in range_z:
+                        # coord of this point
+                        if len(block.shape) == 3: i_xyz = np.array((i_x, i_y, i_z))
+                        else: i_xyz = np.array((i_x, i_y))
+                        coords_point = self.coords_origin[i_block] + i_xyz * self.coords_spacing[i_block]
+                        
+                        # replace function values
+                        fun_val = function(coords_point)
+
+                        if len(block.shape) == 3: self.blocks[i_block, i_x, i_y, i_z] = fun_val
+                        else: self.blocks[i_block, i_x, i_y] = fun_val
 
 
 #
@@ -397,6 +611,19 @@ def block_level_distribution( wabbit_obj: WabbitHDF5file ):
     for i_level in range(1, wabbit_obj.max_level+1):
         counter[i_level - 1] = np.sum(wabbit_obj.level == i_level)
     return counter.astype(int)
+
+
+
+def block_proc_level_distribution( wabbit_obj: WabbitHDF5file ):
+    """ Read a 2D/3D wabbit file and return a 2D list of how many blocks are at the different levels for each proc
+    """
+    counter = np.zeros([np.max(wabbit_obj.procs), wabbit_obj.max_level])
+
+    # loop over all blocks and add counter of proc and level
+    for i_block in range(1, wabbit_obj.total_number_blocks):
+        counter[wabbit_obj.procs[i_block]-1, wabbit_obj.level[i_block]-1] += 1
+    return counter.astype(int)
+
 
 
 def read_wabbit_hdf5_dir(dir):
@@ -983,14 +1210,20 @@ def time2wabbitstr(time):
 if __name__ == "__main__":
     state1 = WabbitHDF5file()
     state1.read("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
-    state3 = WabbitHDF5file()
-    state3.read("../WABBIT/TESTING/jul/test_3D/phi_000000051549.h5")
+
     state_2D = WabbitHDF5file()
     state_2D.read("../WABBIT/TESTING/jul/test_2D/phi_000000250000.h5")
     
     print(block_level_distribution(state1))
+    print(np.transpose(block_proc_level_distribution(state1)))
 
     print(tc_to_str(np.array(tc_encoding([2,5,1], max_level=5, dim=3)), level=5, max_level=5, dim=3))
+
+    state_test = WabbitHDF5file()
+    state_test.read("../WABBIT/phi_000000250000.h5")
+    state_test.replace_values_with_function(lambda xyz: INICOND_convdiff_blob(xyz, blob_pos=[0.75, 0.75]))
+
+    state_test.write("../WABBIT/correct-phi_000002500000.h5")
 
     # import matplotlib.pyplot as plt
     # plt.figure
