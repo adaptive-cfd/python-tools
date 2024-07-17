@@ -54,14 +54,22 @@ def check_parameters_for_stupid_errors( file ):
     # since 05 Jul 2023, g is set automatically, unless we do something stupid.
     if wavelet == 'CDF20':
         g_default = 2
+        Bs_min = 8 #arbitrary
     elif wavelet=='CDF22':
         g_default = 3
+        Bs_min = 8
     elif wavelet=='CDF40':
         g_default = 4
+        Bs_min = 8
     elif wavelet=='CDF42':
         g_default = 5
-    elif wavelet=='CDF44' or wavelet=='CDF62':
+        Bs_min = 16
+    elif wavelet=='CDF44':
         g_default = 7
+        Bs_min = 22
+    elif wavelet=='CDF62':
+        g_default = 7
+        Bs_min = 24
     else:
         g_default = 1
         
@@ -140,21 +148,16 @@ def check_parameters_for_stupid_errors( file ):
         bs = bs[0]
 
     if bs % 2 != 0:
-        bcolors.warn('The block size is bs=%i which is an ODD number.' % (bs) )
+        bcolors.err('The block size is bs=%i which is an ODD number.' % (bs) )
 
     if bs < 3:
-        bcolors.warn('The block size is bs=%i is very small or even negative.' % (bs) )
+        bcolors.err('The block size is bs=%i is very small or even negative.' % (bs) )
         
+    if bs < Bs_min:
+        bcolors.err("Block size Bs=%i too small for wavelet Bs_min=%i" % (bs, Bs_min))
           
-    if (wavelet == "CDF22") and g<3:
-        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 3" % (wavelet, g) )
-    if (wavelet == "CDF42") and g<5:
-        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 5" % (wavelet, g) )        
-    if (wavelet == "CDF44" or wavelet == "CDF62") and g<7:
-        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 7" % (wavelet, g) )
-    if (wavelet == "CDF40") and g<4:
-        bcolors.warn("Not enough ghost nodes for wavelet %s g=%i < 4" % (wavelet, g) )
-        
+    if g < g_default:
+        bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
