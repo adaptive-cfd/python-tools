@@ -5,7 +5,6 @@ Created on Wed Oct  3 14:00:31 2018
 
 @author: engels
 """
-sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import bcolors
 
 print("----------------------------------------")
@@ -14,6 +13,9 @@ print("----------------------------------------")
 
 import sys, os
 import inifile_tools
+
+sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
+
 
 # fetch jobfile from call
 jobfile = sys.argv[1]
