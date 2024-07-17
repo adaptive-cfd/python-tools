@@ -21,6 +21,8 @@ parser.add_argument("-a", "--angular", action="store_true",
                     help="Plot in angular plot")
 parser.add_argument("-i", "--input", type=str, default=None,
                     help="Input .h5 file to be plotted")
+parser.add_argument("-o", "--output", type=str, default=None,
+                    help="output PDF file")
 args = parser.parse_args()
 
 
@@ -82,9 +84,9 @@ def plot_wabbit_tree_angular(file, plot_grid=True):
             r2 = r1 + 1
             t2 = t1 + (digit_now - (2**dim-1)/2) * 2*np.pi / (2**(dim*(j_l+1)))
             
-            plt.plot( [t1,t2], [r1,r2], 'ko-', mfc='w')
+            plt.plot( [t1,t2], [r1,r2], 'ko-', mfc='w', linewidth=0.5)
             r1,t1 = r2,t2
-        plt.plot( [t2], [r2], 'ro-')
+        plt.plot( [t2], [r2], 'ro-', linewidth=0.5)
     
     # plt.grid(False)
 
@@ -98,7 +100,7 @@ def plot_wabbit_tree_angular(file, plot_grid=True):
 if __name__ == "__main__":
 
     if args.input is not None:
-        file = sys.argv[1]
+        file = args.input
     else:
         file = '../WABBIT/TESTING/conv/blob_2D_adaptive_CDF62/phi_000000250000.h5'
         # file = '../WABBIT/TESTING/conv/blob_3D_adaptive_CDF40/phi_000000051549.h5'
@@ -107,3 +109,8 @@ if __name__ == "__main__":
         plot_wabbit_tree(file, plot_grid=False)
     else:
         plot_wabbit_tree_angular(file, plot_grid=False)
+        
+    if args.output is None:
+        args.output = file.replace('.h5', '.pdf')
+        
+    plt.savefig(args.output)
