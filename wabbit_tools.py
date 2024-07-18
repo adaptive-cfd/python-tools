@@ -79,7 +79,7 @@ class WabbitHDF5file:
         dset_id = fid.get('blocks')
 
         # read attributes - always read all attributes
-        self.version = dset_id.attrs.get('version', default=[None])[0]
+        self.version = dset_id.attrs.get('version', default=[0])[0]
         self.periodic_BC = dset_id.attrs.get('periodic_BC')
         self.symmetry_BC = dset_id.attrs.get('symmetry_BC')
         self.block_size = dset_id.attrs.get('block-size')
