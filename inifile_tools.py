@@ -53,24 +53,33 @@ def check_parameters_for_stupid_errors( file ):
         
     # since 05 Jul 2023, g is set automatically, unless we do something stupid.
     if wavelet == 'CDF20':
-        g_default = 2
-        Bs_min = 8 #arbitrary
+        g_default, Bs_min = 2, 6
     elif wavelet=='CDF22':
-        g_default = 3
-        Bs_min = 8
+        g_default, Bs_min = 3, 8
+    elif wavelet=='CDF24':
+        g_default, Bs_min = 5, 14        
+    elif wavelet=='CDF26':
+        g_default, Bs_min = 7, 20
+    elif wavelet=='CDF28':
+        g_default, Bs_min = 9, 26
     elif wavelet=='CDF40':
-        g_default = 4
-        Bs_min = 8
+        g_default, Bs_min = 4, 10
     elif wavelet=='CDF42':
-        g_default = 5
-        Bs_min = 16
+        g_default, Bs_min = 5, 16
     elif wavelet=='CDF44':
-        g_default = 7
-        Bs_min = 22
+        g_default, Bs_min = 7, 22
+    elif wavelet=='CDF46':
+        g_default, Bs_min = 9, 28
+    elif wavelet=='CDF60':
+        g_default, Bs_min = 6, 14
     elif wavelet=='CDF62':
-        g_default = 7
-        Bs_min = 24
+        g_default, Bs_min = 7, 24
+    elif wavelet=='CDF64':
+        g_default, Bs_min = 9, 30
+    elif wavelet=='CDF66':
+        g_default, Bs_min = 11, 36
     else:
+        Bs_min = 30
         g_default = 1
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
@@ -113,20 +122,27 @@ def check_parameters_for_stupid_errors( file ):
     
     
     print("======================================================================================")
-    print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s==> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
+    print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
           (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
+    print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
+    print("C_eps = %2.2e   wavelet    = %s    dealias = %i     adapt_mesh = %i" % (ceps, wavelet, dealias, adapt_mesh))
+    print("T_max = %2.2f   CFL        = %2.2f CFL_eta = %2.2f  CFL_nu     = %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
     print("equidistant grids: Jmin=%i^%i, Jmax=%i^%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
-    print("discretization= %s" % (discretization))
-    print("T_max = %2.2f   CFL= %2.2f   CFL_eta= %2.2f   CFL_nu= %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
+    
+    if ('CDF4' in wavelet and "4th" in discretization) or ('CDF2'in wavelet and '2nd' in discretization) or ('CDF6' in wavelet and '6th' in discretization):
+        print("discretization=%s %s~~>matches wavelet %s%s" % (discretization, bcolors.OKBLUE, wavelet, bcolors.ENDC))
+    else:
+        print("discretization=%s %s~~>check if that matches wavelet wavelet %s%s" % (discretization, bcolors.FAIL, wavelet, bcolors.ENDC))
     
     
-    print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ==> K_eta = %2.2f%s" % 
+    
+    
+    print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
           (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
     if sponged:
         print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
               (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
-    print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
-    print("C_eps = %2.2e   wavelet= %s    dealias=%i    adapt_mesh=%i" % (ceps, wavelet, dealias, adapt_mesh))
+    
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
