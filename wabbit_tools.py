@@ -1246,3 +1246,6 @@ if __name__ == "__main__":
     # state_test.replace_values_with_function(lambda xyz: INICOND_convdiff_blob(xyz, blob_pos=[0.75, 0.75]))
 
     # state_test.write("../WABBIT/correct-phi_000002500000.h5")
+
+
+    pass
