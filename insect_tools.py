@@ -42,6 +42,17 @@ def get_next_color(ax=None):
 
     return this_color
 
+# It is often the case that I want to plot several lines with the same color, eg Fx, Fy
+# from a specific run. This function gets the last used color for this purpose.
+def get_last_color(ax=None):
+    import matplotlib.pyplot as plt
+    
+    if ax is None:
+        ax = plt.gca()
+    color = ax.lines[-1].get_color()
+    
+    return color
+
 def reset_colorcycle( ax=None ):
     global icolor
     icolor = 0
@@ -992,6 +1003,8 @@ def M_stroke(eta, wing):
     -------
     M_stroke rotation matrix
     """
+    if abs(eta) > 2.0*np.pi:
+        print("WARNING; you may pass degrees to this routine, eta=%f" % (eta))
 
     if wing =="left":
         M_stroke = Ry(eta)
@@ -1023,6 +1036,14 @@ def M_wing(alpha, theta, phi, wing):
     M_wing rotation matrix
 
     """
+    
+    # if abs(alpha) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, alpha=%f" % (alpha))
+    # if abs(theta) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, theta=%f" % (theta))
+    # if abs(phi) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, phi=%f" % (phi))
+    
     if wing =="left":
         M = Ry(alpha)*Rz(theta)*Rx(phi)
     elif wing == "right":
@@ -1032,7 +1053,7 @@ def M_wing(alpha, theta, phi, wing):
     return M
 
 
-def M_body(psi, beta, gamma):
+def M_body(psi,beta , gamma):
     """
     Rotation matrix from lab to body reference frame, as defined in Engels et al. 2016 SISC
     
@@ -1051,6 +1072,13 @@ def M_body(psi, beta, gamma):
         Body rotation matrix
 
     """
+    # if abs(psi) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, psi=%f" % (psi))
+    # if abs(beta) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, beta=%f" % (beta))
+    # if abs(gamma) > 2.0*np.pi:
+    #     print("WARNING; you may pass degrees to this routine, gamma=%f" % (gamma))
+    
     M_body = Rx(psi)*Ry(beta)*Rz(gamma)
     return M_body
     
@@ -1059,7 +1087,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
                              x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
                              time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, 
-                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True):
+                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True, mark_pivot=True):
     """ Lollipop-diagram. visualize the wing chord
     
     give all angles in degree
@@ -1217,7 +1245,8 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
         ax.add_line(l)
 
-
+    if mark_pivot:
+        ax.plot(x_pivot_b[0], x_pivot_b[2], 'kp')
     
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), plt.gca() )
