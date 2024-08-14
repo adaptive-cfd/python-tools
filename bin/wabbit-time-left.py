@@ -228,7 +228,8 @@ if verbose:
 if not verbose:
     # when the -s option is active, just print the number of remaining hours
 #    print( '%3.1f' % (time_left/3600.0) )
-    print( '%3.1f h %i CPUh (=%i CPUh total)' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
+#    print( '%3.1f h %i CPUh (=%i CPUh total)' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
+    print( '%3.1f %i %i' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
     
     
 if args.plot:

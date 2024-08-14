@@ -847,7 +847,7 @@ def read_kinematics_file( fname ):
 
 
 
-def visualize_kinematics_file(fname, ax=None):
+def visualize_kinematics_file(fname, ax=None, savePDF=True, savePNG=False):
     """ Read an INI file with wingbeat kinematics and plot the 3 angles over the period. Output written to a PDF and PNG file.
     """
 
@@ -882,7 +882,11 @@ def visualize_kinematics_file(fname, ax=None):
     indicate_strokes(ax=ax)
     
     ax.tick_params( which='both', direction='in', top=True, right=True )
-    plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
+    
+    if savePDF:
+        plt.savefig( fname.replace('.ini','.pdf'), format='pdf' )
+    if savePNG:
+        plt.savefig( fname.replace('.ini','.png'), format='png' )
 
 
 def csv_kinematics_file(fname):
@@ -2080,7 +2084,9 @@ def wing_contour_from_file(fname):
         # description with points (not a radius)
         R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
         theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
-        # theta_i = theta_i * 2.0*np.pi - np.pi
+        # A word on theta:
+        # Python does imply [-pi:+pi] but WABBIT uses 0:2*pi
+        # Therefore, we subtract pi here (because data are in WABBIT convention)
         theta_i = theta_i - np.pi
     
         xc = x0 + np.cos(theta_i)*R_i
