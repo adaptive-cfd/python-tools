@@ -79,13 +79,27 @@ class WabbitHDF5file:
         dset_id = fid.get('blocks')
 
         # read attributes - always read all attributes
-        self.version = dset_id.attrs.get('version', default=[None])[0]
+        version = dset_id.attrs.get('version', default=[0])
+        if isinstance(version, (list, np.ndarray)):
+            self.version = version[0]
+        else:
+            self.version = version
         self.periodic_BC = dset_id.attrs.get('periodic_BC')
         self.symmetry_BC = dset_id.attrs.get('symmetry_BC')
         self.block_size = dset_id.attrs.get('block-size')
+        # for all scalar entries they can be read in as scalars or lists
+        
         self.time = dset_id.attrs.get('time', default=[None])[0]
-        self.iteration = dset_id.attrs.get('iteration', default=[None])[0]
-        self.total_number_blocks = dset_id.attrs.get('total_number_blocks', default=[None])[0]
+        iteration = dset_id.attrs.get('iteration', default=[None])
+        if isinstance(iteration, (list, np.ndarray)):
+            self.iteration = iteration[0]
+        else:
+            self.iteration = iteration
+        total_number_blocks = dset_id.attrs.get('total_number_blocks')
+        if isinstance(total_number_blocks, (list, np.ndarray)):
+            self.total_number_blocks = total_number_blocks[0]
+        else:
+            self.total_number_blocks = total_number_blocks
         self.max_level = dset_id.attrs.get('max_level', default=[None])[0]
         self.dim = dset_id.attrs.get('dim', default=[None])[0]
         self.domain_size = dset_id.attrs.get('domain-size')
@@ -97,12 +111,20 @@ class WabbitHDF5file:
             self.coords_spacing = np.array(fid['coords_spacing'][:])
         if read_var in ["blocks", "all"]:
             self.blocks = np.array(fid['blocks'], dtype=np.float64)
-        if read_var in ["refinement_status", "all", "meta"]:
-            self.refinement_status = np.array(fid['refinement_status'])
-        if read_var in ["procs", "all", "meta"]:
-            self.procs = np.array(fid['procs'])
-        if read_var in ["lgt_ids", "all", "meta"]:
-            self.lgt_ids = np.array(fid['lgt_ids'])
+        
+        # very old versions do not have fancy variables
+        if self.version <= 20200902:
+            self.refinement_status = [0]*total_number_blocks
+            self.procs = [-1]*total_number_blocks
+            self.lgt_ids = [-1]*total_number_blocks
+            self.block_size = self.blocks.shape[1:]
+        else:
+            if read_var in ["refinement_status", "all", "meta"]:
+                self.refinement_status = np.array(fid['refinement_status'])
+            if read_var in ["procs", "all", "meta"]:
+                self.procs = np.array(fid['procs'])
+            if read_var in ["lgt_ids", "all", "meta"]:
+                self.lgt_ids = np.array(fid['lgt_ids'])
         
         # read in treecode - dependent on version
         # older version - treecode array, create dim, max_level and fields level and block_treecode_num
@@ -1208,26 +1230,22 @@ def time2wabbitstr(time):
 
 # debugging tests
 if __name__ == "__main__":
-    state1 = WabbitHDF5file()
-    state1.read("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
+    # state1 = WabbitHDF5file()
+    # state1.read("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
 
-    state_2D = WabbitHDF5file()
-    state_2D.read("../WABBIT/TESTING/jul/test_2D/phi_000000250000.h5")
+    # state_2D = WabbitHDF5file()
+    # state_2D.read("../WABBIT/TESTING/jul/test_2D/phi_000000250000.h5")
     
-    print(block_level_distribution(state1))
-    print(np.transpose(block_proc_level_distribution(state1)))
+    # print(block_level_distribution(state1))
+    # print(np.transpose(block_proc_level_distribution(state1)))
 
-    print(tc_to_str(np.array(tc_encoding([2,5,1], max_level=5, dim=3)), level=5, max_level=5, dim=3))
+    # print(tc_to_str(np.array(tc_encoding([2,5,1], max_level=5, dim=3)), level=5, max_level=5, dim=3))
 
-    state_test = WabbitHDF5file()
-    state_test.read("../WABBIT/phi_000000250000.h5")
-    state_test.replace_values_with_function(lambda xyz: INICOND_convdiff_blob(xyz, blob_pos=[0.75, 0.75]))
+    # state_test = WabbitHDF5file()
+    # state_test.read("../WABBIT/phi_000000250000.h5")
+    # state_test.replace_values_with_function(lambda xyz: INICOND_convdiff_blob(xyz, blob_pos=[0.75, 0.75]))
 
-    state_test.write("../WABBIT/correct-phi_000002500000.h5")
+    # state_test.write("../WABBIT/correct-phi_000002500000.h5")
 
-    # import matplotlib.pyplot as plt
-    # plt.figure
 
-    # plot_wabbit_file(state_2D, gridonly=False, gridonly_coloring='treecode')
-
-    # plt.show()
+    pass

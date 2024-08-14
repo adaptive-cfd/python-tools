@@ -142,6 +142,12 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
         if cursor.IsLeaf(): cursor.SubdivideLeaf()
 
         i_digit = wabbit_tools.tc_get_digit_at_level(treecode, i_level, max_level=i_wobj.max_level, dim=i_wobj.dim)
+        # Y and X are swapped as the TC for 1 changes in Y-direction and for 2 in X-direction
+        Y = i_digit%2
+        X = (i_digit//2)%2
+        Z = (i_digit//4)%2
+        i_digit = X + 2*Y + 4*Z
+
         cursor.ToChild(i_digit)
         # insert zero for non-leafs as we only have leafs in our code currently
         for i_a in range(len(s_data)):
@@ -222,7 +228,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   writer.Write()
 
 
-def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False):
+def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False):
   """
   Create a multi block dataset from the available data
   This creates many many sub-files but will be changed to a hdf-based implementation soon
@@ -315,16 +321,19 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       #   vtk wants the dimensions and spacing for the edge-based noation so we have to adapt block_size and spacing
       ###
       block = vtk.vtkUniformGrid()
+      # for overfull CVS grids we have the option to split them into levels to make the overlay visible
+      split_levels_add = (split_levels * (w_main.level[i_b]-1) * np.max(w_main.domain_size))
+      # attention: the spacings have to be inverted, I don't completely know why but it is necessary
       if w_main.dim == 2:
-        block.SetDimensions(w_main.block_size[0], w_main.block_size[1], 1)
-        block.SetOrigin(w_main.coords_origin[i_b, 0], w_main.coords_origin[i_b, 1], 0)
+        block.SetDimensions(w_main.block_size[1], w_main.block_size[0], 1)
+        block.SetOrigin(w_main.coords_origin[i_b, 1], w_main.coords_origin[i_b, 0], 0 + split_levels_add)
         spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim])
-        block.SetSpacing(spacing_now[0], spacing_now[1], 0)
+        block.SetSpacing(spacing_now[1], spacing_now[0], 0)
       else:
-        block.SetDimensions(w_main.block_size[0], w_main.block_size[1], w_main.block_size[2])
-        block.SetOrigin(w_main.coords_origin[i_b, 0], w_main.coords_origin[i_b, 1], w_main.coords_origin[i_b, 2])
+        block.SetDimensions(w_main.block_size[2], w_main.block_size[1], w_main.block_size[0])
+        block.SetOrigin(w_main.coords_origin[i_b, 2], w_main.coords_origin[i_b, 1], w_main.coords_origin[i_b, 0] + split_levels_add)
         spacing_now = w_main.coords_spacing[i_b, :w_main.dim] * w_main.block_size[:w_main.dim] / (w_main.block_size[:w_main.dim])
-        block.SetSpacing(spacing_now[0], spacing_now[1], spacing_now[2])
+        block.SetSpacing(spacing_now[2], spacing_now[1], spacing_now[0])
 
       # Attach data vor scalars - currently copying but maybe there is a more clever way
       for i_s, i_n in zip(s_names, s_ind):
@@ -337,9 +346,9 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
 
         # Copy the data into the vtkDoubleArray
         if w_main.dim == 2:
-          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
+          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1].flatten()  # Flatten the array if it's not already 1D
         else:
-          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1, :-1].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D    
+          block_data_flat = w_obj_list[i_n].blocks[i_b_now, :-1, :-1, :-1].flatten()  # Flatten the array if it's not already 1D    
         for i in range(block_data_flat.size):
           data_now.SetValue(i, block_data_flat[i])
 
@@ -399,6 +408,8 @@ if __name__ == "__main__":
 
   parser.add_argument("-o", "--outfile", help="vtk file to write to, default is all_[Time].vtm / *.htg", default="all")
   parser.add_argument("-i", "--infile", help="file or directory of h5 files, if not ./", default="./")
+
+  parser.add_argument("--cvs-split-levels", help="For overfull CVS grids, divide them by levels", action="store_true")
 
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
 
@@ -478,7 +489,7 @@ if __name__ == "__main__":
     
     # create vtm with blockdata
     if args.vtm:
-      hdf2vtm(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars)
+      hdf2vtm(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels)
 
   # # debug stuff
   # # state1 = wabbit_tools2.WabbitState("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
