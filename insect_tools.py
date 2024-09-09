@@ -806,9 +806,10 @@ def Hserieseval(a0, ai, bi, time):
     return u
 
 
-def read_kinematics_file( fname ):
+def read_kinematics_file( fname, unit_out='deg' ):
     import configparser
     import os
+    import inifile_tools
     
     if not os.path.isfile(fname):
         raise ValueError("File "+fname+" not found!")
@@ -820,6 +821,18 @@ def read_kinematics_file( fname ):
     if config['kinematics']:
         convention = read_param(config,'kinematics','convention')
         series_type = read_param(config,'kinematics','type')
+        # input file units
+        unit_in = inifile_tools.get_ini_parameter(fname,'kinematics', 'units', default='deg', dtype=str)
+        
+        # options tolerated by FLUSI/WABBIT
+        if unit_in in ["degree","DEGREE","Degree","DEG","deg"]:
+            # simplified to deg/rad
+            unit_in = 'deg'
+            
+        # options tolerated by FLUSI/WABBIT
+        if unit_in == ["radian","RADIAN","Radian","radiant","RADIANT","Radiant","rad","RAD"]:
+            # simplified to deg/rad
+            unit_in = 'rad'
 
         if convention != "flusi":
             raise ValueError("The kinematics file %s is using a convention not supported yet" % (fname))
@@ -839,6 +852,32 @@ def read_kinematics_file( fname ):
 
         ai_phi   = read_param_vct(config,'kinematics','ai_phi')
         bi_phi   = read_param_vct(config,'kinematics','bi_phi')
+        
+        if unit_out != unit_in:
+            # factor1 converts input to deg
+            if unit_in == 'deg':
+                factor1 = 1.0
+            else:
+                factor1 = 180.0/np.pi
+            # factor2 ensures desired output
+            if unit_out == 'deg':
+                factor2 = 1.0
+            else:
+                factor2 = np.pi/180.0
+                
+            a0_phi   *= factor1*factor2
+            a0_theta *= factor1*factor2
+            a0_alpha *= factor1*factor2
+                
+            ai_alpha *= factor1*factor2
+            bi_alpha *= factor1*factor2
+            
+            ai_theta *= factor1*factor2
+            bi_theta *= factor1*factor2
+            
+            ai_phi   *= factor1*factor2
+            bi_phi   *= factor1*factor2
+            
 
 
         return a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, series_type
@@ -904,14 +943,16 @@ def csv_kinematics_file(fname):
     write_csv_file( fname.replace('.ini', '.csv'), d, header=['time', 'phi', 'alpha', 'theta'], sep=';')
 
 
-def eval_angles_kinematics_file(fname, time=None):
+def eval_angles_kinematics_file(fname, time=None, unit_out='deg'):
     """
     Parameters
     ----------
-    fname : TYPE
-        DESCRIPTION.
+    fname : string
+        Ini file to read the kinematics from.
     time : array, optional
         Time arry. If none is passed, we sample [0.0, 1.0) with n=1000 samples and return this as well
+    unit_out : str, optional
+        'rad' or 'deg' output of angles. defaults to 'deg'
 
     Returns
     -------
@@ -926,7 +967,7 @@ def eval_angles_kinematics_file(fname, time=None):
 
     """
     # read the kinematics INI file
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file(fname)
+    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file(fname, unit_out=unit_out)
     
     if time is None:
         # time vector for plotting
@@ -2456,3 +2497,198 @@ def compute_inertial_power(file_kinematics='kinematics.t'):
     #     iwmoment3 = (a3 + rot_rel_wing_r_w1*b2 - rot_rel_wing_r_w2*b1)
         
     #     inertial_power_right = rot_rel_wing_r_w1 * iwmoment1 + rot_rel_wing_r_w2 * iwmoment2 + rot_rel_wing_r_w3 * iwmoment3
+
+
+def get_wing_pointcloud_from_inifile(fname):
+    """
+    Returns a list of points (x,y) that are on the wing. The coordinates are 
+    understood in the wing frame of reference (w), where 
+        x is from trailing to leading edge 
+        
+        y is from root to tip
+        
+    If the wing is bristled, we include the start- and endpoints of all bristles.
+    The points on the wings membrane are uniformily distributed. The wing outline
+    is included in the list of points.
+    
+    This function is useful for collision checking.
+
+    Parameters
+    ----------
+    fname : string
+        ini file describing the wing
+
+    Returns
+    -------
+    xw_w_pointcloud : array of size [N, 3]
+        The size of the array might vary.
+
+    """   
+    
+    from shapely.geometry import Point
+    from shapely.geometry.polygon import Polygon
+    import shapely.plotting
+    import numpy as np
+    import inifile_tools
+    
+    x, y = [], []
+    
+    # membrane contour
+    x_membrane, y_membrane, area_membrane = wing_contour_from_file(fname)
+    
+    # find points on membrane
+    poly_list = []
+    for i in range(x_membrane.shape[0]):
+        poly_list.append( (x_membrane[i], y_membrane[i]) )
+        
+        x.append(x_membrane[i])
+        y.append(y_membrane[i])
+        
+    
+    polygon = Polygon(poly_list)
+    # shapely.plotting.plot_polygon(polygon)
+        
+    N = 50000
+    x_rand, y_rand = np.random.uniform(-1.0, 1.0, size=N), np.random.uniform(-1.0, 1.0, size=N)
+    
+    
+    for i in range(N):
+        if polygon.contains( Point(x_rand[i], y_rand[i]) ):
+            x.append(x_rand[i])
+            y.append(y_rand[i])
+       
+    
+    # if present, add bristles    
+    if inifile_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False):
+        # read in the bristles array
+        bristles_coords = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
+        
+        for j in range( bristles_coords.shape[0]):
+            # append start- and end point to pointcloud array
+            x.append(bristles_coords[j,0])
+            y.append(bristles_coords[j,1])            
+            x.append(bristles_coords[j,2])
+            y.append(bristles_coords[j,3])    
+            
+    x, y = np.asarray(x), np.asarray(y)
+    
+    # construct pointcloud
+    xw_w_pointcloud = np.zeros( (x.shape[0],3))
+    xw_w_pointcloud[:,0] = x
+    xw_w_pointcloud[:,1] = y
+    
+    return xw_w_pointcloud
+
+
+def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_L, 
+                          wing_pointcloud_R_w, alpha_R, theta_R, phi_R, x_hinge_R,
+                          plot_animation=False):
+    """
+    Check if wings collide. Makes sense only if you have two wings. Body attitude and 
+    stroke plane angle do not matter for this routine. Loops over time instances for the check.
+    
+    We check if either wing crosses the bodys symmetry plane (only then collisons are 
+    possible), and if so we compute the exact distance between them from the point cloud. 
+    This speeds up the process.
+
+    Parameters
+    ----------
+    time : array [nt]
+        time instants to be checked for collision. linspace(0,1,endpoint=True, num=100) is a good choice
+    wing_pointcloud_L_w : array [N,3]
+        Points on the left wing, can be generated using get_wing_pointcloud_from_inifile or differently (in the case
+        of E.mundus for example fore and hind wing constitute a unit but are stored in two files, so they are externally
+        concatenated)
+    alpha_L : array [nt]
+        wing angle
+    theta_L : array [nt]
+        wing angle
+    phi_L : array [nt]
+        wing angle
+    wing_pointcloud_R_w :  array [N,3]
+        See wing_pointcloud_L_w
+    alpha_R : array [nt]
+        wing angle
+    theta_R : array [nt]
+        wing angle
+    phi_R : array [nt]
+        wing angle
+
+    Returns
+    -------
+    none (screen log)
+
+    """
+    import matplotlib.pyplot as plt
+    
+    # the collisions do not depend on the body- or stroke plane axis. 
+    # useful only for visualization
+    eta = 0.0
+
+    def closest_distance_pointclouds( p1, p2 ):
+        # implementation with meshgrid allows at least vectorization (two nested
+        # loops are geologically slow, even for just 5k points)
+        x1, x2 = np.meshgrid(p1[:,0], p2[:,0])
+        y1, y2 = np.meshgrid(p1[:,1], p2[:,1])
+        z1, z2 = np.meshgrid(p1[:,2], p2[:,2])
+            
+        d = np.power( np.power(x1-x2, 2) + np.power(y1-y2, 2) + np.power(z1-z2, 2), 0.5 )
+        dist = np.min(d)
+                           
+        return dist    
+
+    
+    if plot_animation:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+    for it in range(time.shape[0]):
+        ML = M_wing(alpha_L[it], theta_L[it], phi_L[it], 'left') * M_stroke(eta, 'left')
+        MR = M_wing(alpha_R[it], theta_R[it], phi_R[it], 'right') * M_stroke(eta, 'right')
+       
+        wing_pointcloud_L_g = np.transpose( ML.T * wing_pointcloud_L_w.T) 
+        wing_pointcloud_R_g = np.transpose( MR.T * wing_pointcloud_R_w.T) 
+        
+        for dim in range(3):
+            wing_pointcloud_L_g[:,dim] += x_hinge_L[dim]
+            wing_pointcloud_R_g[:,dim] += x_hinge_R[dim]
+            
+        if plot_animation:
+            ax.cla()
+            ax.set_xlim([-2,2]) 
+            ax.set_ylim([-2,2])
+            ax.set_zlim([-2,2])    
+            ax.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
+            ax.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
+            ax.set_title('animation')
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            
+        # print("%f %f" % (min(wing_pointcloud_L_g[:,1]), min(wing_pointcloud_R_g[:,1])) )
+        
+        # if either wing crosses the mid-plane, then a collision is possible.
+        # only in those case we compute the expensive exact distance between both wings
+        # This is only required if the wing beat is not symmetric. In the symmetric
+        # case, the 1st condition is sufficient to detect collisions.
+        if min(wing_pointcloud_L_g[:,1]) >= 0.01 or min(wing_pointcloud_R_g[:,1]) <= 0.01:
+            # print('COLLISION (possible -> we take a closer look!) t=%2.2f' % (time[it]) )  
+            
+            dist = closest_distance_pointclouds( wing_pointcloud_R_g, wing_pointcloud_L_g )
+            
+            if dist < 0.02:
+                print('COLLISION (very likely!) t=%2.2f dist=%e' % (time[it], dist) )    
+                
+                fig = plt.figure()
+                ax = fig.add_subplot(111, projection='3d')
+                ax.cla()
+                ax.set_xlim([-2,2]) 
+                ax.set_ylim([-2,2])
+                ax.set_zlim([-2,2])    
+                ax.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
+                ax.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
+                ax.set_title('Collision detected !!')
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+      
+                break
+        print('no collision at t=%2.2f detected' % (time[it]) )   
