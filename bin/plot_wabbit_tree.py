@@ -45,7 +45,7 @@ def plot_wabbit_tree(file, plot_grid=True):
         lvl_now = w_obj.level[i_b]
         
         for j_l in range( lvl_now ):  
-            digit_now = wabbit_tools.tc_get_digit_at_level(tc_now, j_l, w_obj.max_level, w_obj.dim)
+            digit_now = wabbit_tools.tc_get_digit_at_level(tc_now, j_l+1, w_obj.max_level, w_obj.dim)
 
             dJ = 2.0**-w_obj.dim * 2.0**(-w_obj.dim*(j_l+2))#1.0/(6*(j+1))
             x2 = x1 + dJ*(digit_now-(1.5 + 2*(w_obj.dim==3)))
@@ -78,7 +78,7 @@ def plot_wabbit_tree_angular(file, plot_grid=True):
         lvl_now = w_obj.level[i_b]
         
         for j_l in range( lvl_now ):  
-            digit_now = wabbit_tools.tc_get_digit_at_level(tc_now, j_l, w_obj.max_level, w_obj.dim)
+            digit_now = wabbit_tools.tc_get_digit_at_level(tc_now, j_l+1, w_obj.max_level, w_obj.dim)
 
             # r2 = r1 + 2**-(j_l+1)
             r2 = r1 + 1
