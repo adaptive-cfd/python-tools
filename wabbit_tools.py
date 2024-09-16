@@ -171,10 +171,11 @@ class WabbitHDF5file:
     # A grid is uniquely defined by its dimension (from blocks), block size (from blocks), domain size
     # The individual grid partition is uniquely defined by the number of blocks (from blocks), treecode and level arrays
     # for time knowledge we set the time and iteration as well
-    def fill_vars(self, domain_size, blocks, treecode, level, time, iteration):
+    def fill_vars(self, domain_size, blocks, treecode, level, time, iteration, max_level=21):
         self.dim = len(blocks.shape[1:])
-        self.block_size = blocks.shape[1:]
-        self.domain_size = domain_size
+        self.block_size = np.array(blocks.shape[1:])
+        if self.dim==2: self.block_size = np.append(self.block_size, 1)
+        self.domain_size = np.array(domain_size)
         self.blocks = blocks
         self.block_treecode_num = treecode
         self.level = level
@@ -183,17 +184,21 @@ class WabbitHDF5file:
         self.iteration = iteration
 
         # compute attrs which are not set
-        self.version = "20240410"
-        self.periodic_BC = [1, 1, 1]
-        self.symmetry_BC = [0, 0, 0]
-        self.max_level = 21  # for now set to max
+        self.version = 20240410
+        self.periodic_BC = np.array([1, 1, 1])
+        self.symmetry_BC = np.array([0, 0, 0])
+        self.max_level = max_level  # for now set to max
 
         # set fields for meta data of blocks
-        # ToDo: we can compute spacing and origin from treecode
         self.lgt_ids = np.arange(self.total_number_blocks)
         self.procs = np.zeros(self.total_number_blocks)
         self.refinement_status = np.zeros(self.total_number_blocks)
         self.block_treecode = tcb_level_2_tcarray(treecode, level, self.max_level, self.dim)
+        self.coords_origin = np.zeros([self.total_number_blocks, self.dim])
+        self.coords_spacing = np.zeros([self.total_number_blocks, self.dim])
+        for i_b in range(self.total_number_blocks):
+            self.coords_origin[i_b, :] = treecode2origin(self.block_treecode_num[i_b], self.max_level, self.dim, self.domain_size)
+            self.coords_spacing[i_b, :] = level2spacing(self.level[i_b], self.dim, self.block_size, self.domain_size)
     
     # let it write itself
     def write(self, file, verbose=True):
@@ -385,7 +390,7 @@ class WabbitHDF5file:
     
 
     # check if logically two objects are considered to be close to equal
-    def isClose(self, other, verbose=True, logger=None):
+    def isClose(self, other, verbose=True, logger=None, return_norm=False):
         # check if grid attributes are equal
         attr_similarity = self.compareAttr(other, logger=logger)
         if not attr_similarity:
@@ -423,13 +428,20 @@ class WabbitHDF5file:
             # normalization is norm of data1
             norm_L2 = norm_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]) )
         
-            # L2 difference
+            # L2 and Linfty difference, last point is ignored as this is a redundant point
             j = other.get_block_id(self.block_treecode_num[i], self.level[i])
             if j != -1:
-                diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]-other.blocks[j,:]) )
-                diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(self.blocks[i,:]-other.blocks[j,:]) , ord=np.inf)])
+                if self.dim==2:
+                    diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:-1,:-1]-other.blocks[j,:-1,:-1]) )
+                    diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(self.blocks[i,:-1,:-1]-other.blocks[j,:-1,:-1]) , ord=np.inf)])
+                else:
+                    diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(self.blocks[i,:-1,:-1,:-1]-other.blocks[j,:-1,:-1,:-1]) )
+                    diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(self.blocks[i,:-1,:-1,:-1]-other.blocks[j,:-1,:-1,:-1]) , ord=np.inf)])
             else:
-                diff_block = self.blocks[i, :] - other.interpolate_block(self.blocks[i, :], self.coords_origin[i], self.coords_spacing[i], grid_interpolator)
+                if self.dim==2:
+                    diff_block = self.blocks[i, :-1,:-1] - other.interpolate_block(self.blocks[i, :-1,:-1], self.coords_origin[i], self.coords_spacing[i], grid_interpolator)
+                else:
+                    diff_block = self.blocks[i, :-1,:-1,:-1] - other.interpolate_block(self.blocks[i, :-1,:-1,:-1], self.coords_origin[i], self.coords_spacing[i], grid_interpolator)
                 diff_L2 = diff_L2 + np.linalg.norm( np.ndarray.flatten(diff_block) )
                 diff_LInf = np.max([diff_LInf, np.linalg.norm( np.ndarray.flatten(diff_block) , ord=np.inf)])
                     
@@ -460,6 +472,7 @@ class WabbitHDF5file:
                 text_now = bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
+        if return_norm: return error_L2 <= 1.0e-13, error_L2, error_LInf
         return error_L2 <= 1.0e-13
 
 
@@ -778,27 +791,78 @@ def plot_wabbit_dir(d, **kwargs):
 
 # extract from numerical treecode the digit at a specific level
 def tc_get_digit_at_level(tc_b, level, max_level=21, dim=3):
-    result = (tc_b // (2**(dim*(max_level - level -1))) % (2**dim))
+    result = (tc_b // (2**(dim*(max_level - level))) % (2**dim))
     if isinstance(tc_b, np.ndarray):
         return result.astype(int)
     else:
         return int(result)
 
-# similar to encoding function in wabbit
-def tc_encoding(ixyz, max_level=21, dim=3):
+# set for numerical treecode the digit at a specific level
+def tc_set_digit_at_level(tc_b, digit, level, max_level=21, dim=3):
+    # compute digit that is currently there
+    result = (tc_b // (2**(dim*(max_level - level))) % (2**dim))
+    # subtract old digit, add new one
+    tc_b += (-result + digit) * (2**(dim*(max_level - level))) 
+
+    if isinstance(tc_b, np.ndarray):
+        return tc_b.astype(int)
+    else:
+        return int(tc_b)
+
+# similar to encoding function in wabbit, ixyz are one-based ([1,1] or [1,1,1] give TC 0)
+def tc_encoding(ixyz, level=21, max_level=21, dim=3):
+    if np.any(np.array(ixyz) < 1) or np.any(np.array(ixyz) > 2**level):
+        print(f"Invalid coordinates, ensure they are 1 <= ixyz <= {2**level}")
+        return -1
+    # one-based encoding, so subtract the 1
+    ixyz_n = np.array(ixyz) - 1
     tc = 0
+    p_arr = [1, 0, 2]  # y and x are interchanged for tc encoding
     # Loop over all bits set in index
-    for i_dim in range(len(ixyz)):
-        for i_level in range(ixyz[i_dim].bit_length()):
-            bit = (ixyz[i_dim] >> i_level) & 1
+    for i_dim in range(len(ixyz_n)):
+        p_dim = p_arr[i_dim]
+        for i_level in range(int(ixyz_n[i_dim]).bit_length()):
+            bit = (ixyz_n[i_dim] >> i_level) & 1
             if bit:
-                tc += bit << ((i_level) * dim + i_dim)
+                # max for if one forgets to set the level
+                tc += bit << ((i_level) * dim + p_dim + max(max_level-level, 0)*dim)
     return tc
+
+def tc_decoding(treecode, level=None, dim=3, max_level=21):
+    """
+    Obtain block position coordinates from numerical binary treecode.
+    Works for 2D and 3D. Considers each digit and adds their level-shift to each coordinate.
+    
+    Parameters:
+    - treecode: int, treecode value
+    - level: int, level at which to encode, can be negative to set from max_level
+    - dim: int, dimension (2 or 3), defaults to 3
+    - max_level: int, max level possible, should be set after params%Jmax
+    
+    Returns:
+    - ix: list of int, block position coordinates
+    """
+    
+    n_level = max_level if level is None else level
+    if n_level < 0: n_level = max_level + n_level + 1
+    
+    # 1-based
+    ix = [1] * dim
+    
+    for i_level in range(n_level):
+        for i_dim in range(dim):
+            shift = (i_level + max_level - n_level) * dim + i_dim
+            bit = (treecode >> shift) & 1
+            ix[i_dim] += bit << i_level
+    
+    ix[0], ix[1] = ix[1], ix[0]
+    
+    return ix
 
 # get string representation of binary treecode
 def tc_to_str(tc_b, level, max_level=21, dim=3):
     tc_str = ""
-    for i_level in range(level):
+    for i_level in np.arange(level)+1:
         tc_str += str(tc_get_digit_at_level(tc_b, i_level, max_level, dim))
     return tc_str
 
@@ -807,8 +871,8 @@ def tcb_level_2_tcarray(tc_b, level, max_level=21, dim=3):
     tc_array = np.zeros((tc_b.shape[0], max_level))
     # extract number of each level
     # level <= i_level ensures -1 values are inserted for unset levels
-    for i_level in range(0, max_level):
-        tc_array[:, i_level] = tc_get_digit_at_level(tc_b, i_level, max_level=max_level, dim=dim) - (level <= i_level)
+    for i_level in np.arange(max_level)+1:
+        tc_array[:, i_level-1] = tc_get_digit_at_level(tc_b, i_level, max_level=max_level, dim=dim) - (level <= i_level)
     return tc_array
 
 # extract level from treecode array, assume field
@@ -842,6 +906,114 @@ def treecode_level( tc ):
     return(level)
 
 
+# return coords_origin from treecode
+def treecode2origin( tc, max_level=21, dim=3, domain_size=[1,1,1] ):
+    origin = np.zeros(dim)
+    for i_l in np.arange(max_level)+1:
+        spacing = domain_size / (2**i_l)
+
+        digit = tc_get_digit_at_level(tc, i_l, max_level, dim)
+        spacing_fac = np.array([(digit//2)%2, digit%2, (digit//4)%2])
+        origin += spacing[:dim] * spacing_fac[:dim]
+    return origin[::-1]
+
+# return treecode from coords_origin
+def origin2treecode( origin, max_level=21, dim=3, domain_size=[1,1,1] ):
+    treecode=0
+    origin_n = np.copy(origin[::-1])
+    for i_l in np.arange(max_level)+1:
+        spacing = domain_size / (2**i_l)
+
+        digit = (origin_n[0]>=spacing[0])*2 + (origin_n[1]>=spacing[1])*1
+        if dim==3: digit +=(origin_n[2]>=spacing[2])*4
+        treecode = tc_set_digit_at_level(treecode, digit, level=i_l, max_level=max_level, dim=dim)
+
+        truth_array = [(origin_n[0]>=spacing[0]), (origin_n[1]>=spacing[1]), (origin_n[2]>=spacing[2])]
+        origin_n[:dim] -= spacing[:dim] * truth_array[:dim]
+    
+    if treecode > 2**(dim*(max_level+1)) or treecode < 0:
+        print(f"Invalid treecode created: {treecode}")
+    return treecode
+
+# return coords_spacing from level
+def level2spacing( level, dim=3, block_size=[21,21,21], domain_size=[1,1,1] ):
+    return np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
+
+# return coords_spacing from level
+def spacing2level( spacing, block_size=[21,21,21], domain_size=[1,1,1] ):
+    if np.any(spacing[:] == 0): return np.infty
+    level = np.log2(domain_size[0]/((block_size[0]-1)*spacing[0]))
+    if level - np.rint(level) > 0.1:
+        print(f"Level deviates much from integer: {level}")
+    return np.rint( level ).astype(int)
+
+# copy from fortran, find neighbors
+def adjacent_neighbor(treecode, direction, level=None, dim=3, max_level=32):
+    """
+    Obtain neighbour in 3D for given direction with numerical binary treecode.
+    
+    Parameters:
+        treecode (int): Numerical treecode in.
+        direction (int): Direction for neighbor search.
+           Each digit in variable direction represents one of the dimensions. Digits can take following values:
+              1:-x, 2:+x, 3:-y, 4:+y, 5:-z, 6:+z
+        level (int, optional): Level at which to encode, can be negative to set from max_level.
+        dim (int, optional): Dimension (2 or 3), defaults to 3.
+        max_level (int, optional): Max level possible.
+        
+    Returns:
+        int: Numerical treecode out (neighbor).
+    """
+    
+    if level is None: level = max_level
+    if level < 0: level = max_level + level + 1
+    
+    if direction == 1:
+        dir_sign = -1
+        dir_fac = 2
+    elif direction == 2:
+        dir_sign = 1
+        dir_fac = 2
+    elif direction == 3:
+        dir_sign = -1
+        dir_fac = 1
+    elif direction == 4:
+        dir_sign = 1
+        dir_fac = 1
+    elif direction == 5:
+        dir_sign = -1
+        dir_fac = 4
+    elif direction == 6:
+        dir_sign = 1
+        dir_fac = 4
+    else:
+        raise ValueError("Unknown direction")
+    
+    treecode_neighbor = 0
+    
+    for i_l in np.arange(level, 0, -1):
+        digit_last = tc_get_digit_at_level(treecode, i_l, max_level, dim)
+        
+        treecode_neighbor += ((digit_last + dir_sign * dir_fac) % (2 * dir_fac) + (digit_last // (2 * dir_fac)) * 2 * dir_fac) * 2**(dim*(max_level-i_l))
+        
+        dir_sign = ((digit_last // dir_fac + (2 - dir_sign) // 2) & 1) * dir_sign
+        
+        if dir_sign == 0:
+            treecode_neighbor += treecode // 2**(dim*(max_level-i_l+1)) * 2**(dim*(max_level-i_l+1))
+            break
+    return treecode_neighbor
+
+# this is some hackery, we take a block, walk in x-direction for highest level (smallest block) and check if there is a block
+# if that is the case then our block has to be of that level for leaf-grids, we increase the level to check until we find the first block
+def level_from_treecode(tc, tc_array, max_level=21, dim=3):
+    for i_l in np.arange(max_level, 0, -1):
+        # build treecode for neighbor in +x direction for this block
+        tc_n = adjacent_neighbor(tc, direction=2, level=i_l, max_level=max_level, dim=dim)
+        # check if this block exists, if so then we have found the right level and can return
+        if tc_n in tc_array: return i_l
+
+        
+        
 # for a treecode list, return max and min level found
 def get_max_min_level( treecode ):
 

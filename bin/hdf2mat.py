@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# I really hate python already:
 from __future__ import print_function
 import glob, os, sys
 import h5py
@@ -67,7 +66,7 @@ def uniquelist( l ):
         print(l)
         return l[0]
 
-def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 ", level = None):
+def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, mpicommand = "mpirun -np 2 ", level = -1):
     print('-------------------------')
     print('- WABBIT module matlab  -')
     print('-------------------------')
@@ -92,32 +91,35 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
         for i in range(len(timestamps)):
              #use any of our files at the same timestamp to determine number of blocks
             file = directory + prefix + '_' + timestamps[i] + '.h5'
-            file_dense = densedir + prefix + '_' + timestamps[i] + '.h5'
-            if not level: 
-                 command = mpicommand + " " + \
-                 "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "
-            else:
-                 command = mpicommand + " " + \
-                 "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "  \
-                  + level + " 4" #+ order    
-            command = command + " >> " + densedir+"wabbit-post.log"
-            print("\n",command,"\n")
-            ierr = os.system(command)
-            if (ierr > 0):
-                warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. export PATH=$PATH:/path/to/wabbit/" )
-                return 0
             w_obj = wabbit_tools.WabbitHDF5file()
-            w_obj.read(file_dense)
+            w_obj.read(file)
+            l_min, l_max = w_obj.get_max_min_level()
+            if not l_min == l_max or (level > 0 and level == l_min == l_max):
+                file_dense = densedir + prefix + '_' + timestamps[i] + '.h5'
+                if level == -1: 
+                    command = mpicommand + " " + \
+                    "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "
+                else:
+                    command = mpicommand + " " + \
+                    "wabbit-post --sparse-to-dense "+file + " "+file_dense+ " "  \
+                    + level + " 4" #+ order    
+                command = command + " >> " + densedir+"wabbit-post.log"
+                print("\n",command,"\n")
+                ierr = os.system(command)
+                if (ierr > 0):
+                    warn( "Need wabbit for sparse-to-dense! Please export wabbit in PATH. export PATH=$PATH:/path/to/wabbit/" )
+                    return 0
+                w_obj = wabbit_tools.WabbitHDF5file()
+                w_obj.read(file_dense)
+                if os.path.isfile(file_dense):
+                    os.remove(file_dense)
+                else:    ## Show an error ##
+                    print("Error: %s file not found" % file_dense)     
             x0 = w_obj.coords_origin
             dx = w_obj.coords_spacing
             data = w_obj.blocks
-            treecode = w_obj.block_treecode
-            data_dense, box_dense = wabbit_dense_error_tools.dense_matrix( x0, dx, data, treecode, dim )
+            data_dense, box_dense = wabbit_dense_error_tools.dense_matrix( x0, dx, data, w_obj.level, dim )
             data_tmp.append(data_dense)
-            if os.path.isfile(file_dense):
-                os.remove(file_dense)
-            else:    ## Show an error ##
-                print("Error: %s file not found" % file_dense)     
         data_list["domain_size"] = box_dense
         data_list["dx"] = dx
         data_list["data"].append(np.asarray(data_tmp))
@@ -136,18 +138,18 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
 
 def main():
     print( bcolors.OKGREEN + "**********************************************" + bcolors.ENDC )
-    print( bcolors.OKGREEN + "**   hdf2xml.py                             **" + bcolors.ENDC )
+    print( bcolors.OKGREEN + "**   hdf2mat.py                             **" + bcolors.ENDC )
     print( bcolors.OKGREEN + "**********************************************" + bcolors.ENDC )
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
     files at the same time, which have different file names. Then you'll want to
     read the time from the filename, since paraview crashes if two files are at the
-    same instant. Setting -n will force hdf2xmf.py to read from filename, eg mask_00010.h5
+    same instant. Setting -n will force hdf2mat.py to read from filename, eg mask_00010.h5
     will be at time 10, even if h5 attributes tell it is at t=0.1""", action="store_true")
-    parser.add_argument("-1", "--one-file-per-timestep", help="""Sometimes, it is useful to generate one XMF file per
+    parser.add_argument("-1", "--one-file-per-timestep", help="""Sometimes, it is useful to generate one MAT file per
     time step (and not one global file), for example to compare two time steps. The -1 option generates these individual
-    files. If -o outfile.xmf is set, then the files are named outfile_0000.xmf, outfile_0001.xmf etc.""", action="store_true")
+    files. If -o outfile.mat is set, then the files are named outfile_0000.mat, outfile_0001.mat etc.""", action="store_true")
     parser.add_argument("-o", "--outfile", help="Mat file to write to, default is ALL.mat")
     parser.add_argument("-0", "--ignore-origin", help="force origin to 0,0,0", action="store_true")
     parser.add_argument("-u", "--unit-spacing", help="use unit spacing dx=dy=dz=1 regardless of what is specified in h5 files", action="store_true")
@@ -179,7 +181,7 @@ def main():
     print("looking for files in dir: " + bcolors.HEADER + directory + bcolors.ENDC)
 
     # parse the filename to write to, as in previous versions, the default value
-    # is ALL.xmf
+    # is ALL.mat
     if args.outfile == None:
         args.outfile="ALL.mat"
     print("Output will be written to: "+bcolors.HEADER+args.outfile+bcolors.ENDC)
@@ -200,7 +202,7 @@ def main():
     if args.ignore_origin:
         print("We will force origin = 0.0, 0.0, 0.0 regardless of what is specified in h5 files")
     if args.refinement_level == None:
-        refinement_level = ""
+        refinement_level = -1
         print("We will use the maximal refinement level of the data for refiment of coarser blocks")
     else:
         refinement_level = args.refinement_level
@@ -240,11 +242,11 @@ def main():
     print_list(args.include_timestamps)
 
 
-    # will we generate one or many XMF files?
+    # will we generate one or many mat files?
     if args.one_file_per_timestep:
-        print("XMF: One file per timestep will be written")
+        print("MAT: One file per timestep will be written")
     else:
-        print("XMF: One file with all timesteps will be generated")
+        print("MAT: One file with all timesteps will be generated")
 
     #-------------------------------------------------------------------------------
     # get the list of all h5 files in the current directory.
@@ -434,7 +436,7 @@ def main():
 
     # we have now the timestamps as an ordered list, and the times array as an ordered list
     # however, if we exclude / include some files, the lists do not match, and we select files with the
-    # wrong timestamp in the xmf file.
+    # wrong timestamp in the mat file.
     times=[]
     for timestamp in timestamps:
         time = None
@@ -480,7 +482,7 @@ def main():
     if not prefixes or not timestamps:
         warn('No prefixes or timestamps..an empty file is created')
 
-    print("The XMF file(s) refers to " + bcolors.HEADER + "%i" % (len(timestamps)*len(prefixes)) + bcolors.ENDC + " of these *.h5-files")
+    print("The MAT file(s) refers to " + bcolors.HEADER + "%i" % (len(timestamps)*len(prefixes)) + bcolors.ENDC + " of these *.h5-files")
 
     if args.one_file_per_timestep:
         # extract base filename and extension
@@ -495,13 +497,12 @@ def main():
             
     else:
         # one file for the dataset
-        # write the acual xmf file with the information extracted above
+        # write the acual mat file with the information extracted above
         print("writing " + args.outfile + "....")
         write_mat_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory, level=refinement_level)
         
     print("Done. Enjoy!")
 
-# i hate python:
-# LIKE, THAT IS EASY!
+
 if __name__ == "__main__":
     main()

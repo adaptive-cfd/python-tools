@@ -138,7 +138,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
         print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'Processing htg:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s')
 
       # go down the tree
-      for i_level in range(0, level):
+      for i_level in np.arange(level)+1:
         if cursor.IsLeaf(): cursor.SubdivideLeaf()
 
         i_digit = wabbit_tools.tc_get_digit_at_level(treecode, i_level, max_level=i_wobj.max_level, dim=i_wobj.dim)
@@ -365,9 +365,9 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
           i_b_now = w_obj_list[i_ndim].get_block_id(b_tc, b_lvl)
           # Copy the data into the vtkDoubleArray
           if w_main.dim == 2:
-            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1].transpose(1, 0).flatten()  # Flatten the array if it's not already 1D
+            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1].flatten()  # Flatten the array if it's not already 1D
           else:
-            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1, :-1].transpose(2, 1, 0).flatten()  # Flatten the array if it's not already 1D  
+            block_data_flat = w_obj_list[i_ndim].blocks[i_b_now, :-1, :-1, :-1].flatten()  # Flatten the array if it's not already 1D  
           for i in range(block_data_flat.size):
             data_now.SetComponent(i, i_ind, block_data_flat[i])
 

@@ -9,7 +9,7 @@ def INICOND_convdiff_blob(xyz, domain_size=[1, 1, 1], blob_pos=[0.75, 0.5, 0], b
     if len(xyz) == 3: z = xyz[2] - blob_pos[2]
     else: z = 0
 
-    # we assume domain is periodic here so we loop over imaginary neighbouring domains to add its effects as well
+    # we assume domain is periodic here so we loop over imaginary neighbouring domains to add periodic effect as well
     out = 0
     for i_x in [-1, 0, 1]:
         for i_y in [-1, 0, 1]:

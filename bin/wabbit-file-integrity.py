@@ -7,6 +7,7 @@ check if file is corrupt or not
 1: check for uniqueness of entries
 2: check for arrays that should have monotonously ascending entries
 3: check if arrays have entry 0
+4: check if redundant arrays coincide
 
 """
 import sys, os, numpy as np
@@ -65,22 +66,38 @@ if not is_monotone:
 #     - spacing (0)
 has_0 = np.sum(w_obj.lgt_ids == 0) ; is_valid = is_valid and has_0 <= 0
 if has_0 > 0:
-    print(f"{has_0} blocks have lgt_id=0. It should be none.")
+    print(f"{has_0} blocks have lgt_id=0. It should be 0.")
 has_0 = np.sum(w_obj.block_treecode_num == 0) ; is_valid = is_valid and has_0 <= 1
 if has_0 > 1:
-    print(f"{has_0} blocks have treecode=0. It should be one.")
+    print(f"{has_0} blocks have treecode=0. It should be 1.")
 has_0 = np.sum(w_obj.level == 0) ; is_valid = is_valid and has_0 <= 0
 if has_0 > 0:
-    print(f"{has_0} blocks have level=0. It should be none.")
+    print(f"{has_0} blocks have level=0. It should be 0.")
 has_0 = np.sum(np.sum(w_obj.blocks, axis=tuple(np.arange(1, w_obj.dim+1))) == 0) ; is_valid = is_valid and has_0 <= 0
 if has_0 > 0:
-    print(f"{has_0} blocks have blocks[:]=0. It should be none.")
+    print(f"{has_0} blocks have sum(blocks[:])=0. It should be 0.")
 has_0 = np.sum(np.sum(w_obj.coords_origin, axis=1) == 0) ; is_valid = is_valid and has_0 <= 1
 if has_0 > 1:
-    print(f"{has_0} blocks have origin=0. It should be one.")
+    print(f"{has_0} blocks have sum(origin)=0. It should be 1.")
 has_0 = np.sum(np.sum(w_obj.coords_spacing, axis=1) == 0) ; is_valid = is_valid and has_0 <= 0
 if has_0 > 0:
-    print(f"{has_0} blocks have spacing=0. It should be none.")
+    print(f"{has_0} blocks have sum(spacing)=0. It should be 0.")
+
+
+# 4: check if redundant arrays coincide, these are:
+#     - treecode and coords_origin
+#     - level and coords_spacing
+i_corr1, i_corr2 = 0, 0
+for i_b in range(w_obj.total_number_blocks):
+    tc_from_origin = wabbit_tools.origin2treecode(w_obj.coords_origin[i_b], max_level=w_obj.max_level, dim=w_obj.dim, domain_size=w_obj.domain_size)
+    if tc_from_origin != w_obj.block_treecode_num[i_b]: i_corr1 += 1
+    level_from_spacing = wabbit_tools.spacing2level(w_obj.coords_spacing[i_b], block_size=w_obj.block_size, domain_size=w_obj.domain_size)
+    if level_from_spacing != w_obj.level[i_b]: i_corr2 += 1
+if i_corr1 > 0:
+    print(f"{i_corr1} blocks do not have treecode and coords_origin that mean the same thing.")
+if i_corr2 > 0:
+    print(f"{i_corr2} blocks do not have level and coords_spacing that mean the same thing.")
+is_valid = is_valid and (i_corr1 == 0) and (i_corr2 == 0)
 
 # return result on screen
 print("-"*80)
