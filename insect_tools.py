@@ -2580,9 +2580,259 @@ def get_wing_pointcloud_from_inifile(fname):
     return xw_w_pointcloud
 
 
+
+def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristled=False, 
+                        R_bristle=0.01, bristle_color='#000080', debug_plot=True ):
+    """
+    Create WABBIT compatible wing shape file from an SVG file. 
+    
+    The code identifies different wing elements by their stroke color (set eg in inkscape), so use unique
+    coloring for the individual parts.
+    
+    Give colors as string:
+        #0000ff etc (including #)
+
+    Parameters
+    ----------
+    svg_file : string
+        Input file name. The file can contain many things, and only the ones colored accordingly (stroke-color) are used.
+        Any additional items, such as text or images, are ignored.
+    fname_out : string
+        Output file name (INI file)
+    contour_color : string, optional
+        Stroke color of wing contour.
+    axis_color : string, optional
+        Stroke color of rotation axis
+    bristled : bool, optional
+        Look for wing bristles or dont. The default is False.
+    bristle_color : string, optional
+        Color of bristle elements (which are straight lines)
+    
+    Returns
+    -------
+    None. Output saved to INI file.
+
+    """
+    import matplotlib.pyplot as plt
+    from svgpathtools import svg2paths
+    
+    paths, attributes = svg2paths( svg_file )
+    
+    if bristled:
+        bristles = []
+        
+    if debug_plot:
+        plt.figure()
+    
+    # find the bristles, tip and root point by searching for their colors
+    # note functional parts need to have unique contour color in inkscape
+    # !!!!!!they must not be grouped!!!!!!!!!!!
+    for k, path in enumerate(paths):
+        if "stroke:"+bristle_color in attributes[k]['style'] and bristled:
+            # this is a bristle
+            bristles.append(path)
+        if "stroke:"+contour_color in attributes[k]['style']:
+            contour = path
+        if "stroke:"+axis_color in attributes[k]['style']:
+            axis = path
+
+    
+    if not len(contour._segments) > 1:
+        raise ValueError("This may be the wrong item for the contour!")
+        
+    # extract contour points
+    xb, yb = [], []
+    # first drawing
+    for line in contour._segments:
+        # complex
+        Z1, Z2 = line.start, line.end
+
+        # warning: plot reveals there is some transformation!!
+        # y axis revered
+        
+        x1, y1 = np.real(Z1), -np.imag(Z1) #-
+        x2, y2 = np.real(Z2), -np.imag(Z2)
+        
+        xb.append(x1)
+        yb.append(y1)
+        
+        if debug_plot:
+            plt.plot( [x1,x2], [y1,y2], 'k-'  )
+            
+    xb, yb = np.asarray(xb), np.asarray(yb)
+            
+    # extract bristles
+    if bristled:        
+        all_bristles = np.zeros( [len(bristles), 5])    
+        for i, bristle in enumerate(bristles):
+            # complex
+            Z1, Z2 = bristle._segments[0].start, bristle._segments[0].end
+            
+            # warning: plot reveals there is some transformation!!
+            # y axis revered
+            x1, y1 = np.real(Z1), -np.imag(Z1)
+            x2, y2 = np.real(Z2), -np.imag(Z2)
+            
+            all_bristles[i,:] = [x1,y1,x2,y2,R_bristle]
+            
+            if debug_plot:
+                plt.plot( [x1,x2], [y1,y2], 'k-'  )    
+        
+    # root
+    x1, y1 = np.real(axis._start), -np.imag(axis._start) # attention on sign
+    # tip
+    x2, y2 = np.real(axis._end), -np.imag(axis._end) # attention on sign
+    # centre point for polar coordinates
+    # xc, yc = 98, -128
+    xc, yc = np.sum(xb)/xb.shape[0], np.sum(yb)/yb.shape[0]
+    
+    if debug_plot:
+        plt.plot(x1, y1, 'o')
+        plt.plot(x2, y2, 'o')
+        plt.plot(xc, yc, 'o')
+        
+        plt.axis('equal')
+        plt.title('svg input')
+
+    #%% scaling, shifting and rotation
+
+    e_span  = vct([x2-x1, y2-y1])
+    e_chord = vct([(y2-y1), -(x2-x1)])
+    
+    e_span /= np.linalg.norm(e_span)
+    e_chord /= np.linalg.norm(e_chord)
+    
+    # shift all to origin, scale by rot-axis length
+    R = np.sqrt( (x2-x1)**2 + (y2-y1)**2 )
+
+    # normalization
+    x1, y1 = x1/R, y1/R
+    x2, y2 = x2/R, y2/R    
+    xc, yc = xc/R, yc/R    
+    xb, yb = xb/R, yb/R    
+    
+    if bristled:
+        # do not scale last entry by R as is supposed to be scaled already
+        all_bristles[:,0:-1] /= R
+        # translation
+        all_bristles[:,0] -= x1
+        all_bristles[:,2] -= x1
+        all_bristles[:,1] -= y1
+        all_bristles[:,3] -= y1
+        
+        # annoying but necessary (classical mistake)
+        all_bristles_new = all_bristles.copy()
+        
+        # projection on unit vectors
+        all_bristles_new[:,0] = all_bristles[:,0]*e_chord[0,0] + all_bristles[:,1]*e_chord[1,0]
+        all_bristles_new[:,1] = all_bristles[:,0]* e_span[0,0] + all_bristles[:,1] *e_span[1,0]
+        
+        all_bristles_new[:,2] = all_bristles[:,2]*e_chord[0,0] + all_bristles[:,3]*e_chord[1,0]
+        all_bristles_new[:,3] = all_bristles[:,2]* e_span[0,0] + all_bristles[:,3] *e_span[1,0]
+        
+        all_bristles = all_bristles_new
+
+    # translation
+    xb, yb = xb-x1, yb-y1
+    x2, y2 = x2-x1, y2-y1
+    xc, yc = xc-x1, yc-y1
+    x1, y1 = 0.0, 0.0
+    
+    # projection on unit vectors
+    xbn, ybn = xb*e_chord[0,0] + yb*e_chord[1,0], xb*e_span[0,0] + yb*e_span[1,0]
+    x2n, y2n = x2*e_chord[0,0] + y2*e_chord[1,0], x2*e_span[0,0] + y2*e_span[1,0]
+    xcn, ycn = xc*e_chord[0,0] + yc*e_chord[1,0], xc*e_span[0,0] + yc*e_span[1,0]
+    # annoying but necessary (classical mistake)
+    xb, yb, x2, y2, xc, yc = xbn, ybn, x2n, y2n, xcn, ycn
+        
+    
+    if debug_plot:
+        plt.figure()
+        plt.plot(x1, y1, 'or', mfc='none')
+        plt.plot(x2, y2, 'or', mfc='none')
+        plt.plot(xc, yc, 'xb')
+        plt.plot( [x1,x2], [y1,y2], 'r')
+        plt.plot(xb, yb, 'b-')
+        
+        if bristled:
+            for i in range(all_bristles.shape[0]):
+                plt.plot([all_bristles[i,0], all_bristles[i,2]], [all_bristles[i,1], all_bristles[i,3]], 'k-')
+        
+        plt.axis('equal')
+        plt.title('Wing model, scaled, translated and rotated (as used in wabbit thus)')
+        plt.show()
+        
+    #%% contour in polar descripion
+    # compute radius
+    r = np.sqrt( (xb-xc)**2 + (yb-yc)**2 )
+    # compute angle
+    theta = np.angle( (xb-xc) + 1j*(yb-yc))
+    # sort and sample equidistanly (for FFT)
+    theta, r = zip(*sorted(zip(theta, r)))
+    theta, r = np.asarray(theta), np.asarray(r)
+    # to test if the linear interpolation does work and not produce artifacts
+    theta2 = np.linspace(-np.pi, np.pi, num=2000, endpoint=False)
+    r2 = np.interp(theta2, theta, r)
+    
+    if debug_plot:
+        plt.figure()
+        ax1 = plt.gca()
+
+        ax1.plot( xc+np.cos(theta)*r, yc+np.sin(theta)*r, 'b-', label='r(theta)')
+        ax1.plot( xc+np.cos(theta2)*r2, yc+np.sin(theta2)*r2, 'b--', label='Interpolated data points')
+
+        ax1.axis('equal')
+        ax1.plot( x1,y1, 'b*')
+        ax1.legend()
+        plt.title('Check if centre point and angle evaluation worked.\n Note for linear description the resolution needs to be higher')
+        plt.show()
+        
+        
+    #%% final step: save the INI file.
+            
+    fid = open(fname_out, 'w')
+    fid.write("[Wing]\n")
+    fid.write("type=linear;\n\n")
+    
+    fid.write("; if type==linear, we give theta and R(theta). both are vectors of the same length. Use the matrix notation (/ /)\n")
+    fid.write("; The centre-point of the wing is still assumed x0w, y0w just in the Fourier case.\n")
+    
+    # A word on theta.
+    # Python does imply [-pi:+pi] but WABBIT uses 0:2*pi
+    # Therefore, we add pi here.
+    fid.write("theta_i=(/")
+    for a in theta[:-1]:
+        fid.write('%e, ' % (a+np.pi))
+    fid.write('%e/)\n' % (theta[-1]+np.pi))
+    
+    fid.write("R_i=(/")
+    for a in r[:-1]:
+        fid.write('%e, ' % (a))
+    fid.write('%e/)\n' % (r[-1]))
+    
+    fid.write("x0w=%e;\n" % (xc))
+    fid.write("y0w=%e;\n" % (yc))
+        
+    if bristled:
+        fid.write("bristles=yes;\n")  
+        
+        fid.write("; if bristles, give a four column matrix (x1,y1,x2,y2,R)\n")
+        fid.write("; note last entry is R and not D. \n")
+    
+        fid.write("bristles_coords=(/%e %e %e %e %e\n" % (all_bristles[0,0],all_bristles[0,1],all_bristles[0,2],all_bristles[0,3],all_bristles[0,4]) )
+        for k in np.arange(1, all_bristles.shape[0] ):
+            fid.write("%e %e %e %e %e\n" % (all_bristles[k,0],all_bristles[k,1],all_bristles[k,2],all_bristles[k,3],all_bristles[k,4]) )
+        k = -1
+        fid.write("%e %e %e %e %e/)\n" % (all_bristles[k,0],all_bristles[k,1],all_bristles[k,2],all_bristles[k,3],all_bristles[k,4]) )
+    else:
+        fid.write("bristles=no;\n")  
+        
+    fid.close()
+    
+
 def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_L, 
                           wing_pointcloud_R_w, alpha_R, theta_R, phi_R, x_hinge_R,
-                          plot_animation=False):
+                          plot_animation=False, hold_on_collision=True):
     """
     Check if wings collide. Makes sense only if you have two wings. Body attitude and 
     stroke plane angle do not matter for this routine. Loops over time instances for the check.
@@ -2598,7 +2848,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
     wing_pointcloud_L_w : array [N,3]
         Points on the left wing, can be generated using get_wing_pointcloud_from_inifile or differently (in the case
         of E.mundus for example fore and hind wing constitute a unit but are stored in two files, so they are externally
-        concatenated)
+        concatenated). Use get_wing_pointcloud_from_inifile for this.
     alpha_L : array [nt]
         wing angle
     theta_L : array [nt]
@@ -2623,7 +2873,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
     
     # the collisions do not depend on the body- or stroke plane axis. 
     # useful only for visualization
-    eta = 0.0
+    eta = deg2rad(180)
 
     def closest_distance_pointclouds( p1, p2 ):
         # implementation with meshgrid allows at least vectorization (two nested
@@ -2639,8 +2889,8 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
 
     
     if plot_animation:
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        fig1 = plt.figure()
+        ax1 = fig1.add_subplot(111, projection='3d')
 
     for it in range(time.shape[0]):
         ML = M_wing(alpha_L[it], theta_L[it], phi_L[it], 'left') * M_stroke(eta, 'left')
@@ -2654,15 +2904,15 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
             wing_pointcloud_R_g[:,dim] += x_hinge_R[dim]
             
         if plot_animation:
-            ax.cla()
-            ax.set_xlim([-2,2]) 
-            ax.set_ylim([-2,2])
-            ax.set_zlim([-2,2])    
-            ax.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
-            ax.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
-            ax.set_title('animation')
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            ax1.cla()
+            ax1.set_xlim([-2,2]) 
+            ax1.set_ylim([-2,2])
+            ax1.set_zlim([-2,2])    
+            ax1.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
+            ax1.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
+            ax1.set_title('animation')
+            fig1.canvas.draw()
+            fig1.canvas.flush_events()
             
         # print("%f %f" % (min(wing_pointcloud_L_g[:,1]), min(wing_pointcloud_R_g[:,1])) )
         
@@ -2670,25 +2920,26 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         # only in those case we compute the expensive exact distance between both wings
         # This is only required if the wing beat is not symmetric. In the symmetric
         # case, the 1st condition is sufficient to detect collisions.
-        if min(wing_pointcloud_L_g[:,1]) >= 0.01 or min(wing_pointcloud_R_g[:,1]) <= 0.01:
-            # print('COLLISION (possible -> we take a closer look!) t=%2.2f' % (time[it]) )  
-            
+        if min(wing_pointcloud_L_g[:,1]) >= 0.01 or min(wing_pointcloud_R_g[:,1]) <= 0.01:            
             dist = closest_distance_pointclouds( wing_pointcloud_R_g, wing_pointcloud_L_g )
             
             if dist < 0.02:
                 print('COLLISION (very likely!) t=%2.2f dist=%e' % (time[it], dist) )    
                 
-                fig = plt.figure()
-                ax = fig.add_subplot(111, projection='3d')
-                ax.cla()
-                ax.set_xlim([-2,2]) 
-                ax.set_ylim([-2,2])
-                ax.set_zlim([-2,2])    
-                ax.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
-                ax.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
-                ax.set_title('Collision detected !!')
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-      
-                break
+                if hold_on_collision:                
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111, projection='3d')
+                    ax.cla()
+                    ax.set_xlim([-2,2]) 
+                    ax.set_ylim([-2,2])
+                    ax.set_zlim([-2,2])    
+                    ax.scatter(wing_pointcloud_L_g[:,0], wing_pointcloud_L_g[:,1], wing_pointcloud_L_g[:,2], 'r.')
+                    ax.scatter(wing_pointcloud_R_g[:,0], wing_pointcloud_R_g[:,1], wing_pointcloud_R_g[:,2], 'b.')
+                    ax.set_title('!! Collision detected !!')
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
+                
+                    break
         print('no collision at t=%2.2f detected' % (time[it]) )   
+        
+        
