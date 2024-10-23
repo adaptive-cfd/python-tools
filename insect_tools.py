@@ -419,25 +419,36 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
         it_unique = np.zeros( data.shape[0], dtype=bool )
         
         for it in np.arange(1, data.shape[0]-1): # skips first and last point
-            # actual data
+            # actual data (all columns of file)
             line = data[it,:]
-            # linear interpolation using neighbor values
+            # linear interpolation using neighbor values (all columns of file)
             line_interp = (data[it-1,:] + data[it+1,:]) *0.5
 
+            # absolute and relative "errors" (difference to linear interpolation)
             err_abs = np.abs(line - line_interp)
-            err_rel = np.abs(line - line_interp) / np.abs(line_interp)
+            err_rel = err_abs.copy()
+            err_rel[ np.abs(line_interp) >= 1.0e-10 ] /= np.abs(line_interp)[ np.abs(line_interp) >= 1.0e-10 ]
             
+            # use absolute value where the magnitude is smaller than 1e-7
             err = err_rel
             err[ err_abs <= 1.0e-7 ] = err_abs[ err_abs <= 1.0e-7 ]            
             
+            # remove time steps that are detected as 'outliers'
             if (np.max(err)>0.25):
                 it_unique[it] = False
             else:
                 it_unique[it] = True
                 
-        # sometimes the last point is a problem:
+        # sometimes the last point is a problem....
+        # note we cannot assume periodicity, so we use a one-sided difference stencil.
         err_abs = np.abs(data[-2,:]-data[-1,:])
-        err_rel = err_abs / np.abs(data[-2,:])
+        err_rel = err_abs.copy()
+        for ic in range( data.shape[1]):
+            # normalize by 2nd to last point not the last one in case its super large
+            if np.abs(data[-2,ic]) > 1e-10:
+                err_rel[ic] /= np.abs(data[-2,ic])
+        
+        # use absolute value where the magnitude is smaller than 1e-7
         err = err_rel
         err[ err_abs <= 1.0e-7 ] = err_abs[ err_abs <= 1.0e-7 ]
 
@@ -612,7 +623,7 @@ def write_csv_file( fname, d, header=None, sep=';'):
         if isinstance(header, list):
             for name in header[:-1]:
                 f.write( name+sep )
-            f.write(name)
+            f.write(header[-1])
         else:
             f.write(header)
         # newline after header
@@ -1128,23 +1139,102 @@ def M_body(psi,beta , gamma):
     return M_body
     
 
-def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
-                             x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
+def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
+                             x_pivot_b=[0,0,0], wing='left', chord_length=0.1,
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
                              time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, 
-                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True, mark_pivot=True):
-    """ Lollipop-diagram. visualize the wing chord
+                             ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True, mark_pivot=True,
+                             force_vectors=False, fname_forces=None, T0_forces=0.0, scale_forces=0.02, fcoef=1.0,
+                             force_scale_vector_length=1.0, force_scale_vector_label="1.0*fcoef", cmap_forces=None):
+    """
+    Lollipop-diagram. 
     
-    give all angles in degree
+    This type of diagram shows a "wing section", a line with dot for the leading edge. This is called a lollipop.
+    The visualization takes place in the sagittal plane (index _m for midplane, because _s is already taken for stroke plane).
+    It would be more natural to draw this diagram in the body coordinate system, but that's not the convention. The sagittal
+    plane is the body reference frame with an additional rotation by -beta, where beta is pitch angle.
     
-    visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False,
-                             x_pivot_b=[0,0,0], x_body_g=[0,0,0], wing='left', chord_length=0.1,
-                             draw_true_chord=False, meanflow=None ):
+    As the body angles may be time dependent, you can pass them (still in deg) as vectors with the same size as time. 
+    In fact, this is important only for the Lollipop diagram with forces, because we read in the *.t file, which is in the
+    global coordinate system. You can obivously only plot force vectors after the simulation is completed.    
+
+    Parameters
+    ----------
+    fname : TYPE
+        *.ini file to take the kinematics from
+    psi : TYPE, optional
+        body roll angle, scalar or vector same length as time
+    gamma : TYPE, optional
+        body yaw angle, scalar or vector same length as time
+    beta : TYPE, optional
+        body pitch angle, scalar or vector same length as time
+    eta_stroke : TYPE, optional
+        anatomical stroke plane angle
+    equal_axis : TYPE, optional
+        DESCRIPTION. The default is True.
+    DrawPath : TYPE, optional
+        Draw the wing tip path as dashed line or not.
+    x_pivot_b : TYPE, optional
+        DESCRIPTION. The default is [0,0,0].
+    wing : TYPE, optional
+        DESCRIPTION. The default is 'left'.
+    chord_length : TYPE, optional
+        DESCRIPTION. The default is 0.1.
+    draw_true_chord : TYPE, optional
+        DESCRIPTION. The default is False.
+    meanflow : TYPE, optional
+        If specified, we add the mean flow vector to the drawing, which is sometimes useful. Provide a 3D vector [ux,uy,uz]
+    reverse_x_axis : TYPE, optional
+        DESCRIPTION. The default is False.
+    colorbar : TYPE, optional
+        DESCRIPTION. The default is False.
+    time : TYPE, optional
+        DESCRIPTION. The default is np.linspace( start=0.0, stop=1.0, endpoint=False, num=40).
+    cmap : TYPE, optional
+        Colormap encoding time. Can also be a constant string for fixed colors.
+    cmap_forces :
+        As cmap, but for force vector arrows. Defaults to cmap
+    ax : TYPE, optional
+        DESCRIPTION. The default is None.
+    savePNG : TYPE, optional
+        DESCRIPTION. The default is False.
+    savePDF : TYPE, optional
+        DESCRIPTION. The default is True.
+    draw_stoke_plane : TYPE, optional
+        DESCRIPTION. The default is True.
+    mark_pivot : TYPE, optional
+        DESCRIPTION. The default is True.
+    force_vectors : TYPE, optional
+        Plot force vectors on top of lollipops?. The default is False.
+    fname_forces : TYPE, optional
+        *.t file to get the wing forces from (e.g. forces_leftwing.t)
+    T0_forces : TYPE, optional
+        Which cycle to use for forces, give the start point (ie 1.0 for the 2nd cycle)
+    scale_forces : TYPE, optional
+        Scaling constant for the force vectors. Not to be confused with fcoef. This here just scales the vector length on the plot.
+    fcoef : TYPE, optional
+        Coefficient to make forces dimensional, if fcoef=1.0 then the dimenionless units from the CFD are used.
+    force_scale_vector_length : TYPE, optional
+        How long should the little reference vector be, that gives the reader the scale of the force arrows?
+        Give this in the same unit as fcoef.
+    force_scale_vector_label : TYPE, optional
+        Label for the reference force vector (e.g. "100N"). The default is "1.0*fcoef".
+
+    Raises
+    ------
+    ValueError
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
     """
     import os
     import matplotlib.pyplot as plt
     import matplotlib
 
+    
 
     if not os.path.isfile(fname):
         raise ValueError("The file "+fname+" does not exist.")
@@ -1159,142 +1249,163 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         plt.gcf().set_size_inches([4.0, 3.6] )
         plt.gcf().subplots_adjust(hspace=0.0, right=0.88, bottom=0.12, left=0.16, top=0.92)
         
-
-    # read kinematics data:
-    a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, kine_type = read_kinematics_file( fname )
+    if type(beta) != np.ndarray:
+        beta = beta * np.ones_like(time)
+    if type(psi) != np.ndarray:
+        psi = psi * np.ones_like(time)
+    if type(gamma) != np.ndarray:
+        gamma = gamma * np.ones_like(time)
         
-    # length of wing chord to be drawn. note this is not correlated with the actual
-    # wing thickness at some position - it is just a marker.
-    wing_chord = chord_length
+    # this diagram would be most convenient in the body coordinate system,
+    # but that is not the convention. The convention is the sagittal plane, looking from the 
+    # side at the insect, i.e. you can see the pitch angle. However as this is arbitrary, it
+    # seems to be more logical to me to use the mean pitch angle for that, rather than the
+    # instantaneous one. In most cases, this is the same, as beta is often constant.
+    beta_sagittal = np.mean(beta)
 
+    # In the Lollipop diagram, we look at the insect from the side. The pitch angle
+    # is visible, but yaw and roll are not (otherwise the fig is distorted and very 
+    # difficult to interpret). This translates to an additional rotation around y 
+    # by -beta, after going to the body system.
+    # Index _m because _s is stroke plane.
+    M_b2sagittal = Ry(-1.0*deg2rad(beta_sagittal))
+        
+    # read kinematics data:
+    time, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time, unit_out='rad')
+        
     # wing tip in wing coordinate system
     x_tip_w = vct([0.0, 1.0, 0.0])
-    x_le_w  = vct([ 0.5*wing_chord,1.0,0.0])
-    x_te_w  = vct([-0.5*wing_chord,1.0,0.0])
+    x_le_w  = vct([ 0.5*chord_length,1.0,0.0])
+    x_te_w  = vct([-0.5*chord_length,1.0,0.0])
 
     x_pivot_b = vct(x_pivot_b)
-    x_body_g  = vct(x_body_g)
-
-    # body transformation matrix
-    M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
-
-    # rotation matrix from body to stroke coordinate system:
-    M_stroke_l = Ry(deg2rad(eta_stroke))
-    M_stroke_r = Rx(np.pi)*Ry(deg2rad(eta_stroke))
 
     # array of color (note normalization to 1 for query values)
     if cmap is None:
         cmap = plt.cm.jet
-    colors = cmap( (np.arange(time.size) / time.size) )
+    if type(cmap) == matplotlib.colors.LinearSegmentedColormap:
+        colors = cmap( (np.arange(time.size) / time.size) )
+    else:
+        # if its a constant color, jus create a list of colors
+        colors = time.size*[cmap]
+    # default is using same colormap for both
+    if cmap_forces is None:
+        cmap_forces = cmap
     
-           
-    if kine_type == "fourier":
-        alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-        phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-        theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
-        
-    elif kine_type == "hermite":
-        alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-        phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-        theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
-        
+    if type(cmap_forces) == matplotlib.colors.LinearSegmentedColormap:
+        colors_forces = cmap( (np.arange(time.size) / time.size) )
+    else:
+        # if its a constant color, jus create a list of colors
+        colors_forces = time.size*[cmap_forces]    
+       
+    # read forces
+    if force_vectors:
+        d_forces = load_t_file(fname_forces)
 
     # step 1: draw the symbols for the wing section for some time steps
-    for i in range(time.size):
-        # rotation matrix from body to wing coordinate system
-        if wing == 'left':
-            M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
+    for i in range(time.size):        
+        # (true) body transformation matrix
+        M_g2b = Rx(deg2rad(psi[i]))*Ry(deg2rad(beta[i]))*Rz(deg2rad(gamma[i]))
+        
+        # rotation matrix (body -> wing)
+        M_b2w = M_wing(alpha[i], theta[i], phi[i], wing)*M_stroke(deg2rad(eta_stroke), wing)
 
-        elif wing == 'right':
-            M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
-
-
-        # convert wing points to global coordinate system
-        x_tip_g = np.transpose(M_body) * ( np.transpose(M_wing) * x_tip_w + x_pivot_b ) + x_body_g
-        x_le_g  = np.transpose(M_body) * ( np.transpose(M_wing) * x_le_w  + x_pivot_b ) + x_body_g
-        x_te_g  = np.transpose(M_body) * ( np.transpose(M_wing) * x_te_w  + x_pivot_b ) + x_body_g
-
+        # convert wing points to sagittal coordinate system
+        x_tip_m =  M_b2sagittal * ( np.transpose(M_b2w) * x_tip_w + x_pivot_b ) 
+        x_le_m  =  M_b2sagittal * ( np.transpose(M_b2w) * x_le_w  + x_pivot_b ) 
+        x_te_m  =  M_b2sagittal * ( np.transpose(M_b2w) * x_te_w  + x_pivot_b )
 
         if not draw_true_chord:
             # the wing chord changes in length, as the wing moves and is oriented differently
             # note if the wing is perpendicular, it is invisible
             # so this vector goes from leading to trailing edge:
-            e_chord = x_te_g - x_le_g
+            e_chord = x_te_m - x_le_m
             e_chord[1] = [0.0]
 
             # normalize it to have the right length
             e_chord = e_chord / (np.linalg.norm(e_chord))
 
             # pseudo TE and LE. note this is not true TE and LE as the line length changes otherwise
-            x_le_g = x_tip_g - e_chord * wing_chord/2.0
-            x_te_g = x_tip_g + e_chord * wing_chord/2.0
+            x_le_m = x_tip_m - e_chord * chord_length/2.0
+            x_te_m = x_tip_m + e_chord * chord_length/2.0
 
+        # draw actual lollipop
         # mark leading edge with a marker
-        ax.plot( x_le_g[0], x_le_g[2], marker='o', color=colors[i], markersize=4 )
-
+        ax.plot( x_le_m[0], x_le_m[2], marker='o', color=colors[i], markersize=4 )
         # draw wing chord
-        ax.plot( [x_te_g[0,0], x_le_g[0,0]], [x_te_g[2,0], x_le_g[2,0]], '-', color=colors[i])
+        ax.plot( [x_te_m[0,0], x_le_m[0,0]], [x_te_m[2,0], x_le_m[2,0]], '-', color=colors[i])
+        
+        # draw arrow for forces
+        if force_vectors:
+            # interpolate the value for the force vector. Note forces are in global 
+            # reference frame.
+            Fx_g = np.interp( time[i]+T0_forces, d_forces[:,0], d_forces[:,1] )
+            Fy_g = np.interp( time[i]+T0_forces, d_forces[:,0], d_forces[:,2] )
+            Fz_g = np.interp( time[i]+T0_forces, d_forces[:,0], d_forces[:,3] )
+            # to sagittal plane
+            F_m = M_b2sagittal * M_g2b * vct([Fx_g, Fy_g, Fz_g])  
+            
+            # force vector starts at mid-lollipop
+            point0x = 0.5*(x_te_m[0,0] + x_le_m[0,0])
+            point0y = 0.5*(x_te_m[2,0] + x_le_m[2,0])
+            # force vector end point            
+            point1x = point0x + scale_forces * F_m[0,0]
+            point1y = point0y + scale_forces * F_m[2,0]
+
+            ax.arrow( point0x, point0y, point1x-point0x, point1y-point0y, head_width=0.04, color=colors_forces[i])
+            
+            # plt.text( x_le_g[0]*1.02, x_le_g[2]*1.02, "F=%2.2f nN" % (fcoef*np.sqrt(Fx**2 + Fz**2)), color=colors_forces )
+            
+            # plot the scale arrow with 100 nN length
+            if (i==0):
+                scale_arrow_length = scale_forces*force_scale_vector_length / fcoef # nN
+                
+                ax.arrow(0.5, 1.0, scale_arrow_length, 0.0, head_width=0.04, color=colors_forces[i])
+                ax.text(0.5+0.5*scale_arrow_length, 1.05, force_scale_vector_label, horizontalalignment='center')
 
 
     # step 2: draw the path of the wingtip
     if DrawPath:
         # refined time vector for drawing the wingtip path
-        time = np.linspace( start=0.0, stop=1.0, endpoint=False, num=1000)
-        xpath = time.copy()
-        zpath = time.copy()
+        time2 = np.linspace( start=0.0, stop=1.0, endpoint=False, num=1000)
+        xpath, zpath = np.zeros_like(time2), np.zeros_like(time2)
         
-        alpha_l, phi_l, theta_l = np.zeros(time.shape), np.zeros(time.shape), np.zeros(time.shape)
-           
-        if kine_type == "fourier":
-            alpha_l = Fserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-            phi_l   = Fserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-            theta_l = Fserieseval(a0_theta, ai_theta, bi_theta, time)
-            
-        elif kine_type == "hermite":
-            alpha_l = Hserieseval(a0_alpha, ai_alpha, bi_alpha, time)
-            phi_l   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , time)
-            theta_l = Hserieseval(a0_theta, ai_theta, bi_theta, time)
+        # different time vector
+        time2, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time2, unit_out='rad')
 
+        for i in range(time2.size):
+            # rotation matrix from body to wing coordinate system 
+            M_b2w = M_wing(alpha[i], theta[i], phi[i], wing)*M_stroke(deg2rad(eta_stroke), wing)
+            # convert wing points to sagittal coordinate system
+            x_tip_m = M_b2sagittal * np.transpose(M_b2w) * x_tip_w + x_pivot_b
 
-        for i in range(time.size):
-            # rotation matrix from body to wing coordinate system
-            # rotation matrix from body to wing coordinate system
-            if wing == 'left':
-                M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
-            elif wing == 'right':
-                M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
-
-            # convert wing points to global coordinate system
-            x_tip_g = np.transpose(M_body) * ( np.transpose(M_wing) * x_tip_w + x_pivot_b ) + x_body_g
-
-            xpath[i] = (x_tip_g[0])
-            zpath[i] = (x_tip_g[2])
-        ax.plot( xpath, zpath, linestyle='--', color='k', linewidth=1.0 )
+            xpath[i] = x_tip_m[0,0]
+            zpath[i] = x_tip_m[2,0]
+        ax.plot( xpath, zpath, linestyle='--', color=PathColor, linewidth=1.0 )
 
 
     # Draw stroke plane as a dashed line
-    if wing == 'left':
-        M_stroke = M_stroke_l
-    elif wing == 'right':
-        M_stroke = M_stroke_r
-
+    # NOTE: if beta is not constant, there should be more lines...
     if draw_stoke_plane:
+        M_b2s = M_stroke(deg2rad(eta_stroke), wing)
+        
         # we draw the line between [0,0,-1] and [0,0,1] in the stroke system        
-        xs1 = vct([0.0, 0.0, +1.0])
-        xs2 = vct([0.0, 0.0, -1.0])
+        x1_s = vct([0.0, 0.0, +1.0])
+        x2_s = vct([0.0, 0.0, -1.0])
+        
         # bring these points back to the global system
-        x1 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs1 + x_pivot_b ) + x_body_g
-        x2 = np.transpose(M_body) * ( np.transpose(M_stroke)*xs2 + x_pivot_b ) + x_body_g
+        x1_m = M_b2sagittal * ( np.transpose(M_b2s)*x1_s + x_pivot_b )
+        x2_m = M_b2sagittal * ( np.transpose(M_b2s)*x2_s + x_pivot_b )       
     
         # remember we're in the x-z plane
-        l = matplotlib.lines.Line2D( [x1[0],x2[0]], [x1[2],x2[2]], color='k', linewidth=1.0, linestyle='--')
-        ax.add_line(l)
+        ax.plot( [x1_m[0],x2_m[0]], [x1_m[2],x2_m[2]], color='k', linewidth=1.0, linestyle='--')
+
 
     if mark_pivot:
         ax.plot(x_pivot_b[0], x_pivot_b[2], 'kp')
     
     if equal_axis:
-        axis_equal_keepbox( plt.gcf(), plt.gca() )
+        axis_equal_keepbox( plt.gcf(), ax )
 
     if meanflow is not None:
         x0, y0 = 0.0, 0.0
@@ -1308,13 +1419,12 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         sm = plt.cm.ScalarMappable( cmap=cmap, norm=plt.Normalize(vmin=0,vmax=1) )
         sm._A =[]
         plt.colorbar(sm)
-
     
     ax = plt.gca()
     ax.set_yticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
-    ax.set_xlabel('x/R')
-    ax.set_ylabel('z/R')
+    ax.set_xlabel('x_{sagittal}/R')
+    ax.set_ylabel('z_{sagittal}/R')
     
     axis_equal_keepbox(plt.gcf(), ax)
     
@@ -1325,6 +1435,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
     if savePNG:
         plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
+
 
 def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0]):
    
@@ -1538,7 +1649,7 @@ def insectSimulation_postProcessing( run_directory='./', output_filename='data_w
     Reads the forces_XXwing.t, moments_XX_wing.t and kinematics.t (XX=left/right)
     and computes the forces and moments in the respective wing reference frame.
     
-    Output is saved to CSV file and ploted to PDF file.
+    Output is saved to CSV file and plotted to PDF file.
     """
     import numpy as np
     import glob
@@ -2074,7 +2185,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
 def wing_contour_from_file(fname):
     """
     Compute wing outline (shape) from an *.INI file. Returns: xc, yc, the coordinates
-    of outline points.
+    of outline points, and the wings area (surface)
     """
     import os
     import inifile_tools
@@ -2140,6 +2251,7 @@ def wing_contour_from_file(fname):
         # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
         for j in np.arange(theta_i.shape[0]):
             area += dtheta * (R_i[j]**2 / 2.0)
+            
     elif wtype == "kleemeier":
         B, H = 8.6/130, 100/130
         xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
@@ -2148,7 +2260,7 @@ def wing_contour_from_file(fname):
   
     return xc, yc, area
     
-def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15):
+def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15, savePDF=False):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -2239,6 +2351,8 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     # -------------------------------------------------------------------------
     if savePNG:
         plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
+    if savePDF:
+        plt.savefig( fname.replace('.ini','')+'_shape.pdf', dpi=300 )
     
 def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37.0, time=None ):
     """
@@ -2832,7 +2946,9 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
 
 def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_L, 
                           wing_pointcloud_R_w, alpha_R, theta_R, phi_R, x_hinge_R,
-                          plot_animation=False, hold_on_collision=True):
+                          wing_pointcloud_L2_w=None, alpha_L2=None, theta_L2=None, phi_L2=None, x_hinge_L2=None, 
+                          wing_pointcloud_R2_w=None, alpha_R2=None, theta_R2=None, phi_R2=None, x_hinge_R2=None,
+                          plot_animation=False, hold_on_collision=True ):
     """
     Check if wings collide. Makes sense only if you have two wings. Body attitude and 
     stroke plane angle do not matter for this routine. Loops over time instances for the check.
@@ -2893,15 +3009,43 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         ax1 = fig1.add_subplot(111, projection='3d')
 
     for it in range(time.shape[0]):
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # first pair of wings (forewings or in diptera the only wings)
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ML = M_wing(alpha_L[it], theta_L[it], phi_L[it], 'left') * M_stroke(eta, 'left')
-        MR = M_wing(alpha_R[it], theta_R[it], phi_R[it], 'right') * M_stroke(eta, 'right')
-       
         wing_pointcloud_L_g = np.transpose( ML.T * wing_pointcloud_L_w.T) 
+        
+        MR = M_wing(alpha_R[it], theta_R[it], phi_R[it], 'right') * M_stroke(eta, 'right')
         wing_pointcloud_R_g = np.transpose( MR.T * wing_pointcloud_R_w.T) 
         
         for dim in range(3):
             wing_pointcloud_L_g[:,dim] += x_hinge_L[dim]
             wing_pointcloud_R_g[:,dim] += x_hinge_R[dim]
+        
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # second wing pair
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        if wing_pointcloud_L2_w is not None:
+            ML2 = M_wing(alpha_L2[it], theta_L2[it], phi_L2[it], 'left') * M_stroke(eta, 'left')
+            wing_pointcloud_L2_g = np.transpose( ML2.T * wing_pointcloud_L2_w.T) 
+            
+            for dim in range(3):
+                wing_pointcloud_L2_g[:,dim] += x_hinge_L2[dim]
+                
+            # simply append the second wing pair to the pointcloud of the first..    
+            wing_pointcloud_L_g = np.vstack( (wing_pointcloud_L_g, wing_pointcloud_L2_g) )
+            
+        if wing_pointcloud_R2_w is not None:
+            MR2 = M_wing(alpha_R2[it], theta_R2[it], phi_R2[it], 'right') * M_stroke(eta, 'right')
+            wing_pointcloud_R2_g = np.transpose( MR2.T * wing_pointcloud_R2_w.T) 
+            
+            for dim in range(3):
+                wing_pointcloud_R2_g[:,dim] += x_hinge_R2[dim]
+            
+            # simply append the second wing pair to the pointcloud of the first..
+            wing_pointcloud_R_g = np.vstack( (wing_pointcloud_R_g, wing_pointcloud_R2_g) )
+            
+        
             
         if plot_animation:
             ax1.cla()
