@@ -1045,6 +1045,18 @@ def Rmirror( x0, n):
     return(Rmirror)
 
 def M_stroke(eta, wing):
+    print("Using M_stroke is deprecated, use get_M_b2s instead")
+    return get_M_b2s(eta, wing)
+
+def M_wing(alpha, theta, phi, wing):
+    print("Using M_wing is deprecated, use get_M_s2w instead")
+    return get_M_s2w(alpha, theta, phi, wing)
+
+def M_body(psi, beta, gamma):
+    print("Using print is deprecated, use get_M_g2b instead")
+    return get_M_g2b(psi, beta, gamma)
+
+def get_M_b2s(eta, side, unit_in="rad"):
     """
     Rotation matrix from body to stroke system, as defined in Engels et al. 2016 SISC
 
@@ -1052,37 +1064,36 @@ def M_stroke(eta, wing):
     ----------
     eta : rad
         stroke plane angle
-    wing : str
+    side : str
         left or right
 
     Returns
     -------
     M_stroke rotation matrix
     """
-    if abs(eta) > 2.0*np.pi:
-        print("WARNING; you may pass degrees to this routine, eta=%f" % (eta))
-
-    if wing =="left":
+    if unit_in != "rad":
+        eta = deg2rad(eta)
+        
+    if side =="left":
         M_stroke = Ry(eta)
-    elif wing == "right":
+    elif side == "right":
         M_stroke = Rx(np.pi)*Ry(eta)
     else:
         raise("Neither right nor left wing")
         
     return M_stroke   
 
-
-def M_wing(alpha, theta, phi, wing):
+def get_M_s2w(alpha, theta, phi, side, unit_in='rad'):
     """
     Rotation matrix from stroke to wing system, as defined in Engels et al. 2016 SISC
 
     Parameters
     ----------
-    alpha : rad
+    alpha : rad or deg
         feathering angle
-    theta : rad
+    theta : rad or deg
         deviation angle
-    phi : rad
+    phi : rad or deg
         flapping angle
     wing : str
         left or right
@@ -1091,35 +1102,31 @@ def M_wing(alpha, theta, phi, wing):
     -------
     M_wing rotation matrix
 
-    """
+    """    
+    if unit_in != "rad":
+        alpha = deg2rad(alpha)
+        theta = deg2rad(theta)
+        phi = deg2rad(phi)
     
-    # if abs(alpha) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, alpha=%f" % (alpha))
-    # if abs(theta) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, theta=%f" % (theta))
-    # if abs(phi) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, phi=%f" % (phi))
-    
-    if wing =="left":
+    if side =="left":
         M = Ry(alpha)*Rz(theta)*Rx(phi)
-    elif wing == "right":
+    elif side == "right":
         M = Ry(-alpha)*Rz(theta)*Rx(-phi)
     else:
         raise("Neither right nor left wing")
     return M
 
-
-def M_body(psi,beta , gamma):
+def get_M_g2b(psi, beta, gamma, unit_in='rad'):
     """
     Rotation matrix from lab to body reference frame, as defined in Engels et al. 2016 SISC
     
     Parameters
     ----------
-    psi : rad
+    psi : rad or deg
         roll angle
-    beta : rad
+    beta : rad or deg
         pitch angle
-    gamma : rad
+    gamma : rad or deg
         yaw angle
 
     Returns
@@ -1128,16 +1135,19 @@ def M_body(psi,beta , gamma):
         Body rotation matrix
 
     """
-    # if abs(psi) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, psi=%f" % (psi))
-    # if abs(beta) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, beta=%f" % (beta))
-    # if abs(gamma) > 2.0*np.pi:
-    #     print("WARNING; you may pass degrees to this routine, gamma=%f" % (gamma))
+    if unit_in != "rad":
+        psi = deg2rad(psi)
+        beta = deg2rad(beta)
+        gamma = deg2rad(gamma)
     
     M_body = Rx(psi)*Ry(beta)*Rz(gamma)
     return M_body
-    
+
+
+def get_M_b2w(alpha, theta, phi, eta, side, unit_in='rad'):
+    # composite matrix
+    return get_M_s2w(alpha, theta, phi, side, unit_in)*get_M_b2s(eta, side, unit_in)
+
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
                              x_pivot_b=[0,0,0], wing='left', chord_length=0.1,
@@ -1271,7 +1281,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     M_b2sagittal = Ry(-1.0*deg2rad(beta_sagittal))
         
     # read kinematics data:
-    time, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time, unit_out='rad')
+    time, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time, unit_out='deg')
         
     # wing tip in wing coordinate system
     x_tip_w = vct([0.0, 1.0, 0.0])
@@ -1305,10 +1315,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     # step 1: draw the symbols for the wing section for some time steps
     for i in range(time.size):        
         # (true) body transformation matrix
-        M_g2b = Rx(deg2rad(psi[i]))*Ry(deg2rad(beta[i]))*Rz(deg2rad(gamma[i]))
-        
+        M_g2b = get_M_g2b(psi[i], beta[i], gamma[i], unit_in='deg')
+            
         # rotation matrix (body -> wing)
-        M_b2w = M_wing(alpha[i], theta[i], phi[i], wing)*M_stroke(deg2rad(eta_stroke), wing)
+        M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
 
         # convert wing points to sagittal coordinate system
         x_tip_m =  M_b2sagittal * ( np.transpose(M_b2w) * x_tip_w + x_pivot_b ) 
@@ -1371,11 +1381,11 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         xpath, zpath = np.zeros_like(time2), np.zeros_like(time2)
         
         # different time vector
-        time2, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time2, unit_out='rad')
+        time2, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time2, unit_out='deg')
 
         for i in range(time2.size):
             # rotation matrix from body to wing coordinate system 
-            M_b2w = M_wing(alpha[i], theta[i], phi[i], wing)*M_stroke(deg2rad(eta_stroke), wing)
+            M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
             # convert wing points to sagittal coordinate system
             x_tip_m = M_b2sagittal * np.transpose(M_b2w) * x_tip_w + x_pivot_b
 
@@ -1387,7 +1397,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     # Draw stroke plane as a dashed line
     # NOTE: if beta is not constant, there should be more lines...
     if draw_stoke_plane:
-        M_b2s = M_stroke(deg2rad(eta_stroke), wing)
+        M_b2s = get_M_b2s(eta_stroke, wing, unit_in='deg')
         
         # we draw the line between [0,0,-1] and [0,0,1] in the stroke system        
         x1_s = vct([0.0, 0.0, +1.0])
@@ -1398,7 +1408,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         x2_m = M_b2sagittal * ( np.transpose(M_b2s)*x2_s + x_pivot_b )       
     
         # remember we're in the x-z plane
-        ax.plot( [x1_m[0],x2_m[0]], [x1_m[2],x2_m[2]], color='k', linewidth=1.0, linestyle='--')
+        ax.plot( [x1_m[0,0],x2_m[0,0]], [x1_m[2,0],x2_m[2,0]], color='k', linewidth=1.0, linestyle='--')
 
 
     if mark_pivot:
