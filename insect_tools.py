@@ -10,6 +10,7 @@ Created on Wed Oct 11 09:11:47 2017
 import numpy as np
 import numpy.ma as ma
 import glob
+from warnings import warn
 
 def change_color_opacity(color, alpha):
     import matplotlib
@@ -1045,15 +1046,15 @@ def Rmirror( x0, n):
     return(Rmirror)
 
 def M_stroke(eta, wing):
-    print("Using M_stroke is deprecated, use get_M_b2s instead")
+    warn("Using M_stroke is deprecated, use get_M_b2s instead", DeprecationWarning, stacklevel=2)
     return get_M_b2s(eta, wing)
 
 def M_wing(alpha, theta, phi, wing):
-    print("Using M_wing is deprecated, use get_M_s2w instead")
+    warn("Using M_wing is deprecated, use get_M_s2w instead", DeprecationWarning, stacklevel=2)
     return get_M_s2w(alpha, theta, phi, wing)
 
 def M_body(psi, beta, gamma):
-    print("Using print is deprecated, use get_M_g2b instead")
+    warn("Using print is deprecated, use get_M_g2b instead", DeprecationWarning, stacklevel=2)
     return get_M_g2b(psi, beta, gamma)
 
 def get_M_b2s(eta, side, unit_in="rad"):
@@ -2747,17 +2748,24 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
         
     if debug_plot:
         plt.figure()
+        
+    print("wing_shape_from_SVG: file=%s, npaths=%i" % (svg_file, len(paths)))
     
     # find the bristles, tip and root point by searching for their colors
     # note functional parts need to have unique contour color in inkscape
     # !!!!!!they must not be grouped!!!!!!!!!!!
     for k, path in enumerate(paths):
-        if "stroke:"+bristle_color in attributes[k]['style'] and bristled:
+        if 'style' in attributes[k]:
+            c = attributes[k]['style']
+        else:
+            c = ""
+        
+        if "stroke:"+bristle_color in c and bristled:
             # this is a bristle
             bristles.append(path)
-        if "stroke:"+contour_color in attributes[k]['style']:
+        if "stroke:"+contour_color in c:
             contour = path
-        if "stroke:"+axis_color in attributes[k]['style']:
+        if "stroke:"+axis_color in c:
             axis = path
 
     
@@ -2782,7 +2790,8 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
         
         if debug_plot:
             plt.plot( [x1,x2], [y1,y2], 'k-'  )
-            
+    
+    print('wing contour #points=%i' % (len(xb)))
     xb, yb = np.asarray(xb), np.asarray(yb)
             
     # extract bristles
@@ -2811,10 +2820,10 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     xc, yc = np.sum(xb)/xb.shape[0], np.sum(yb)/yb.shape[0]
     
     if debug_plot:
-        plt.plot(x1, y1, 'o')
-        plt.plot(x2, y2, 'o')
-        plt.plot(xc, yc, 'o')
-        
+        plt.plot(x1, y1, 'o', label='root')
+        plt.plot(x2, y2, 'o', label='tip')
+        plt.plot(xc, yc, 'o', label='centre point')
+        plt.legend()
         plt.axis('equal')
         plt.title('svg input')
 
