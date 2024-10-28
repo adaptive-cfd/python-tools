@@ -114,9 +114,9 @@ class WabbitHDF5file:
         
         # very old versions do not have fancy variables
         if self.version <= 20200902:
-            self.refinement_status = [0]*total_number_blocks
-            self.procs = [-1]*total_number_blocks
-            self.lgt_ids = [-1]*total_number_blocks
+            self.refinement_status = [0]*self.total_number_blocks
+            self.procs = [-1]*self.total_number_blocks
+            self.lgt_ids = [-1]*self.total_number_blocks
             self.block_size = self.blocks.shape[1:]
         else:
             if read_var in ["refinement_status", "all", "meta"]:
@@ -130,7 +130,11 @@ class WabbitHDF5file:
         # older version - treecode array, create dim, max_level and fields level and block_treecode_num
         if self.version < 20240410:
             # fill in attributes
-            self.dim = 3 - (self.block_size[2] == 1)  # 2D if only one point in z-direction
+            try:
+                self.dim = 3 - (self.block_size[2] == 1)  # 2D if only one point in z-direction
+            except IndexError:
+                self.dim = 2  # self.block_size[2] is not set
+                self.block_size = np.array(list(self.block_size) + [1])
             if read_var in ["block_treecode", "all", "meta"]:
                 self.block_treecode = np.array(fid['block_treecode'])
                 self.max_level = self.block_treecode.shape[1]
@@ -200,6 +204,65 @@ class WabbitHDF5file:
             self.coords_origin[i_b, :] = treecode2origin(self.block_treecode_num[i_b], self.max_level, self.dim, self.domain_size)
             self.coords_spacing[i_b, :] = level2spacing(self.level[i_b], self.dim, self.block_size, self.domain_size)
     
+
+    # init values from a matrix and set them into a grid on uniform level
+    def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0):
+        # extract level from size of array
+        level_num = np.log2(block_values.shape[0]/bs[0])
+        if int(level_num) != level_num:
+            print(f"Input array has wrong size: {block_values.shape[0]}. Ensure size/bs is a power of 2")
+            return
+        level_num = int(level_num)
+
+        # alter values, we need to copy first line as we have redundant setting - this assumes periodicity
+        block_red = np.zeros(np.array(block_values.shape)+1)
+        if dim == 2:
+            block_red[:-1,:-1] = block_values[:,:]   # copy interior
+            block_red[ -1,:-1] = block_values[0,:]   # copy x-line
+            block_red[:-1, -1] = block_values[:,0]   # copy y-line
+            block_red[ -1, -1] = block_values[0,0]   # copy last corner
+        else:
+            block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
+            block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
+            block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
+            block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
+            block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
+            block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
+            block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
+            block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
+
+        number_blocks = 2**(level_num*dim)
+        treecode = np.zeros(number_blocks)
+        level = np.ones(number_blocks)*level_num
+        if dim == 2:
+            blocks = np.zeros([number_blocks, bs[0]+1, bs[1]+1])
+        else:
+            blocks = np.zeros([number_blocks, bs[0]+1, bs[1]+1, bs[2]+1])
+
+        # prepare treecode
+        for i_b in range(number_blocks):
+            # encoding is 1-based
+            if dim == 2:
+                ix, iy = i_b//(2**level_num)+1, i_b%(2**level_num)+1
+                tc = tc_encoding([ix, iy], level=level_num, max_level=max_level, dim=dim)
+            else:
+                ix, iy, iz = i_b//(2**(2*level_num))+1, (i_b//(2**level_num))%(2**level_num)+1, i_b%(2**(level_num))+1
+                tc = tc_encoding([ix, iy, iz], level=level_num, max_level=max_level, dim=dim)
+            treecode[i_b] = int(tc)
+        
+        # fill blocks array by transcribing part of array
+        for i_b in range(number_blocks):
+            if dim == 2:
+                ix, iy = i_b//(2**level_num), i_b%(2**level_num)
+                ix, iy = ix*bs[0], iy*bs[1]
+                blocks[i_b, :, :] = block_red[ix:ix+bs[0]+1, iy:iy+bs[1]+1].transpose(1, 0)
+            else:
+                ix, iy, iz = i_b//(2**(2*level_num)), (i_b//(2**level_num))%(2**level_num), i_b%(2**(level_num))
+                ix, iy, iz = ix*bs[0], iy*bs[1], iz*bs[2]
+                blocks[i_b, :, :, :] = block_red[ix:ix+bs[0]+1, iy:iy+bs[1]+1, iz:iz+bs[2]+1].transpose(2, 1, 0)
+        
+        self.fill_vars(domain_size, blocks, treecode, level, time, iteration, max_level)
+    
     # let it write itself
     def write(self, file, verbose=True):
         """ Write data from wabbit to an HDF5 file
@@ -245,6 +308,10 @@ class WabbitHDF5file:
         dset_id.attrs.create('total_number_blocks', [self.total_number_blocks], dtype=np.int32)
         dset_id.attrs.create('periodic_BC', self.periodic_BC, dtype=np.int32)
         dset_id.attrs.create('symmetry_BC', self.symmetry_BC, dtype=np.int32)
+
+        # repair block_size
+        if self.version == 20200408 or self.version >= 20231602:
+            self.block_size[:self.dim] += 1
 
         # those are optional and not read in from wabbit
         # currently none
@@ -513,13 +580,13 @@ class WabbitHDF5file:
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
             return False
-        if not np.all(self.block_size == other.block_size):
+        if not np.all(self.block_size[1:self.dim] == other.block_size[1:other.dim]):
             if verbose:
                 text_now = bcolors.FAIL + f"ERROR: Block sizes are different - {self.block_size} vs {other.block_size}" + bcolors.ENDC
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
             return False
-        if any(self.domain_size != other.domain_size):
+        if np.any(self.domain_size[1:self.dim] != other.domain_size[1:other.dim]):
             if verbose:
                 text_now = bcolors.FAIL + f"ERROR: Domain size is different - {self.domain_size} vs {other.domain_size}" + bcolors.ENDC
                 if logger==None: print(text_now)
@@ -632,7 +699,7 @@ class WabbitHDF5file:
                         # replace function values
                         fun_val = function(coords_point)
 
-                        if len(block.shape) == 3: self.blocks[i_block, i_x, i_y, i_z] = fun_val
+                        if len(block.shape) == 4: self.blocks[i_block, i_x, i_y, i_z] = fun_val
                         else: self.blocks[i_block, i_x, i_y] = fun_val
 
 
@@ -815,7 +882,7 @@ def tc_set_digit_at_level(tc_b, digit, level, max_level=21, dim=3):
 # similar to encoding function in wabbit, ixyz are one-based ([1,1] or [1,1,1] give TC 0)
 def tc_encoding(ixyz, level=21, max_level=21, dim=3):
     if np.any(np.array(ixyz) < 1) or np.any(np.array(ixyz) > 2**level):
-        print(f"Invalid coordinates, ensure they are 1 <= ixyz <= {2**level}")
+        print(f"Invalid coordinates {ixyz}, ensure they are 1 <= ixyz <= {2**level}")
         return -1
     # one-based encoding, so subtract the 1
     ixyz_n = np.array(ixyz) - 1

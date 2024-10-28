@@ -9,19 +9,28 @@ import bcolors
 import glob
 import datetime
 import argparse
+import shutil
 
+if shutil.which('latex'): latex = True
+else: latex = False
 
 # this is a peculiar oddity for IRENE, she spits out some runtime warnings....
 np.seterr(invalid='ignore')
 
+c_g = bcolors.OKGREEN
+c_b = bcolors.OKBLUE
+c_e = bcolors.ENDC
 
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="Remaining walltime estimator for wabbit")
 parser.add_argument("-d", "--directory", nargs='?', const='./',
                     help="directory of h5 files, if not ./")
-parser.add_argument("-n", "--first-n-time-steps", nargs='?', type=int, const=None, default=None,
+parser.add_argument("-l", "--latest-time-steps", nargs='?', type=int, const=None, default=20,
+                    help="Steps to use for current latest estimate, defaults to 20")
+group = parser.add_mutually_exclusive_group()
+group.add_argument("-n", "--first-n-time-steps", nargs='?', type=int, const=None, default=None,
                     help="Use only the first N time steps")
-parser.add_argument("-m", "--last-m-time-steps", nargs='?', type=int, const=None, default=None,
+group.add_argument("-m", "--last-m-time-steps", nargs='?', type=int, const=None, default=None,
                     help="Use only the last M time steps")
 parser.add_argument("-s", "--script-output", action="store_true",
                     help="""When running in a script, it may be useful to just print the number of
@@ -32,6 +41,8 @@ parser.add_argument("-p", "--paramsfile", type=str,
                     try to find an appropriate one in the directory""")
 parser.add_argument("-g", "--plot", action="store_true",
                     help="""Plot a figure.""")
+parser.add_argument("--plot-procs", action="store_true",
+                    help="""Additionally plot the amount of processors over the run.""")
 args = parser.parse_args()
 
 verbose = not args.script_output
@@ -135,7 +146,7 @@ runtime = sum(d[:,2])/3600
 tstart = d[0,0]
 tnow   = d[-1,0]
 nt_now = int(d[-1,1]-d[0,1])
-nt     = min( 20, d.shape[0] )
+nt     = min( args.latest_time_steps, d.shape[0] )
 
 
 # compute mean cost per grid point per RHS evaluation, avg over all time steps
@@ -179,6 +190,8 @@ nt_left = (T-tnow) / dt
 
 # this is what we have to wait still
 time_left = round(nt_left * twall_avg)
+# this is when its finished
+eta = datetime.datetime.now()+ datetime.timedelta(seconds=time_left)
 
 # remaining cpu time
 cpuh_left = int(ncpu_now*time_left/3600)
@@ -187,78 +200,88 @@ cpuh_left = int(ncpu_now*time_left/3600)
 abs_mean_cost  = (np.mean(d[:,2]*d[:,7])/3600.0) * (1.0 / dt)
 abs_mean_cost2 = (np.mean(d[-nt:,2]*d[-nt:,7])/3600.0) * (1.0 / dt)
 
+# second estimate
+dt2 = ( d[-1,0]-d[-nt,0] ) / nt
+time_left2 = round(np.mean( d[-nt:,2] ) * (T-d[-1,0]) / (dt2) )
+eta2 = datetime.datetime.now()+ datetime.timedelta(seconds=time_left2)
+cpuh_left2 = int(ncpu_now*time_left2/3600)
+
 if verbose:
-    print("Right now, running on %s%i%s CPUS" % (bcolors.OKGREEN, ncpu_now, bcolors.ENDC))
-    print("Already consumed:           %s%i%s CPUh" % (bcolors.OKGREEN, cpuh_now, bcolors.ENDC))
-    print("Runtime:                    %s%2.1f%s h" % (bcolors.OKGREEN, runtime, bcolors.ENDC))
-    print("RHS evals per time step:    %s%i%s" % (bcolors.OKGREEN, int(nrhs), bcolors.ENDC))
-    print("mean dt:                    %s%e%s" % (bcolors.OKGREEN, dt, bcolors.ENDC))
+    print(f"Right now, running on       {c_b}{int(ncpu_now):d}{c_e} CPUS")
+    print(f"Already consumed:           {c_g}{cpuh_now}{c_e} CPUh")
+    print(f"Runtime:                    {c_g}{runtime:4.1f}{c_e} h")
+    print(f"RHS evals per time step:    {c_g}{int(nrhs)}{c_e}")
+    print(f"mean dt total:              {c_g}{dt:e}{c_e}")
+    print(f"mean dt now:                {c_b}{dt2:e}{c_e}")
     print("----------------------------------------------------------")
     print("cost [CPUs / N / Nrhs]")
-    print("    mean       max        min                std")
-    print("    ---------  ---------  -------------      -----------------")
-    print("ALL: %s%8.3e  %8.3e  %8.3e (%2.1f%%)  %8.3e (%2.1f%%) %s[CPUs / N / Nrhs]" % (bcolors.OKGREEN, mean_cost, max_cost,
-          min_cost, 100.0*min_cost/mean_cost,
-          std_cost, 100.0*std_cost/mean_cost, bcolors.ENDC))
-    print("NOW: %s%8.3e  %8.3e  %8.3e (%2.1f%%)  %8.3e (%2.1f%%) %s[CPUs / N / Nrhs]" % (bcolors.OKGREEN, mean_cost2, max_cost2,
-          min_cost2, 100.0*min_cost2/mean_cost2,
-          std_cost2, 100.0*std_cost2/mean_cost2, bcolors.ENDC))
+    print("     mean        max         min                 std")
+    print("     ---------   ---------   -----------------   -----------------")
+    print(f"ALL: {c_g}{mean_cost:8.3e}   {max_cost:8.3e}   {min_cost:8.3e} ({100.0*min_cost/mean_cost:2.1f}%)   {std_cost:8.3e} ({100.0*std_cost/mean_cost:2.1f}%) {c_e}[CPUs / N / Nrhs]")
+    print(f"NOW: {c_b}{mean_cost2:8.3e}   {max_cost2:8.3e}   {min_cost2:8.3e} ({100.0*min_cost2/mean_cost2:2.1f}%)   {std_cost2:8.3e} ({100.0*std_cost2/mean_cost2:2.1f}%) {c_e}[CPUs / N / Nrhs]")
     print("-----------------")
-    print("Absolute cost (all time steps    ): %s%6.0f%s CPUh/T" % (bcolors.OKGREEN, abs_mean_cost, bcolors.ENDC) )
-    print("Absolute cost (last %i time steps): %s%6.0f%s CPUh/T" % (nt, bcolors.OKGREEN, abs_mean_cost2, bcolors.ENDC) )
+    print(f"Absolute cost [all   {' '*int(np.log10(nt))} time steps]: {c_g}{abs_mean_cost:7.1f}{c_e} CPUh/T")
+    print(f"Absolute cost [last {nt} time steps]: {c_b}{abs_mean_cost2:7.1f}{c_e} CPUh/T")
     print("-----------------")
-    print("Absolute Nb (all time steps    ): %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]), bcolors.ENDC) )
-    print("Absolute Nb (last %i time steps): %s%i%s" % (nt, bcolors.OKGREEN, np.mean(d[-nt:,3]), bcolors.ENDC) )
+    print(f"Absolute Nb [mean over all   {' '*int(np.log10(nt))} time steps]: {c_g}{np.mean(d[:,3]):10.1f}{c_e}")
+    print(f"Absolute Nb [mean over last {nt} time steps]: {c_b}{np.mean(d[-nt:,3]):10.1f}{c_e}")
     print("-----------------")
-    print("blocks-per-rank [mean over entire run ] (rhs) %s%i%s" % (bcolors.OKGREEN, np.mean(d[:,3]/d[:,7]), bcolors.ENDC))
-    print("blocks-per-rank [mean over last it=%i ] (rhs) %s%i%s" % (nt, bcolors.OKGREEN, np.mean(d[-nt:,3]/d[-nt:,7]), bcolors.ENDC))
-    print("Time to reach: T=%s%2.3f%s" % (bcolors.OKGREEN, T, bcolors.ENDC) )
-    print("Current time: t=%s%2.3f%s (it=%s%i%s)" % (bcolors.OKGREEN, d[-1,0], bcolors.ENDC, bcolors.OKGREEN, nt_now, bcolors.ENDC) )
-    print("%s%s%s   [%i CPUH left] = [%i CPUH total] (remaining time based on all past time steps)"  %
-          (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, cpuh_left+cpuh_now) )
-
-    # second estimate
-
-    dt = ( d[-1,0]-d[-nt,0] ) / nt
-    time_left = round(np.mean( d[-nt:,2] ) * (T-d[-1,0]) / (dt) )
-    cpuh_left = int(ncpu_now*time_left/3600)
-    print("%s%s%s   [%i CPUH left] = [%i CPUH total] (remaining time based on last %i time steps)"
-          % (bcolors.OKGREEN, str(datetime.timedelta(seconds=time_left)), bcolors.ENDC, cpuh_left, cpuh_left+cpuh_now, nt ) )
+    print(f"blocks-per-rank [mean over all   {' '*int(np.log10(nt))} time steps] (rhs): {c_g}{np.mean(d[:,3]/d[:,7]):7.1f}{c_e}")
+    print(f"blocks-per-rank [mean over last {nt} time steps] (rhs): {c_b}{np.mean(d[-nt:,3]/d[-nt:,7]):7.1f}{c_e}")
+    print(f"Time to reach: T= {c_g}{T:10.5f}{c_e}")
+    print(f"Current time:  t= {c_g}{d[-1,0]:10.5f}{c_e} (it={c_g}{nt_now}{c_e})")
+    if d[-1,0] != T:
+        cpuh_l_len = int(max(np.log10(cpuh_left),np.log10(cpuh_left2)))
+        cpuh_t_len = int(max(np.log10(cpuh_left+cpuh_now),np.log10(cpuh_left2+cpuh_now)))
+        print(f"Remaining time [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{str(datetime.timedelta(seconds=time_left))}{c_e}   [{cpuh_left:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
+        print(f"Remaining time [based on last {nt} time steps]: {c_b}{str(datetime.timedelta(seconds=time_left2))}{c_e}   [{cpuh_left2:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left2+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
+        print(f"ETA [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{eta.strftime('%Y-%m-%d %H:%M:%S')}{c_e}")
+        print(f"ETA [based on last {nt} time steps]: {c_b}{eta2.strftime('%Y-%m-%d %H:%M:%S')}{c_e}")
+    else:
+        print(f"Run is finished.")
 
 if not verbose:
     # when the -s option is active, just print the number of remaining hours
 #    print( '%3.1f' % (time_left/3600.0) )
-#    print( '%3.1f h %i CPUh (=%i CPUh total)' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
-    print( '%3.1f %i %i' % (time_left/3600.0, cpuh_left, cpuh_left+cpuh_now) )
+    print( f'{time_left/3600.0:3.1f} {cpuh_left} {cpuh_left+cpuh_now}')
     
     
 if args.plot:
     import matplotlib.pyplot as plt
+
+    n_plots = 4 + args.plot_procs
     
-    plt.figure()
+    plt.figure(figsize=(8.27, 11.69)) # this is din A4 size
     a = 1.0
-    plt.gcf().set_size_inches( [a*10.0, a*15] ) # default 6.4, 4.8
+    # plt.gcf().set_size_inches( [a*10.0, a*15] ) # default 6.4, 4.8
     
-    plt.subplot(3,2,1)    
-    plt.plot( d[:,0], d[:,3], label='Nb' )
-    plt.legend()
+    if not latex: label_now = "Nb"
+    else: label_now = "$N_b$"
+    plt.subplot(np.ceil(n_plots/2).astype(int),2,1)    
+    plt.plot( d[:,0], d[:,3], label=label_now)
     plt.grid(True)
+    plt.ylabel(label_now)
     plt.xlabel('time')
     
-    plt.subplot(3,2,2)    
-    plt.semilogy( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints*nrhs), '.', label='cost [CPUs / N / Nrhs]' )
-    plt.legend()
+    if not latex: label_now = "cost [CPUs / N / Nrhs]"
+    else: label_now = r"cost [$CPUs / N / N_{RHS}$]"   
+    plt.subplot(np.ceil(n_plots/2).astype(int),2,2) 
+    c = plt.scatter( d[:,0], d[:,2]*d[:,7] / (d[:,3]*npoints*nrhs), s=4)
+    if latex: c.set_rasterized(True)  # backend has troubles with scatter plots, so lets skip them
+    plt.gca().set_yscale('log')
     plt.grid(True)
+    plt.ylabel(label_now)
     plt.xlabel('time')
     
-    plt.subplot(3,2,3)    
-    plt.plot( d[:,0], d[:,3]/d[:,7], label='Nb/Ncpu' )
-    plt.legend()
+    plt.subplot(np.ceil(n_plots/2).astype(int),2,3)  
+    if not latex: label_now = "Nb/Ncpu"
+    else: label_now = "$N_b / N_{CPU}$"     
+    plt.plot( d[:,0], d[:,3]/d[:,7])
     plt.grid(True)
+    plt.ylabel(label_now)
     plt.xlabel('time')
     
-    plt.subplot(3,2,4)    
-    
+    plt.subplot(np.ceil(n_plots/2).astype(int),2,4)    
     Nb_per_rank  = np.round( d[:,3]/d[:,7])
     cost         = d[:,2]*d[:,7] / (d[:,3]*npoints)       
     Nb_per_rank2 = np.arange( start=np.min(Nb_per_rank), stop=np.max(Nb_per_rank)+1, dtype=float )
@@ -269,19 +292,41 @@ if args.plot:
         cost_avg[i] = np.mean( cost[Nb_per_rank==Nb_per_rank2[i]] )
         cost_std[i] = np.std( cost[Nb_per_rank==Nb_per_rank2[i]] )
     
-    plt.semilogy(  d[:,3]/d[:,7], cost, 'k.', label='Nb/Ncpu', markersize=0.5 )
+    if not latex: label_now = "Nb/Ncpu"
+    else: label_now = "$N_b / N_{CPU}$"  
+    c = plt.scatter(  d[:,3]/d[:,7], cost, s=1, color='k', label=label_now)
     insect_tools.plot_errorbar_fill_between( Nb_per_rank2, cost_avg, cost_std )
     plt.gca().set_yscale('log')
-    plt.xlabel('Nb/Ncpu')
-    plt.ylabel('cost [CPUs / N / Nrhs]')
+    plt.xlabel(label_now)
+    if not latex: label_now = "cost [CPUs / N / Nrhs]"
+    else: label_now = "cost [CPUs / $N$ / $N_{rhs}$]"   
+    plt.ylabel(label_now)
     plt.grid(True)
+    if latex: c.set_rasterized(True)  # backend has troubles with scatter plots, so lets skip them
     
+    if args.plot_procs:
+        if not latex: label_now = "#CPU"
+        else: label_now = "\#CPU"   
+        plt.subplot(np.ceil(n_plots/2).astype(int),2,5)    
+        plt.plot( d[:,0], d[:,7], label=label_now )
+        plt.xlabel('time')
+        plt.ylabel(label_now)
+        plt.grid(True)
     
-    plt.subplot(3,2,5)    
-    plt.plot( d[:,0], d[:,7], label='#CPU' )
-    plt.xlabel('time')
-    plt.ylabel('#CPU')
-    plt.grid(True)
-    
+    # plt.show()
+
+    plt.tight_layout(pad=0.15)  # Adjust subplots to fit into figure area
     
     plt.savefig( os.path.join(dir,'info_performance.png'))
+
+    # pdf size is fitted to fill a page with appropriate margins, so that we can include it in a report
+    font_size = plt.rcParams['font.size']
+    pad_in_inches = 0.75 # top, bottom, left, right for DinA4
+    pad_frac = pad_in_inches * plt.gcf().get_dpi() / font_size  # Convert inches to pixel to fraction of font size
+    plt.tight_layout(pad=pad_frac)  # Adjust subplots to fit into figure area
+    plt.subplots_adjust(wspace=0.5)
+    if not latex:
+        plt.savefig( os.path.join(dir,'info_performance.pdf'), backend="pgf")
+    else:
+        plt.savefig( os.path.join(dir,'info_performance.pdf'), backend="pgf")
+
