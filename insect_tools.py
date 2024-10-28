@@ -2531,6 +2531,123 @@ def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.
     return time, alpha, phi, theta
 
 
+def compute_aero_power_individual_wings(run_directory, file_output='aero_power_individual.csv'):
+    """
+    Post-processing: WABBIT outputs the aerodynamic power in the file aero_power.t
+    but this file contains the power of all (up to four) wings together. This small python
+    routine computes instead the power for each wing individually and stores the result as
+    a CSV file
+
+    Parameters
+    ----------
+    run_directory : TYPE
+        Directory of the CFD simulation. We look for the PARAMS.ini file, as well as the *.t files there.
+    """
+    import matplotlib.pyplot as plt
+    
+    # indices [zero-based] in kinematics.t:
+    # d[:,0] time
+    # d[:,1] xc_body_g_x
+    # d[:,2] xc_body_g_y
+    # d[:,3] xc_body_g_z
+    # d[:,4] psi
+    # d[:,5] beta
+    # d[:,6] gamma
+    # d[:,7] eta_stroke
+    # d[:,8] alpha_l
+    # d[:,9] phi_l
+    # d[:,10] theta_l
+    # d[:,11] alpha_r
+    # d[:,12] phi_r
+    # d[:,13] theta_r
+    # d[:,14] rot_rel_l_w_x
+    # d[:,15] rot_rel_l_w_y
+    # d[:,16] rot_rel_l_w_z
+    # d[:,17] rot_rel_r_w_x
+    # d[:,18] rot_rel_r_w_y
+    # d[:,19] rot_rel_r_w_z
+    # d[:,20] rot_dt_l_w_x
+    # d[:,21] rot_dt_l_w_y
+    # d[:,22] rot_dt_l_w_z
+    # d[:,23] rot_dt_r_w_x
+    # d[:,24] rot_dt_r_w_y
+    # d[:,25] rot_dt_r_w_z
+    # d[:,26] alpha_l2
+    # d[:,27] phi_l2
+    # d[:,28] theta_l2
+    # d[:,29] alpha_r2
+    # d[:,30] phi_r2
+    # d[:,31] theta_r2
+    # d[:,32] rot_rel_l2_w_x
+    # d[:,33] rot_rel_l2_w_y
+    # d[:,34] rot_rel_l2_w_z
+    # d[:,35] rot_rel_r2_w_x
+    # d[:,36] rot_rel_r2_w_y
+    # d[:,37] rot_rel_r2_w_z
+    # d[:,38] rot_dt_l2_w_x
+    # d[:,39] rot_dt_l2_w_y
+    # d[:,40] rot_dt_l2_w_z
+    # d[:,41] rot_dt_r2_w_x
+    # d[:,42] rot_dt_r2_w_y
+    # d[:,43] rot_dt_r2_w_z
+    
+    d = load_t_file(run_directory+'/kinematics.t')
+    
+    if d.shape[1] > 25:
+        # four wings
+        wings = ['leftwing', 'rightwing', 'leftwing2', 'rightwing2']
+    else:
+        # two wings
+        wings = ['leftwing', 'rightwing']
+        
+    nt = d.shape[0]
+    all_power = np.zeros( (nt,5) )
+        
+    for ID, wing in enumerate(wings):
+        m = load_t_file(run_directory+'/moments_'+wing+'.t')
+        
+        
+        for it in range(nt):
+            # body angles
+            psi, beta, gamma, eta = d[it,4], d[it,5], d[it,6], d[it,7]
+            
+            if wing == 'leftwing':
+                ia, ip, i2, ix, iy, iz, side = 8, 9, 10, 14, 15, 16, 'left'
+            elif wing == 'rightwing':
+                ia, ip, i2, ix, iy, iz, side = 11, 12, 13, 17, 18, 19, 'right'
+            elif wing == 'leftwing2':
+                ia, ip, i2, ix, iy, iz, side = 26, 27, 28, 32, 33, 34, 'left'
+            elif wing == 'rightwing2':
+                ia, ip, i2, ix, iy, iz, side = 29, 30, 31, 35, 36, 37, 'right'
+                
+            # wing angles
+            alpha, phi, theta = d[it,ia], d[it,ip], d[it,i2]
+            # angular velocity vector (in wing system)
+            omega_wing_w = vct([d[it,ix], d[it,iy], d[it,iz]])
+                
+            # moment in global system
+            T_g = vct(m[it, 1:3+1])
+            # rotation matrix
+            M_g2w = np.matmul( get_M_b2w(alpha, theta, phi, eta, side), get_M_g2b(psi, beta, gamma)  )
+            # moment in wing system
+            T_w = np.matmul(M_g2w, T_g)
+            
+            power = -np.dot( T_w.T, omega_wing_w )
+            
+            all_power[it, 0], all_power[it, ID+1] = d[it,0], power
+    
+    power_control = load_t_file( run_directory+'/aero_power.t')
+    
+    # plt.figure()
+    # plt.plot(np.sum(all_power[:,1:], axis=1))
+    # plt.plot(power_control[:,1])
+    
+    if np.max( power_control[:,1] - np.sum(all_power[:,1:], axis=1)) > 1e-4:
+        raise ValueError("something is wrong")
+    
+    write_csv_file(run_directory+'/'+file_output, all_power, header=['time','aero power leftwing','aero power rightwing','aero power leftwing2','aero power rightwing2'])
+    
+    
 
 def compute_inertial_power(file_kinematics='kinematics.t'):
     """
@@ -2556,32 +2673,50 @@ def compute_inertial_power(file_kinematics='kinematics.t'):
     """
     
     # indices [zero-based] in kinematics.t:
-    # 0	time
-    # 1	xc_body_g_x
-    # 2	xc_body_g_y
-    # 3	xc_body_g_z
-    # 4	psi
-    # 5	beta
-    # 6	gamma
-    # 7	eta_stroke
-    # 8	alpha_l
-    # 9	phi_l
-    # 10	theta_l
-    # 11	alpha_r
-    # 12	phi_r
-    # 13	theta_r    
-    # 14	rot_rel_l_w_x
-    # 15	rot_rel_l_w_y
-    # 16	rot_rel_l_w_z    
-    # 17	rot_rel_r_w_x
-    # 18	rot_rel_r_w_y
-    # 19	rot_rel_r_w_z   
-    # 20	rot_dt_l_w_x
-    # 21	rot_dt_l_w_y
-    # 22	rot_dt_l_w_z    
-    # 23	rot_dt_r_w_x
-    # 24	rot_dt_r_w_y
-    # 25	rot_dt_r_w_z
+    # d[:,0] time
+    # d[:,1] xc_body_g_x
+    # d[:,2] xc_body_g_y
+    # d[:,3] xc_body_g_z
+    # d[:,4] psi
+    # d[:,5] beta
+    # d[:,6] gamma
+    # d[:,7] eta_stroke
+    # d[:,8] alpha_l
+    # d[:,9] phi_l
+    # d[:,10] theta_l
+    # d[:,11] alpha_r
+    # d[:,12] phi_r
+    # d[:,13] theta_r
+    # d[:,14] rot_rel_l_w_x
+    # d[:,15] rot_rel_l_w_y
+    # d[:,16] rot_rel_l_w_z
+    # d[:,17] rot_rel_r_w_x
+    # d[:,18] rot_rel_r_w_y
+    # d[:,19] rot_rel_r_w_z
+    # d[:,20] rot_dt_l_w_x
+    # d[:,21] rot_dt_l_w_y
+    # d[:,22] rot_dt_l_w_z
+    # d[:,23] rot_dt_r_w_x
+    # d[:,24] rot_dt_r_w_y
+    # d[:,25] rot_dt_r_w_z
+    # d[:,26] alpha_l2
+    # d[:,27] phi_l2
+    # d[:,28] theta_l2
+    # d[:,29] alpha_r2
+    # d[:,30] phi_r2
+    # d[:,31] theta_r2
+    # d[:,32] rot_rel_l2_w_x
+    # d[:,33] rot_rel_l2_w_y
+    # d[:,34] rot_rel_l2_w_z
+    # d[:,35] rot_rel_r2_w_x
+    # d[:,36] rot_rel_r2_w_y
+    # d[:,37] rot_rel_r2_w_z
+    # d[:,38] rot_dt_l2_w_x
+    # d[:,39] rot_dt_l2_w_y
+    # d[:,40] rot_dt_l2_w_z
+    # d[:,41] rot_dt_r2_w_x
+    # d[:,42] rot_dt_r2_w_y
+    # d[:,43] rot_dt_r2_w_z
    
     # k = load_t_file( file_kinematics )
     
