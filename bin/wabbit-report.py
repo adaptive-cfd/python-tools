@@ -91,7 +91,7 @@ else: inifile = args.paramsfile
 # create a large dictionary of all files
 t_values = {'cfl':[], 'div':[], 'dt':[], 'e_kin':[], 'enstrophy':[], 'eps_norm':[], 'forces':[], \
          'forces_rk':[], 'kinematics':[], 'krylov_err':[], 'mask_volume':[], 'meanflow':[], 'penal_power':[], \
-         'performance':[], 'thresholding':[], 'umag':[], 'u_residual':[]}
+         'performance':[], 'thresholding':[], 'umag':[], 'u_residual':[], 'scalar_integral':[]}
 
 for i_name in t_values:
     t_file = os.path.join(dir,f'{i_name}.t')
@@ -133,7 +133,7 @@ nrhs *= N_dt_per_grid
 T = inifile_tools.get_ini_parameter( inifile, 'Time', 'time_max', float)
 bs = inifile_tools.get_ini_parameter( inifile, 'Blocks', 'number_block_nodes', int, vector=True)
 dim = inifile_tools.get_ini_parameter( inifile, 'Domain', 'dim', int)
-vpm = inifile_tools.get_ini_parameter( inifile, 'VPM', 'penalization', bool)
+vpm = inifile_tools.get_ini_parameter( inifile, 'VPM', 'penalization', bool, default=False)
 
 if len(bs) == 1: npoints = bs**dim
 else: npoints = np.prod(bs)
@@ -317,6 +317,20 @@ if plot_maskvolume:
         plt.title(label_now[i_plot])
         plt.xlim(t_values['mask_volume'][0,0], t_values['mask_volume'][-1,0])
 
+# print mask volume for VPM
+plot_scalar = isinstance(t_values['scalar_integral'], np.ndarray)
+fig_scalar = plt.figure(5, figsize=(8.27, 11.69)) # this is din A4 size
+fig_scalar.suptitle('Scalar norms', fontsize=16, y=(11.69-1)/11.69)
+if plot_scalar:
+    if not latex: label_now = ["Scalar integral (L1-norm) over time", "Max scalar (Linfty-norm) over time"]
+    else: label_now = ["Scalar integral ($L_1$-norm) over time", "Max scalar ($L_\infty$-norm) over time"]
+    for i_plot in range(2):
+        plt.subplot(2,1,i_plot+1)
+        plt.plot(t_values['scalar_integral'][:,0], t_values['scalar_integral'][:,i_plot+2])
+        plt.ylabel("Norm"); plt.xlabel(time_label); plt.grid(True)
+        plt.title(label_now[i_plot])
+        plt.xlim(t_values['scalar_integral'][0,0], t_values['scalar_integral'][-1,0])
+
 
 # dict with all names for saving the figures and their figure handle
 figure_names = {}
@@ -326,6 +340,7 @@ if np.any(plot_thresholding): figure_names['thresholding'] = fig_thresh
 if np.any(plot_meanmax_flow): figure_names['ACM_flow_meanmax'] = fig_meanmax
 if np.any(plot_forces): figure_names['VPM_forces'] = fig_forces
 if np.any(plot_maskvolume): figure_names['VPM_maskvolume'] = fig_maskvolume
+if np.any(plot_scalar): figure_names['scalar_integral'] = fig_scalar
 
 # create images of each figure
 if args.png:

@@ -231,8 +231,10 @@ if verbose:
     print(f"Time to reach: T= {c_g}{T:10.5f}{c_e}")
     print(f"Current time:  t= {c_g}{d[-1,0]:10.5f}{c_e} (it={c_g}{nt_now}{c_e})")
     if d[-1,0] != T:
-        cpuh_l_len = int(max(np.log10(cpuh_left),np.log10(cpuh_left2)))
-        cpuh_t_len = int(max(np.log10(cpuh_left+cpuh_now),np.log10(cpuh_left2+cpuh_now)))
+        try: cpuh_l_len = int(max(np.log10(cpuh_left),np.log10(cpuh_left2)))
+        except: cpuh_l_len = 0
+        try: cpuh_t_len = int(max(np.log10(cpuh_left+cpuh_now),np.log10(cpuh_left2+cpuh_now)))
+        except: cpuh_t_len = 0
         print(f"Remaining time [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{str(datetime.timedelta(seconds=time_left))}{c_e}   [{cpuh_left:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
         print(f"Remaining time [based on last {nt} time steps]: {c_b}{str(datetime.timedelta(seconds=time_left2))}{c_e}   [{cpuh_left2:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left2+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
         print(f"ETA [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{eta.strftime('%Y-%m-%d %H:%M:%S')}{c_e}")
