@@ -690,7 +690,7 @@ def read_wabbit_hdf5_dir(dir):
 
 
 
-def add_convergence_labels(dx, er):
+def add_convergence_labels(dx, er, ax=None):
     """
     This generic function adds the local convergence rate as nice labels between
     two datapoints of a convergence rate (see https://arxiv.org/abs/1912.05371 Fig 3E)
@@ -710,12 +710,15 @@ def add_convergence_labels(dx, er):
     """
     import numpy as np
     import matplotlib.pyplot as plt
+    
+    if ax is None:
+        ax = plt.gca()
 
     for i in range(len(dx)-1):
         x = 10**( 0.5 * ( np.log10(dx[i]) + np.log10(dx[i+1]) ) )
         y = 10**( 0.5 * ( np.log10(er[i]) + np.log10(er[i+1]) ) )
         order = "%2.1f" % ( convergence_order(dx[i:i+1+1],er[i:i+1+1]) )
-        plt.text(x, y, order, horizontalalignment='center', verticalalignment='center',
+        ax.text(x, y, order, horizontalalignment='center', verticalalignment='center',
                  bbox=dict(facecolor='w', alpha=0.75, edgecolor='none'), fontsize=7 )
 
 

@@ -1525,6 +1525,8 @@ def wingtip_velocity( fname_kinematics, time=None ):
 
 
 def interp_matrix( d, time_new ):
+    from scipy.interpolate import interp1d
+    
     # interpolate matrix d using given time vector
     nt_this, ncols = d.shape
     nt_new = len(time_new)
@@ -1537,7 +1539,17 @@ def interp_matrix( d, time_new ):
     # loop over columns and interpolate
     for i in range(1,ncols):
         # interpolate this column i to equidistant data
-        d2[:,i] = np.interp( time_new, d[:,0], d[:,i] )#, right=0.0 )
+        # d2[:,i] = np.interp( time_new, d[:,0], d[:,i] )
+
+
+        d2[:,i]  = interp1d(d[:,0], d[:,i], fill_value='extrapolate')(time_new)
+            # gammas_interp = interp1d(time_it, gammas_it, fill_value='extrapolate')
+            # etas_interp   = interp1d(time_it, etas_it  , fill_value='extrapolate')
+            # alphas_interp = interp1d(time_it, alphas_it, fill_value='extrapolate')
+            # phis_interp   = interp1d(time_it, phis_it  , fill_value='extrapolate')
+            # thetas_interp = interp1d(time_it, thetas_it, fill_value='extrapolate')
+            
+            # self.psis[ii]   = psis_interp(self.timeline)
 
     return d2
 
