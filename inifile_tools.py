@@ -766,7 +766,7 @@ def prepare_resuming_backup( inifile ):
         os.rename( inifile+'.tmptmp', inifile )
 
 #
-def find_WABBIT_main_inifile(run_directory='./'):
+def find_WABBIT_main_inifile(run_directory='./', verbose=False):
     """
     find_WABBIT_main_inifile: In a folder, there are usually several INI files,
     one of which describes the simulation (this is the main one) and others (wing shape, etc).
@@ -791,15 +791,23 @@ def find_WABBIT_main_inifile(run_directory='./'):
     import glob
     
     found_main_inifile = False
+    inifile_return = ""
     for inifile in glob.glob( run_directory+"/*.ini" ):
-        section1 = exists_ini_section(inifile, 'Blocks')
-        section2 = exists_ini_section(inifile, 'Insects')
-        
         # if we find both sections, we likely found the INI file
-        if section1 and section2:
+        if exists_ini_section(inifile, 'Blocks') and exists_ini_section(inifile, 'Domain') and exists_ini_section(inifile, 'Time'):
             found_main_inifile = True
-            print('Found simulations main INI file: '+inifile)
-            return inifile
+            inifile_return = inifile
+            if verbose:
+                print('Found simulations main INI file: '+inifile)
+            
+        if inifile!=inifile_return and exists_ini_section(inifile, 'Blocks') and exists_ini_section(inifile, 'Domain') and exists_ini_section(inifile, 'Time') and found_main_inifile:
+            print(inifile_return)
+            print(inifile)
+            raise ValueError("We found more than one main ini file, you'll need to decide manually which one to use.")
+        
+            
         
     if not found_main_inifile:
         raise ValueError("Did not find simulations main INI file - unable to proceed")
+
+    return inifile_return
