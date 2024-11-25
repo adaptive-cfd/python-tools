@@ -22,13 +22,18 @@ parser.add_argument('-l', '--level', type=str, help='Level to display, choose 1-
 parser.add_argument('-f', '--full', action="store_true", help='If true: Display all WC from lower levels and only have SC of lowest level. If false: each level have only it\'s own SC and WC')
 parser.add_argument('--no-sc', action="store_true", help='SC messing up the colorbar? Use this and they will be ignored')
 parser.add_argument('-d', '--display', action='store_true', help='Display plots.')
-parser.add_argument('-s', '--save', action='store_true', help='Save plots at position of original file.')
+group_save = parser.add_mutually_exclusive_group()
+group_save.add_argument('-s', '--save', action='store_true', help='Save plots at position of original file as png and pdf files.')
+group_save.add_argument('--save-png', action='store_true', help='Save plots at position of original file as png files.')
+group_save.add_argument('--save-pdf', action='store_true', help='Save plots at position of original file as pdf files.')
+parser.add_argument('--L2', action='store_true', help='Renorm WC into L2 norm to match matlab')
 parser.add_argument('--plot-log', action='store_true', help='Plots with logarithmic colorbar.')
 parser.add_argument('--plot-col-sym', action='store_true', help='Plot the colors symmetric around zero.')
 group_lim = parser.add_mutually_exclusive_group()
 group_lim.add_argument('--plot-lim-WC', action='store_true', help='Set maxima after wavelet coefficients of this level only.')
 group_lim.add_argument('--plot-lim', type=float, help='Set min/max of plots', default=-1)
 parser.add_argument('--plot-keys', action='store_true', help='Plots key values (max, min, std) for different levels.')
+parser.add_argument('--plot-hist', action='store_true', help='Plots histogram for different levels.')
 parser.add_argument('--matlab', action='store_true', help="Output file as matlab matrix file as well.")
 
 args = parser.parse_args()
@@ -75,6 +80,13 @@ for i_b in range(w_obj.total_number_blocks):
                     value = w_obj.blocks[i_b, ix, iy]
                 else:
                     value = w_obj.blocks[i_b, ix, iy, iz]
+                
+                # renorm with L2 norm if wanted
+                if np.any(np.array([ix%2, iy%2, iz%2]) != 0) and args.L2:
+                    # renorm level shift
+                    value /= np.power(2,(i_level-level_max-1)*w_obj.dim/2)
+                    # renorm what component we have (if in one direction or cross direction)
+                    value /= 2**np.sum([ix%2==1, iy%2==1, iz%2==1])
                 
                 # we want to write in our own level or higher
                 for j_level in np.arange(i_level, level+1):
@@ -147,6 +159,37 @@ if args.plot_keys:
     plt.xlabel("Level"); plt.ylabel("$L_2$"); plt.title("$L_2$-Norm")
     plt.tight_layout(pad=0.15)
 
+    names, fig_num = ["Max", "Min", "Std", "L2"], [100, 101, 102, 103]
+    for i_fig in range(4):
+        fig = plt.figure(fig_num[i_fig], figsize=[7,5])
+        if args.save or args.save_png:
+            plt.savefig( args.FILE.replace('.h5',f'-{names[i_fig]}.png'), dpi=200, transparent=True )
+        if args.save or args.save_pdf:
+            plt.savefig( args.FILE.replace('.h5',f'-{names[i_fig]}.pdf') )
+
+if args.plot_hist:
+    for i_level in np.arange(level)+1:
+        bins = int(min(bs_WD[0]*2 * 2**(i_level), 500))
+        fig = plt.figure(200 + i_level, figsize=[7,5])
+        s_f = field_l[i_level-1].shape
+        # plt.hist(field_l[i_level-1][:s_f[0]//2,:s_f[1]//2].flatten(), bins=bins, label='SC', density=True, histtype='step')
+        plt.hist(field_l[i_level-1][s_f[0]//2:,:s_f[1]//2].flatten(), bins=bins, label='WX', density=True, histtype='step')
+        plt.hist(field_l[i_level-1][:s_f[0]//2,s_f[1]//2:].flatten(), bins=bins, label='WY', density=True, histtype='step')
+        plt.hist(field_l[i_level-1][s_f[0]//2:,s_f[1]//2:].flatten(), bins=bins, label='WXY', density=True, histtype='step')
+        plt.legend()
+        plt.xlim(-50, 50)
+        if i_level == level: plt.ylim(0, 0.06)
+        else: plt.ylim(0, 0.04)
+        plt.xlabel("WC value"); plt.ylabel("Incidence"); plt.title(f"Histogram on level {i_level}")
+        plt.grid(True)
+        plt.tight_layout(pad=0.15)
+
+        if args.save or args.save_png:
+            plt.savefig( args.FILE.replace('.h5',f'-hist-L{i_level}.png'), dpi=200)
+            # plt.savefig( args.FILE.replace('.h5',f'-hist-L{i_level}.png'), dpi=200, transparent=True )
+        if args.save or args.save_pdf:
+            plt.savefig( args.FILE.replace('.h5',f'-hist-L{i_level}.pdf') )
+
 # plot
 for i_level in np.arange(level)+1:
     fig = plt.figure(i_level, figsize=[7,5])
@@ -180,8 +223,9 @@ for i_level in np.arange(level)+1:
     plt.colorbar()
     plt.tight_layout(pad=0.15)
 
-    if args.save:
+    if args.save or args.save_png:
         plt.savefig( args.FILE.replace('.h5',f'-WC-L{i_level}.png'), dpi=200, transparent=True )
+    if args.save or args.save_pdf:
         plt.savefig( args.FILE.replace('.h5',f'-WC-L{i_level}.pdf') )
 
 if args.matlab:

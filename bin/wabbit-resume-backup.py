@@ -9,10 +9,13 @@ print(" wabbit-resume-backup.py [inifile] ")
 print(" wabbit-resume-backup.py suzuki.ini")
 print("----------------------------------------")
 
+if len(sys.argv) < 2:
+    print("ERROR: Did you forget to provide any inifile that I should look at?")
+    sys.exit(1)
 
 inifile = sys.argv[1]
 if not os.path.isfile(inifile):
-        print("ERROR: I did not find any inifile :(")
+    print("ERROR: I did not find any inifile :(")
 else:
     print( "inifile is " + inifile )
     inifile_tools.prepare_resuming_backup( inifile )
