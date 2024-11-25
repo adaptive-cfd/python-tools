@@ -44,30 +44,12 @@ else:
 
 #------------------------------------------------------------------------------
 
-number_blocks = 4**args.level
-
-# prepare data
-dim = 2
-domain_size = [1, 1]
-blocks = np.zeros([number_blocks, args.bs+1, args.bs+1])
-treecode = np.zeros(number_blocks)
-level = np.ones(number_blocks)*args.level
-time = 0.0
-iteration = 0
-
-# prepare treecode
-for i_b in range(number_blocks):
-    # encoding is 1-based
-    ix, iy = i_b//(2**args.level)+1, i_b%(2**args.level)+1
-    tc = wabbit_tools.tc_encoding([ix, iy], level=args.level, max_level=args.max_level, dim=dim)
-    treecode[i_b] = int(tc)
-
 # load in file
 image = Image.open(args.IMAGE)
 grayscale_image = image.convert('L')
 np_image = np.array(grayscale_image)
-# rescale to fit wabbit sizes, we need + 1 as saved are redundant grids
-resized_image = cv2.resize(np_image, np.array([1, 1])*2**args.level*args.bs + [1, 1], interpolation=interpolation)
+# rescale to fit wabbit sizes, redundant grid is being taken care of inside wabbits read
+resized_image = cv2.resize(np_image, np.array([1, 1])*2**args.level*args.bs, interpolation=interpolation)
 # we need to invert y-direction, as for images 0 is top left and for wabbit 0 is bottom left, also 0 should be white so values are inverted too
 resized_image = 255 - resized_image[::-1, :].astype(float)
 
@@ -87,21 +69,9 @@ if args.noise != -1:
         sys.exit(1)
     resized_image = resized_image + noise
 
-if args.display:
-    plt.figure(1, figsize=[7,7])
-    plt.imshow(resized_image)
-    plt.show()
-
-# fill blocks array
-for i_b in range(number_blocks):
-    ix, iy = i_b//(2**args.level) * args.bs, i_b%(2**args.level) * args.bs
-
-    # transcribe part of array
-    blocks[i_b, :, :] = resized_image[iy:iy+args.bs+1, ix:ix+args.bs+1]
-
 # create wabbit file
 w_obj = wabbit_tools.WabbitHDF5file()
-w_obj.fill_vars(domain_size, blocks, treecode, level, time, iteration, max_level=args.max_level)
+w_obj.fill_from_matrix(resized_image, [args.bs, args.bs, 1], dim=2, max_level=args.max_level)
 if args.output == None:
     new_name = args.IMAGE.replace(args.IMAGE[args.IMAGE.rfind("."):], ".h5")
 else:
@@ -120,4 +90,9 @@ if args.matlab:
             new_name = args.output
         else:
             new_name = args.output + ".mat"
-    scipy.io.savemat(new_name, {'image':resized_image[:-1,:-1]-noise[:-1,:-1], 'noise': noise[:-1,:-1]})
+    scipy.io.savemat(new_name, {'image':resized_image-noise, 'noise': noise})
+
+if args.display:
+    plt.figure(1, figsize=[7,7])
+    plt.imshow(resized_image, origin="lower")
+    plt.show()
