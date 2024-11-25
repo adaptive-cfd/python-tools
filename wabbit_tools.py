@@ -316,7 +316,7 @@ class WabbitHDF5file:
         # those are optional and not read in from wabbit
         # currently none
         fid.close()
-    
+        
     # define the == operator for objects
     # this is only true if objects are 100% similar
     # this is not the case for different simulations so use other function for that

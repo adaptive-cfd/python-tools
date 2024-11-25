@@ -31,6 +31,8 @@ def exp_to_latex(exp_number, depth=2):
 parser = argparse.ArgumentParser(description="Create a quick report from a wabbit simulation")
 parser.add_argument("-d", "--directory", nargs='?', const='./',
                     help="directory of h5 files, if not ./")
+parser.add_argument("-i", "--ini", default="./",
+                    help="ini file or directory of ini file, if not ./")
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-n", "--first-n-time-steps", nargs='?', type=int, const=None, default=None,
                     help="Use only the first N time steps")
@@ -57,8 +59,11 @@ verbose = args.verbose
 if verbose:
     print("----------------------------------------")
     print(" Create a quick report for a wabbit cimulation")
-    print(" usage: wabbit-time-left.py --directory ./ --paramsfile PARAMS.ini")
+    print(" usage: wabbit-report.py -d ./ -i ./ --pdf")
     print("----------------------------------------")
+
+if not (args.show or args.png or args.pdf):
+    parser.error("At least one of --show, --png, or --pdf must be specified.")
 
 #------------------------------------------------------------------------------
 # directory of simulation
@@ -72,26 +77,30 @@ else:
 #------------------------------------------------------------------------------
 # look for inifile
 #------------------------------------------------------------------------------
-if args.paramsfile is None:
-    list_inifiles = glob.glob( os.path.join(dir,'*.ini'))
+if os.path.isfile(args.ini):
+    right_inifile = inifile_tools.exists_ini_parameter( args.ini, "Time", "time_max" )
+    if not right_inifile: parser.error("Ini file provided does not point to a valid ini file.")
+    inifile = args.ini
+elif os.path.isdir(args.ini):
+    list_inifiles = glob.glob( os.path.join(args.ini,'*.ini'))
 
     if len(list_inifiles) == 0:
-        raise ValueError(f"We did not find any ini file in the directory {dir} . Are you sure you are at the right place?")
-    
+        raise ValueError(f"We did not find any ini file in the directory {args.ini} . Are you sure you are at the right place?")
+
     for inifile in list_inifiles:
         right_inifile = inifile_tools.exists_ini_parameter( inifile, "Time", "time_max" )
         if right_inifile: break
 
     if not right_inifile:
         raise ValueError("We did not find an inifile which tells us what the target time is.")
+else: parser.error("Ini location does not point to anything that exists")
 
-else: inifile = args.paramsfile
 
 
 # create a large dictionary of all files
 t_values = {'cfl':[], 'div':[], 'dt':[], 'e_kin':[], 'enstrophy':[], 'eps_norm':[], 'forces':[], \
          'forces_rk':[], 'kinematics':[], 'krylov_err':[], 'mask_volume':[], 'meanflow':[], 'penal_power':[], \
-         'performance':[], 'thresholding':[], 'umag':[], 'u_residual':[], 'scalar_integral':[]}
+         'performance':[], 'thresholding':[], 'umag':[], 'u_residual':[], 'scalar_integral':[], 'turbulent_statistics':[]}
 
 for i_name in t_values:
     t_file = os.path.join(dir,f'{i_name}.t')
@@ -149,6 +158,7 @@ runtime = sum(t_values['performance'][:,2])/3600
 if not latex: time_label = "time"
 else: time_label = "time $t$"
 
+fig_grid = []  # for adequate positioning
 
 # print info on performance - blocks and timing
 if isinstance(t_values['performance'], np.ndarray):
@@ -196,6 +206,7 @@ if isinstance(t_values['performance'], np.ndarray):
     else: plt.ylabel("Walltime in hours")
     plt.xlabel(time_label)
     plt.xlim(t_values['performance'][0,0], t_values['performance'][-1,0])
+    fig_grid.append([2,2])  # for adequate positioning
 
 
 # print enstrophy and energy
@@ -233,6 +244,7 @@ if plot_conservational[1]:
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['enstrophy'][0,0], t_values['enstrophy'][-1,0])
+if any(plot_conservational): fig_grid.append([2,sum(plot_conservational)])  # for adequate positioning
 
 # print thresholding and eps norm
 # check if they exist
@@ -258,6 +270,7 @@ if plot_thresholding[1]:
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['eps_norm'][0,0], t_values['eps_norm'][-1,0])
+if any(plot_thresholding): fig_grid.append([2,sum(plot_thresholding)])  # for adequate positioning
 
 # print mean and max values
 plot_meanmax_flow = [isinstance(t_values['umag'], np.ndarray), isinstance(t_values['meanflow'], np.ndarray)]
@@ -289,6 +302,7 @@ if plot_meanmax_flow[1]:
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['meanflow'][0,0], t_values['meanflow'][-1,0])
+if any(plot_meanmax_flow): fig_grid.append([sum(plot_meanmax_flow),1])  # for adequate positioning
 
 # print forces for VPM
 plot_forces = isinstance(t_values['forces'], np.ndarray) and vpm
@@ -303,6 +317,7 @@ if plot_forces:
         plt.xlabel(time_label)
         plt.grid(True)
         plt.xlim(t_values['forces'][0,0], t_values['forces'][-1,0])
+    fig_grid.append([dim,1])    # for adequate positioning
 
 # print mask volume for VPM
 plot_maskvolume = isinstance(t_values['mask_volume'], np.ndarray) and vpm
@@ -316,8 +331,9 @@ if plot_maskvolume:
         plt.ylabel("Volume"); plt.xlabel(time_label); plt.grid(True)
         plt.title(label_now[i_plot])
         plt.xlim(t_values['mask_volume'][0,0], t_values['mask_volume'][-1,0])
+    fig_grid.append([2,1])  # for adequate positioning
 
-# print mask volume for VPM
+# print scalar integral
 plot_scalar = isinstance(t_values['scalar_integral'], np.ndarray)
 fig_scalar = plt.figure(5, figsize=(8.27, 11.69)) # this is din A4 size
 fig_scalar.suptitle('Scalar norms', fontsize=16, y=(11.69-1)/11.69)
@@ -330,9 +346,25 @@ if plot_scalar:
         plt.ylabel("Norm"); plt.xlabel(time_label); plt.grid(True)
         plt.title(label_now[i_plot])
         plt.xlim(t_values['scalar_integral'][0,0], t_values['scalar_integral'][-1,0])
+    fig_grid.append([dim,1])  # for adequate positioning
+
+# print turbulent statistics
+plot_turbulent_statistics = isinstance(t_values['turbulent_statistics'], np.ndarray)
+fig_turbulent_statistics = plt.figure(6, figsize=(8.27, 11.69)) # this is din A4 size
+fig_turbulent_statistics.suptitle('Turbulent statistics', fontsize=16, y=(11.69-1)/11.69)
+if plot_turbulent_statistics:
+    if not latex: label_now = ["Dissipation", "Energy", "U_RMS", "Kolmogorov length", "Kolmogorov time", "Kolmogorov velocity", "Taylor micro-scale", "Taylor Reynolds number"]
+    else: label_now = ["Dissipation $\epsilon$", "Energy $E$", "$U_{RMS}$", "Kolmogorov length $l_\eta$", r"Kolmogorov time $\tau_\eta$", r"Kolmogorov velocity $u_\eta$", "Taylor micro-scale $\lambda$", "Taylor Reynolds number $R_\lambda$"]
+    for i_plot in range(len(label_now)):
+        plt.subplot(len(label_now)//2+(len(label_now)//2 != len(label_now)/2),2,i_plot+1)
+        plt.plot(t_values['turbulent_statistics'][:,0], t_values['turbulent_statistics'][:,i_plot+1])
+        plt.ylabel(label_now[i_plot]); plt.xlabel(time_label); plt.grid(True)
+        # plt.title(label_now[i_plot])
+        plt.xlim(t_values['turbulent_statistics'][0,0], t_values['turbulent_statistics'][-1,0])
+    fig_grid.append([len(label_now)//2+(len(label_now)//2 != len(label_now)/2),2])  # for adequate positioning
 
 
-# dict with all names for saving the figures and their figure handle
+# dict with all names for saving the figures and their figure handle together with how many p
 figure_names = {}
 if isinstance(t_values['performance'], np.ndarray) : figure_names['performance'] = fig_perf
 if np.any(plot_conservational): figure_names['conservational'] = fig_cons
@@ -341,6 +373,7 @@ if np.any(plot_meanmax_flow): figure_names['ACM_flow_meanmax'] = fig_meanmax
 if np.any(plot_forces): figure_names['VPM_forces'] = fig_forces
 if np.any(plot_maskvolume): figure_names['VPM_maskvolume'] = fig_maskvolume
 if np.any(plot_scalar): figure_names['scalar_integral'] = fig_scalar
+if np.any(plot_turbulent_statistics): figure_names['turbulent_statistics'] = fig_turbulent_statistics
 
 # create images of each figure
 if args.png:
@@ -356,11 +389,12 @@ if args.pdf:
     pad_in_inches = 0.75 # top, bottom, left, right for DinA4
     pad_frac = pad_in_inches * plt.gcf().get_dpi() / font_size  # Convert inches to pixel to fraction of font size
 
-    for i_name in figure_names:
+    for i_n, i_name in enumerate(figure_names):
         plt.figure(figure_names[i_name])
         plt.tight_layout(pad=0)  # Adjust subplots to fit into figure area
         # plt.subplots_adjust(wspace=0.5)
-        plt.subplots_adjust(wspace=0.5, hspace=0.3, left=(pad_in_inches+1)/8.27, right=(8.27-pad_in_inches-0.3)/8.27, \
+        # hspace is adapted to line height from average figure height
+        plt.subplots_adjust(wspace=0.5, hspace=5*font_size/72 / (8.14/fig_grid[i_n][0]), left=(pad_in_inches+1)/8.27, right=(8.27-pad_in_inches-0.3)/8.27, \
             top=(11.69-1.8)/11.69, bottom=(pad_in_inches+1)/11.69)
         if not latex:
             plt.savefig( os.path.join(dir,f'{i_name}.pdf'), backend="pgf")
