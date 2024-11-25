@@ -2205,7 +2205,7 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
     f.close()
   
     
-def wing_contour_from_file(fname):
+def wing_contour_from_file(fname, N=1024):
     """
     Compute wing outline (shape) from an *.INI file. Returns: xc, yc, the coordinates
     of outline points, and the wings area (surface)
@@ -2241,7 +2241,7 @@ def wing_contour_from_file(fname):
         bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
         
         # compute outer wing shape (membraneous part)
-        theta2 = np.linspace(-np.pi, np.pi, num=1024, endpoint=False)
+        theta2 = np.linspace(-np.pi, np.pi, num=N, endpoint=False)
         r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
         
         xc = x0 + np.cos(theta2)*r_fft
@@ -2463,30 +2463,32 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
     return time, alpha, phi, theta
 
 
-def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.0, alpha_up=-40.0, tau=0.22, theta=12.55, time=None):
+def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.0, alpha_up=-40.0, tau=0.22, theta=12.55/2, time=None):
     """
     Kinematics model for a bumblebee bombus terrestris [Engels et al PRL 2016, PRF 2019]
 
-    Note motion starts with downstroke.
+    Note motion starts with downstroke. Defaults are set to values used in [Engels et al PRL 2016, PRF 2019].
+    
+    Alpha is piecewise constant with sin transition, theta is constant and phi is sinusoidal.
 
     Parameters
     ----------
     PHI : float, scalar
-        Stroke amplitude
+        Stroke amplitude (deg)
     phi_m : float, scalar
-        Mean stroke angle
+        Mean stroke angle (deg)
     dTau : float, scalar
         Delay parameter of supination/pronation
     alpha_down : float, scalar, optional
-        Featherng angle during downstroke.
+        Featherng angle during downstroke. (deg)
     alpha_up : float, scalar, optional
-        Feathering angle during upstroke.
+        Feathering angle during upstroke. (deg)
     tau : 
         duration of wing rotation
     theta : 
-        constant deviation angle
+        constant deviation angle (deg)
     time : vector of time, optional
-        Time vector. The default is 1000 samples between 0 and 1.
+        Time vector. The default is 1000 equidistant samples between 0 and 1.
     
 
     Returns
@@ -2497,7 +2499,9 @@ def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.
     if time is None:
         time = np.linspace(0.0, 1.0, endpoint=False, num=1000)
 
+    # phi is sinusoidal function with fixed phase (variable amplitude+offset)
     phi = phi_m + (PHI/2.0)*np.sin(2.0*np.pi*(time+0.25))
+    # theta is a constant value
     theta = np.zeros_like(time) + theta
     
     # alpha is a new function
@@ -2515,7 +2519,7 @@ def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.
     a  = (alpha_up-alpha_down)/alpha_tau     
     a1 = (alpha_up-alpha_down)/alpha_tau1   
     
-    alpha = np.zeros(time.shape)
+    alpha = np.zeros_like(time)
    
     for it, t in enumerate(time):
         if t < T1:
