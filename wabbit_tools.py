@@ -262,7 +262,8 @@ class WabbitHDF5file:
                 blocks[i_b, :, :, :] = block_red[ix:ix+bs[0]+1, iy:iy+bs[1]+1, iz:iz+bs[2]+1].transpose(2, 1, 0)
         
         self.fill_vars(domain_size, blocks, treecode, level, time, iteration, max_level)
-    
+
+
     # let it write itself
     def write(self, file, verbose=True):
         """ Write data from wabbit to an HDF5 file
@@ -316,7 +317,52 @@ class WabbitHDF5file:
         # those are optional and not read in from wabbit
         # currently none
         fid.close()
-        
+
+
+    # for large data, we do not want to read all block values at once, as it is simply not feasible
+    # however, we might still want to read or write single blocks, so those functions deal with that
+    def block_read(self, i_b, file=None):
+        # some safety checks
+        file_read = self.orig_file if not file else file
+        if not file_read:
+            print("Tried to access a single block but no file is given")
+            return None
+
+        if not self.total_number_blocks:
+            print("Tried to access a single block before the WabbitStateOject was initialized?")
+            return None
+
+        if i_b < 0 or i_b >= self.total_number_blocks:
+            print("Tried to access a block outside block range")
+            return None
+
+        fid = h5py.File(file_read,'r')
+        block = fid['blocks'][i_b, :]
+        fid.close()
+        return block
+
+
+    def block_write(self, i_b, block, file=None):
+        # some safety checks
+        file_write = self.orig_file if not file else file
+        if not file_write:
+            print("Tried to access a single block but no file is given")
+            return None
+
+        if not self.total_number_blocks:
+            print("Tried to access a single block before the WabbitStateOject was initialized?")
+            return None
+
+        if i_b < 0 or i_b >= self.total_number_blocks:
+            print("Tried to access a block outside block range")
+            return None
+
+        fid = h5py.File(file_write,'r')
+        fid['blocks'][i_b, :] = block  # we assume here that block sizes are equal
+        fid.close()
+        return
+            
+
     # define the == operator for objects
     # this is only true if objects are 100% similar
     # this is not the case for different simulations so use other function for that

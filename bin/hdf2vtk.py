@@ -474,9 +474,9 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   if args.verbose:
-    print( bcolors.OKGREEN + "**********************************************" + bcolors.ENDC )
-    print( bcolors.OKGREEN + "**   hdf2xml.py                             **" + bcolors.ENDC )
-    print( bcolors.OKGREEN + "**********************************************" + bcolors.ENDC )
+    print( bcolors.OKGREEN + "*"*50 + bcolors.ENDC )
+    print( bcolors.OKGREEN + "**    " + "hdf2vtk.py".ljust(42) + "**" + bcolors.ENDC )
+    print( bcolors.OKGREEN + "*"*50 + bcolors.ENDC )
 
   # check if we want to convert anything at all
   if not any([args.htg, args.htg1, args.vtm]):
