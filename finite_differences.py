@@ -17,9 +17,8 @@ def D12(N,h):
 
     D = np.zeros((N,N))
     
-    for i in range(1, N-2+1):
-        D[i,i+1] = 1
-        D[i,i-1] = -1
+    D = np.diag( np.ones((N-1,)), k=1) + np.diag( -np.ones((N-1,)), k=-1) 
+    
     ONE = 1 
     D[1-ONE,1-ONE] = -3
     D[1-ONE,2-ONE] =  4
@@ -33,6 +32,27 @@ def D12(N,h):
     
     return D
 
+
+def D22(N,h):
+    # % Returns a derivative matrix 
+    # % non-periodic
+    # % Second Order
+    
+    D = np.diag( np.ones((N-1,)), k=1) + np.diag( np.ones((N-1,)), k=-1) + np.diag( -2*np.ones((N,)), k=0) 
+    
+    ONE = 1
+    D[ 1-ONE,1-ONE] =2
+    D[ 1-ONE,2-ONE] =-5
+    D[ 1-ONE,3-ONE] =4
+    D[ 1-ONE,4-ONE] =-1
+    
+    D[ N-ONE,N-3-ONE] =-1
+    D[ N-ONE,N-2-ONE] =4
+    D[ N-ONE,N-1-ONE] =-5
+    D[ N-ONE,N-ONE] =2
+    
+    D /= (h**2)
+    return D
 
 def Dper(N, h, stencil):
     # convert to numpy array, if not already the case
