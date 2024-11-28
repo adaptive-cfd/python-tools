@@ -10,6 +10,30 @@ import scipy.special
 import matplotlib.pyplot as plt
 
 
+def D12(N,h):   
+    # % Returns a derivative matrix 
+    # % non-periodic
+    # % Second Order
+
+    D = np.zeros((N,N))
+    
+    for i in range(1, N-2+1):
+        D[i,i+1] = 1
+        D[i,i-1] = -1
+    ONE = 1 
+    D[1-ONE,1-ONE] = -3
+    D[1-ONE,2-ONE] =  4
+    D[1-ONE,3-ONE] = -1
+
+    D[N-ONE,N-2-ONE] =  1
+    D[N-ONE,N-1-ONE] = -4
+    D[N-ONE,N-ONE]   =  3
+ 
+    D /= 2*h
+    
+    return D
+
+
 def Dper(N, h, stencil):
     # convert to numpy array, if not already the case
     stencil = np.asarray(stencil)
