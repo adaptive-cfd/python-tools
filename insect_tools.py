@@ -1431,7 +1431,6 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         sm._A =[]
         plt.colorbar(sm)
     
-    ax = plt.gca()
     ax.set_yticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xlabel('x_{sagittal}/R')
@@ -1637,6 +1636,30 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
     # Add collection to axes
     ax.add_collection(pc)
 
+
+def add_shaded_background( t0, t1, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
+    from matplotlib.collections import PatchCollection
+    from matplotlib.patches import Rectangle
+    import matplotlib.pyplot as plt
+
+    if ax is None:
+        ax = plt.gca()    
+        
+    # initialize empty list of rectangles
+    rects = []
+
+    # current axes extends
+    y1, y2 = ax.get_ybound()
+    
+    # create actual rectangle
+    r = Rectangle( [t0,y1], t1-t0, y2-y1, fill=True)
+    rects.append(r)
+    
+    # Create patch collection with specified colour/alpha
+    pc = PatchCollection(rects, facecolor=color, edgecolor=color, zorder=-2)
+
+    # Add collection to axes
+    ax.add_collection(pc)
 
 def make_white_plot( ax ):
     # for the poster, make a couple of changes: white font, white lines, all transparent.
@@ -2208,7 +2231,9 @@ def write_kinematics_ini_file_hermite(fname, alpha, phi, theta, alpha_dt, phi_dt
 def wing_contour_from_file(fname, N=1024):
     """
     Compute wing outline (shape) from an *.INI file. Returns: xc, yc, the coordinates
-    of outline points, and the wings area (surface)
+    of outline points, and the wings area (surface). Note: if a damage mask is applied,
+    then the area returned here will not be the true (effective) area, but rather the one of
+    an intact wing.
     """
     import os
     import inifile_tools
@@ -2282,8 +2307,18 @@ def wing_contour_from_file(fname, N=1024):
         area = B*H
   
     return xc, yc, area
+
+
+def compute_wing_geom_factors(fname):
+    """
+    Compute geometrical factors for a wing-shape *.ini file. 
     
-def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15, savePDF=False):
+    returns area, S1, S2, 
+    """
+
+    
+def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15, 
+                              savePDF=False, color_contour='r', color_fill_mask='k'):
     """
     Reads in a wing shape ini file and visualizes the wing as 2D plot.
     
@@ -2333,7 +2368,11 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         x1, x2 = np.linspace(bbox[0], bbox[1], num=n2, endpoint=True), np.linspace(bbox[2], bbox[3], num=n1, endpoint=True)
         X, Y = np.meshgrid(x2, x1)
         
-        plt.pcolormesh(Y.T, X.T, mask, rasterized=True, cmap='gray_r')    
+        plt.contourf(Y.T, X.T, mask, levels=[0.5, 1.0], colors=[color_fill_mask])
+        # plt.contour(Y.T, X.T, mask, levels=[0.5], colors='k', linewidth=0.01)
+        
+        dx, dy = x1[1]-x1[0], x2[1]-x2[0]
+        area_damaged = np.sum(mask)*dx*dy
         
     # -------------------------------------------------------------------------  
     # contour
@@ -2341,22 +2380,27 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     xc, yc, area = wing_contour_from_file(fname)
             
     # plots wing outline
-    ax.plot( xc, yc, 'r-', label='wing')
+    ax.plot( xc, yc, '-', color=color_contour, label='wing')
     
     if fill:
-        color = change_color_opacity('r', fillAlpha)
+        color = change_color_opacity(color_contour, fillAlpha)
         ax.fill( np.append(xc, xc[0]), np.append(yc, yc[0]), color=color )
     
     ax.axis('equal')
     
+    title = "wing shape visualization: \n%s\nA=%f" % (fname, area)
+    
+    if damaged:
+        title += ' A_damaged=%f (%2.2f%%)' % (area_damaged, 100*area_damaged/area)
+    
     # draw rotation axis a bit longer than the wing
     d = 0.1
     # plot the rotation axes
-    ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'b--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
-    ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'b--')
-    ax.grid()
+    ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'k--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
+    ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'k--')
+    # ax.grid()
     ax.legend()
-    ax.set_title("wing shape visualization: \n%s\nA=%f" % (fname, area))
+    ax.set_title(title)
     
     # -------------------------------------------------------------------------
     # bristles (if present)

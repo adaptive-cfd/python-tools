@@ -303,7 +303,7 @@ def RKC_coefficients( s, eps=10.0 ):
     -------
         mu, mu_tilde, nu, gamma_tilde, c, eps
     """
-
+    s = int(s)
     # allocation
     mu          = np.zeros( (s+1) )
     mu_tilde    = np.zeros( (s+1) )
@@ -545,7 +545,7 @@ def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
 
     return dt
 
-def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca() ):
+def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca(), eps_min=2.0 ):
     """
     Given operator eigenvalues, select best stable RKC scheme.
 
@@ -555,6 +555,7 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca() ):
             operator eigenvalues
         dt : float
             desired time step
+        
 
     Output:
     -------
@@ -571,7 +572,7 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca() ):
     z = eigenvalues
 
     S      = np.arange(4, 52+1, 1)
-    EPS    = np.linspace(2.0/13.0, 50, 200) # was 20, 75
+    EPS    = np.linspace(eps_min, 50, 200) # was 20, 75
     S, EPS = np.meshgrid(S, EPS)
     stable = S*0.0
 
@@ -667,8 +668,9 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca() ):
         ax.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
         ax.set_title('s=%i eps=%2.2f Cost=%i NRHS/T' % (s_best, eps_best, s_best/dt))
         
-        ax.set_xlim([2.0*np.min(np.real(eigenvalues)), 2.0* np.max(np.real(eigenvalues))])
-        ax.set_ylim([2.0*np.min(np.imag(eigenvalues)), 2.0* np.max(np.imag(eigenvalues))])
+        a = 10.0
+        ax.set_xlim([2*np.min(np.real(eigenvalues)), 2* np.max(np.real(eigenvalues))])
+        ax.set_ylim([a*np.min(np.imag(eigenvalues)), a* np.max(np.imag(eigenvalues))])
 
     return s_best, eps_best
 

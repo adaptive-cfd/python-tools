@@ -57,27 +57,27 @@ def check_parameters_for_stupid_errors( file ):
     elif wavelet=='CDF22':
         g_default, Bs_min = 3, 8
     elif wavelet=='CDF24':
-        g_default, Bs_min = 5, 14        
+        g_default, Bs_min = 5, 12      
     elif wavelet=='CDF26':
-        g_default, Bs_min = 7, 20
+        g_default, Bs_min = 7, 18
     elif wavelet=='CDF28':
-        g_default, Bs_min = 9, 26
+        g_default, Bs_min = 9, 24
     elif wavelet=='CDF40':
         g_default, Bs_min = 4, 10
     elif wavelet=='CDF42':
-        g_default, Bs_min = 5, 16
+        g_default, Bs_min = 5, 12
     elif wavelet=='CDF44':
-        g_default, Bs_min = 7, 22
+        g_default, Bs_min = 7, 18
     elif wavelet=='CDF46':
-        g_default, Bs_min = 9, 28
+        g_default, Bs_min = 9, 24
     elif wavelet=='CDF60':
         g_default, Bs_min = 6, 14
     elif wavelet=='CDF62':
-        g_default, Bs_min = 7, 24
+        g_default, Bs_min = 7, 18
     elif wavelet=='CDF64':
-        g_default, Bs_min = 9, 30
+        g_default, Bs_min = 9, 24
     elif wavelet=='CDF66':
-        g_default, Bs_min = 11, 36
+        g_default, Bs_min = 11, 30
     else:
         Bs_min = 30
         g_default = 1
@@ -170,7 +170,7 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.err('The block size is bs=%i is very small or even negative.' % (bs) )
         
     if bs < Bs_min:
-        bcolors.err("Block size Bs=%i too small for wavelet Bs_min=%i" % (bs, Bs_min))
+        bcolors.err("Block size Bs=%i too small for wavelet %s Bs_min=%i" % (bs, wavelet, Bs_min))
           
     if g < g_default:
         bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
