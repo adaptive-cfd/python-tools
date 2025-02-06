@@ -291,12 +291,12 @@ if args.plot:
     cost_std     = np.zeros( Nb_per_rank2.shape )
     
     for i in range(len(Nb_per_rank2)):
-        cost_avg[i] = np.mean( cost[Nb_per_rank==Nb_per_rank2[i]] )
-        cost_std[i] = np.std( cost[Nb_per_rank==Nb_per_rank2[i]] )
+        cost_avg[i] = np.mean( cost[Nb_per_rank==Nb_per_rank2[i]] ) / nrhs
+        cost_std[i] = np.std( cost[Nb_per_rank==Nb_per_rank2[i]] ) / nrhs
     
     if not latex: label_now = "Nb/Ncpu"
     else: label_now = "$N_b / N_{CPU}$"  
-    c = plt.scatter(  d[:,3]/d[:,7], cost, s=1, color='k', label=label_now)
+    c = plt.scatter(  d[:,3]/d[:,7], cost / nrhs, s=1, color='k', label=label_now)
     insect_tools.plot_errorbar_fill_between( Nb_per_rank2, cost_avg, cost_std )
     plt.gca().set_yscale('log')
     plt.xlabel(label_now)
