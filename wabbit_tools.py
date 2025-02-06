@@ -121,6 +121,8 @@ class WabbitHDF5file:
         else:
             if read_var in ["refinement_status", "all", "meta"]:
                 self.refinement_status = np.array(fid['refinement_status'])
+                # # JB HACK for float numbers saved in refinement status
+                # self.refinement_status = np.frombuffer(self.refinement_status.tobytes(), dtype=np.float32)
             if read_var in ["procs", "all", "meta"]:
                 self.procs = np.array(fid['procs'])
             if read_var in ["lgt_ids", "all", "meta"]:

@@ -99,7 +99,7 @@ else: parser.error("Ini location does not point to anything that exists")
 
 # create a large dictionary of all files
 t_values = {'cfl':[], 'div':[], 'dt':[], 'e_kin':[], 'enstrophy':[], 'eps_norm':[], 'forces':[], \
-         'forces_rk':[], 'kinematics':[], 'krylov_err':[], 'mask_volume':[], 'meanflow':[], 'penal_power':[], \
+         'forces_rk':[], 'helicity':[], 'kinematics':[], 'krylov_err':[], 'mask_volume':[], 'meanflow':[], 'penal_power':[], \
          'performance':[], 'thresholding':[], 'umag':[], 'u_residual':[], 'scalar_integral':[], 'turbulent_statistics':[]}
 
 for i_name in t_values:
@@ -211,39 +211,54 @@ if isinstance(t_values['performance'], np.ndarray):
 
 # print enstrophy and energy
 # check if they exist
-plot_conservational = [isinstance(t_values['e_kin'], np.ndarray), isinstance(t_values['enstrophy'], np.ndarray)]
+plot_conservational = [isinstance(t_values['e_kin'], np.ndarray), isinstance(t_values['enstrophy'], np.ndarray), isinstance(t_values['helicity'], np.ndarray), isinstance(t_values['div'], np.ndarray)]
 fig_cons = plt.figure(1, figsize=(8.27, 11.69)) # this is din A4 size
 fig_cons.suptitle('Conservation of global quantities', fontsize=16, y=(11.69-1)/11.69)
 if plot_conservational[0]:
     plt.subplot(sum(plot_conservational),2,1)
-    plt.plot(t_values['e_kin'][:,0], t_values['e_kin'][:,1])
+    plt.semilogy(t_values['e_kin'][:,0], t_values['e_kin'][:,1])
     plt.ylabel("Kinetic energy")
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['e_kin'][0,0], t_values['e_kin'][-1,0])
     plt.subplot(sum(plot_conservational),2,2)
-    plt.plot(t_values['e_kin'][:,0], t_values['e_kin'][:,1]/t_values['e_kin'][0,1] - 1)
+    plt.semilogy(t_values['e_kin'][:,0], np.abs(t_values['e_kin'][:,1]/t_values['e_kin'][0,1] - 1))
     # plt.semilogy(t_values['e_kin'][:,0], 1 - t_values['e_kin'][:,1]/t_values['e_kin'][0,1])
-    if not latex: plt.ylabel("Relativ Kinetic energy E(t)/E(0) - 1")
-    else: plt.ylabel("Relativ Kinetic energy $E(t)/E_0 - 1$")
+    if not latex: plt.ylabel("Rel. Kin. Energy E(t)/E(0) - 1")
+    else: plt.ylabel("Rel. Kin. Energy $E(t)/E_0 - 1$")
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['e_kin'][0,0], t_values['e_kin'][-1,0])
 if plot_conservational[1]:
     plt.subplot(sum(plot_conservational),2,1+2*plot_conservational[0])
-    plt.plot(t_values['enstrophy'][:,0], t_values['enstrophy'][:,1])
+    plt.semilogy(t_values['enstrophy'][:,0], t_values['enstrophy'][:,1])
     plt.ylabel("Enstrophy")
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['enstrophy'][0,0], t_values['enstrophy'][-1,0])
     plt.subplot(sum(plot_conservational),2,2+2*plot_conservational[0])
-    plt.plot(t_values['enstrophy'][:,0], t_values['enstrophy'][:,1]/t_values['enstrophy'][0,1] - 1)
+    plt.semilogy(t_values['enstrophy'][:,0], np.abs(t_values['enstrophy'][:,1]/t_values['enstrophy'][0,1] - 1))
     # plt.semilogy(t_values['enstrophy'][:,0], 1 - t_values['enstrophy'][:,1]/t_values['enstrophy'][0,1])
-    if not latex: plt.ylabel("Relativ Enstrophy W(t)/W(0) - 1")
-    else: plt.ylabel("Relativ Enstrophy $W(t)/W_0 - 1$")
+    if not latex: plt.ylabel("Rel. Enstrophy W(t)/W(0) - 1")
+    else: plt.ylabel("Rel. Enstrophy $W(t)/W_0 - 1$")
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['enstrophy'][0,0], t_values['enstrophy'][-1,0])
+if plot_conservational[2]:
+    ax1 = plt.subplot(sum(plot_conservational),1,1+plot_conservational[0]+plot_conservational[1])
+    plt.plot(t_values['helicity'][:,0], t_values['helicity'][:,1])
+    plt.ylabel("Helicity")
+    plt.xlabel(time_label)
+    plt.grid(True)
+    plt.xlim(t_values['helicity'][0,0], t_values['helicity'][-1,0])
+if plot_conservational[3]:
+    plt.subplot(sum(plot_conservational),1,1+plot_conservational[0]+plot_conservational[1]+plot_conservational[2])
+    plt.plot(t_values['div'][:,0], t_values['div'][:,1], label='Max Div')
+    plt.plot(t_values['div'][:,0], t_values['div'][:,2], label='Min Div')
+    plt.ylabel("Divergence")
+    plt.xlabel(time_label)
+    plt.grid(True); plt.legend()
+    plt.xlim(t_values['div'][0,0], t_values['div'][-1,0])
 if any(plot_conservational): fig_grid.append([2,sum(plot_conservational)])  # for adequate positioning
 
 # print thresholding and eps norm
@@ -266,7 +281,7 @@ if plot_thresholding[1]:
         plt.semilogy(t_values['eps_norm'][:,0], t_values['eps_norm'][:,i_vals+1] * t_values['eps_norm'][:,-1], label=f'Var {i_vals}')
     plt.legend()
     if not latex: plt.ylabel(f"Normalized thresholding with eps0={t_values['eps_norm'][0,-1]:.2e}")
-    else: plt.ylabel(f"Normalized thresholding with $\epsilon_0={exp_to_latex(t_values['eps_norm'][0,-1])}$")
+    else: plt.ylabel(f"Normalized thresholding with ${r'\e'}psilon_0={exp_to_latex(t_values['eps_norm'][0,-1])}$")
     plt.xlabel(time_label)
     plt.grid(True)
     plt.xlim(t_values['eps_norm'][0,0], t_values['eps_norm'][-1,0])
@@ -294,6 +309,7 @@ if plot_meanmax_flow[0]:
     plt.xlim(t_values['umag'][0,0], t_values['umag'][-1,0])
 if plot_meanmax_flow[1]:
     plt.subplot(1+plot_meanmax_flow[0],1,1)
+    plt.plot(t_values['meanflow'][:,0], np.sqrt(np.sum(t_values['meanflow'][:,1:]**2, axis=1)), label=f'Mean Mag u' if not latex else r"Mean Mag $\vec{u}$")
     var_names = ["Mean ux", "Mean uy", "Mean uz"] if not latex else ["Mean $u_x$", "Mean $u_y$", "Mean $u_z$"]
     for i_vals in range(dim):
         plt.plot(t_values['meanflow'][:,0], t_values['meanflow'][:,i_vals+1], label=var_names[i_vals])
@@ -339,7 +355,7 @@ fig_scalar = plt.figure(5, figsize=(8.27, 11.69)) # this is din A4 size
 fig_scalar.suptitle('Scalar norms', fontsize=16, y=(11.69-1)/11.69)
 if plot_scalar:
     if not latex: label_now = ["Scalar integral (L1-norm) over time", "Max scalar (Linfty-norm) over time"]
-    else: label_now = ["Scalar integral ($L_1$-norm) over time", "Max scalar ($L_\infty$-norm) over time"]
+    else: label_now = ["Scalar integral ($L_1$-norm) over time", r"Max scalar ($L_\infty$-norm) over time"]
     for i_plot in range(2):
         plt.subplot(2,1,i_plot+1)
         plt.plot(t_values['scalar_integral'][:,0], t_values['scalar_integral'][:,i_plot+2])
@@ -354,10 +370,10 @@ fig_turbulent_statistics = plt.figure(6, figsize=(8.27, 11.69)) # this is din A4
 fig_turbulent_statistics.suptitle('Turbulent statistics', fontsize=16, y=(11.69-1)/11.69)
 if plot_turbulent_statistics:
     if not latex: label_now = ["Dissipation", "Energy", "U_RMS", "Kolmogorov length", "Kolmogorov time", "Kolmogorov velocity", "Taylor micro-scale", "Taylor Reynolds number"]
-    else: label_now = ["Dissipation $\epsilon$", "Energy $E$", "$U_{RMS}$", "Kolmogorov length $l_\eta$", r"Kolmogorov time $\tau_\eta$", r"Kolmogorov velocity $u_\eta$", "Taylor micro-scale $\lambda$", "Taylor Reynolds number $R_\lambda$"]
+    else: label_now = [r"Dissipation $\epsilon$", "Energy $E$", "$U_{RMS}$", r"Kolmogorov length $l_\eta$", r"Kolmogorov time $\tau_\eta$", r"Kolmogorov velocity $u_\eta$", r"Taylor micro-scale $\lambda$", r"Taylor Reynolds number $R_\lambda$"]
     for i_plot in range(len(label_now)):
         plt.subplot(len(label_now)//2+(len(label_now)//2 != len(label_now)/2),2,i_plot+1)
-        plt.plot(t_values['turbulent_statistics'][:,0], t_values['turbulent_statistics'][:,i_plot+1])
+        plt.semilogy(t_values['turbulent_statistics'][:,0], t_values['turbulent_statistics'][:,i_plot+1])
         plt.ylabel(label_now[i_plot]); plt.xlabel(time_label); plt.grid(True)
         # plt.title(label_now[i_plot])
         plt.xlim(t_values['turbulent_statistics'][0,0], t_values['turbulent_statistics'][-1,0])

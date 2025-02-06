@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import h5py, os, sys, argparse, glob, time, numpy as np
 try:
-  from mpi4py import MPI
+  try: from mpi4py import MPI
+  except: print("Could not load mpi4py - do you have it installed? h5py parallel needs it!")
   mpi_size = MPI.COMM_WORLD.Get_size()
   mpi_parallel = mpi_size > 1
   mpi_rank = MPI.COMM_WORLD.Get_rank()
@@ -120,7 +121,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   else: f = h5py.File(save_file, 'w', driver='mpio', comm=MPI.COMM_WORLD)
 
   vtkhdf_group = f.create_group('VTKHDF', track_order=True)
-  vtkhdf_group.attrs.create('Type', np.string_('PartitionedDataSetCollection'))
+  vtkhdf_group.attrs.create('Type', 'PartitionedDataSetCollection'.encode('ascii'), dtype=h5py.string_dtype('ascii', len('PartitionedDataSetCollection')))
   vtkhdf_group.attrs.create('Version', np.array([2, 3], dtype='i8'))
   assembly_group = vtkhdf_group.create_group('Assembly')
 
@@ -144,7 +145,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
       block_group.attrs.create('Origin', w_main.coords_origin[i_block][::-1] + np.array([0,0,split_levels_add]), dtype='f8')
       block_group.attrs.create('Spacing', w_main.coords_spacing[i_block][::-1], dtype='f8')
       block_group.attrs.create('WholeExtent', np.array([0, w_main.block_size[0]-1, 0, w_main.block_size[1]-1, 0, w_main.block_size[2]-1], dtype='i8'))
-    block_group.attrs.create('Type', np.string_('ImageData'))
+    block_group.attrs.create('Type', 'ImageData'.encode('ascii'), dtype=h5py.string_dtype('ascii', len('ImageData')))
     block_group.attrs.create('Version', np.array([2, 3], dtype='i8'))
     block_group.attrs.create('Index', i_block, dtype='i8')
     assembly_group[f'Block{i_block}'] = h5py.SoftLink(f'/VTKHDF/Block{i_block}')

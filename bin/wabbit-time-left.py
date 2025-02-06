@@ -209,7 +209,7 @@ cpuh_left2 = int(ncpu_now*time_left2/3600)
 if verbose:
     print(f"Right now, running on       {c_b}{int(ncpu_now):d}{c_e} CPUS")
     print(f"Already consumed:           {c_g}{cpuh_now}{c_e} CPUh")
-    print(f"Runtime:                    {c_g}{runtime:4.1f}{c_e} h")
+    print(f"Runtime:                    {c_g}{str(datetime.timedelta(seconds=int(3600*runtime)))}{c_e} (H:M:S)")
     print(f"RHS evals per time step:    {c_g}{int(nrhs)}{c_e}")
     print(f"mean dt total:              {c_g}{dt:e}{c_e}")
     print(f"mean dt now:                {c_b}{dt2:e}{c_e}")
@@ -308,7 +308,7 @@ if args.plot:
     
     if args.plot_procs:
         if not latex: label_now = "#CPU"
-        else: label_now = "\#CPU"   
+        else: label_now = r"\#CPU"   
         plt.subplot(np.ceil(n_plots/2).astype(int),2,5)    
         plt.plot( d[:,0], d[:,7], label=label_now )
         plt.xlabel('time')
