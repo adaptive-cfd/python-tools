@@ -593,6 +593,10 @@ def replace_ini_value(file, section, keyword, new_value):
                 if keyword+'=' in line and found_section:
                     # found keyword in section
                     found_keyword = True
+                    # if they forgot the semicolon, add it
+                    if not ';' in line:
+                        line+=';'
+                        
                     old_value = line[ line.index(keyword+"="):line.index(";") ]
      
                     line = line.replace(old_value, keyword+'='+new_value)

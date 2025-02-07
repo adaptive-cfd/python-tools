@@ -114,6 +114,29 @@ dt_set = np.min( [CFL * dx / c0, CFL_eta*C_eta] )
 print("dt_selected: dt_CFL=%e dt_CFLeta=%e used=%e" % (CFL * dx / c0, CFL_eta*C_eta, dt_set))
 K_eta  = np.sqrt(nu*C_eta)/dx
 
+# warn if the time step is still determined by C_eta
+if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:
+    import bcolors
+    
+    print("\n\n\n%sWARNING ! POSSIBLE ERROR IN INIFILE%s" % (bcolors.WARNING, bcolors.ENDC))
+    print("""The time step dt when using a traditional RK4 scheme must be smaller than C_eta, the penalization
+    constant. This is often a severe restriction. This script chooses the best RKC (note C instead of 4) 
+    scheme to perform the time integration, and dt may be larger than the penalization parameter C_eta. 
+    However, in your INIFILE the restriction dt <= CFL_eta * C_eta is active, and the constant is 
+    set to %sCFL_eta=%2.2f%s. Therefore the time step is STILL chosen very small !!! 
+    %sThis is probably not intended -> change CFL_eta=99999 or any other large value!%s
+         """ % (bcolors.FAIL, CFL_eta, bcolors.ENDC, bcolors.WARNING, bcolors.ENDC))
+    choice = input("Enter y to change this automatically, or any other letter to keep it as is...")
+    
+    if choice == 'y':
+        print('Updating as per your wish...')
+        inifile_tools.replace_ini_value(inifile, 'Time', 'CFL_eta', '99999')
+        # reload newly set value
+        CFL_eta = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_eta')
+        
+    print("\n\n")
+
+
 # reference RK4 simulation
 CFL4   = 1.0
 dt4    = min([0.094*dx**2/nu, 0.99*C_eta, CFL4*dx/c0])
