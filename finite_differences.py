@@ -654,14 +654,6 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca(), e
             print("%e, " % (i), end="")
         print('%e;' % (a[-1]))
 
-    print_array(mu, "RKC_mu")
-    print_array(mu_tilde, "RKC_mu_tilde")
-    print_array(nu, "RKC_nu")
-    print_array(gamma_tilde, "RKC_gamma_tilde")
-    print_array(c, "RKC_c")
-    print("s=%i;" % (s_best))
-    print(';-------------------')
-
     if plot:
         RKC_stability_map(s_best, eps_best, ax=ax)
         RK4_stability_map( ax=ax )

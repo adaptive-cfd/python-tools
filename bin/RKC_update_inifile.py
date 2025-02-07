@@ -6,7 +6,7 @@ Created on Tue Sep 17 17:27:43 2024
 @author: engels
 """
 
-
+import bcolors
 import numpy as np
 import scipy.special
 import matplotlib.pyplot as plt
@@ -116,7 +116,7 @@ K_eta  = np.sqrt(nu*C_eta)/dx
 
 # warn if the time step is still determined by C_eta
 if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:
-    import bcolors
+    
     
     print("\n\n\n%sWARNING ! POSSIBLE ERROR IN INIFILE%s" % (bcolors.WARNING, bcolors.ENDC))
     print("""The time step dt when using a traditional RK4 scheme must be smaller than C_eta, the penalization
@@ -136,12 +136,12 @@ if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:
         
     print("\n\n")
 
-
 # reference RK4 simulation
 CFL4   = 1.0
 dt4    = min([0.094*dx**2/nu, 0.99*C_eta, CFL4*dx/c0])
 cost4  = np.round(4.0 * 1.0 / dt4)
-print("; RK4 COST would be %i NRHS/T dt=%e" % (cost4, dt4) )
+print(";-------------------")
+print("; Using RK4, the cost would be %i NRHS/T dt=%e" % (cost4, dt4) )
 
 #------------------------------------------------------------------------------
 # FIND SCHEME
@@ -183,8 +183,8 @@ if plot:
     plt.savefig('RKC.pdf')
     plt.savefig('RKC.png')
 
-print( "; s=%i eps=%2.2f, Cost RK4=%i RKC=%i factor=%2.1f" % (s_best, eps_best, cost4, s_best/dt_set, cost4/(s_best/dt_set)) )
-    
+print( "; s=%i eps=%2.2f, Cost RK4=%i RKC=%i %s speed-up-factor=%2.1f %s" % (s_best, eps_best, cost4, s_best/dt_set, bcolors.OKGREEN, cost4/(s_best/dt_set), bcolors.ENDC) )
+print("\n\n")
 mu, mu_tilde, nu, gamma_tilde, c, eps = finite_differences.RKC_coefficients(s_best, eps_best)
 
 

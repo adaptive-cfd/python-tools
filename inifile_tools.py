@@ -561,6 +561,8 @@ def replace_ini_value(file, section, keyword, new_value):
     None.
 
     """
+    import bcolors
+    
     found_section, found_keyword = False, False
     i = 0
 
@@ -602,7 +604,7 @@ def replace_ini_value(file, section, keyword, new_value):
                     line = line.replace(old_value, keyword+'='+new_value)
                     data[i] = line+'\n'
                     
-                    print("changed: "+old_value+" to: "+keyword+'='+new_value)
+                    print("changed: "+bcolors.FAIL+old_value+bcolors.ENDC+" to: "+bcolors.OKGREEN+keyword+'='+new_value+bcolors.ENDC)
                     break
         i += 1
        
