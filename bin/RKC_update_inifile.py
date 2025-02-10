@@ -99,11 +99,13 @@ c0    = inifile_tools.get_ini_parameter(inifile, 'ACM-new', 'c_0')
 nu    = inifile_tools.get_ini_parameter(inifile, 'ACM-new', 'nu')
 Bs    = inifile_tools.get_ini_parameter(inifile, 'Blocks', 'number_block_nodes')
 Jmax  = inifile_tools.get_ini_parameter(inifile, 'Blocks', 'max_treelevel')
+dim   = inifile_tools.get_ini_parameter(inifile, 'Domain', 'dim')
 C_eta = inifile_tools.get_ini_parameter(inifile, 'VPM', 'C_eta')
 CFL   = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL')
 CFL_eta = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_eta')
-L     = inifile_tools.get_ini_parameter(inifile, 'Domain', 'domain_size', vector=True)[0]
-order = inifile_tools.get_ini_parameter(inifile, 'Discretization', 'order_discretization', dtype=str)
+CFL_nu  = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_nu', dtype=float, default=0.10)
+L       = inifile_tools.get_ini_parameter(inifile, 'Domain', 'domain_size', vector=True)[0]
+order   = inifile_tools.get_ini_parameter(inifile, 'Discretization', 'order_discretization', dtype=str)
 
 
 
@@ -114,10 +116,10 @@ dt_set = np.min( [CFL * dx / c0, CFL_eta*C_eta] )
 print("dt_selected: dt_CFL=%e dt_CFLeta=%e used=%e" % (CFL * dx / c0, CFL_eta*C_eta, dt_set))
 K_eta  = np.sqrt(nu*C_eta)/dx
 
+
+
 # warn if the time step is still determined by C_eta
-if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:
-    
-    
+if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:    
     print("\n\n\n%sWARNING ! POSSIBLE ERROR IN INIFILE%s" % (bcolors.WARNING, bcolors.ENDC))
     print("""The time step dt when using a traditional RK4 scheme must be smaller than C_eta, the penalization
     constant. This is often a severe restriction. This script chooses the best RKC (note C instead of 4) 
@@ -135,17 +137,33 @@ if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:
         CFL_eta = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_eta')
         
     print("\n\n")
+    
+if CFL_nu < 1.0:    
+    print("\n\n\n%sWARNING ! POSSIBLE ERROR IN INIFILE%s" % (bcolors.WARNING, bcolors.ENDC))
+    print("""The constant CFL_nu (which determines the time step due to the viscous operator)
+    is currently set to a value < 1.0. It should be set to a large value, to avoid that WABBIT
+    sets too small time steps -> change CFL_nu=99999 or any other large value!""")
+    choice = input("Enter y to change this automatically, or any other letter to keep it as is...")
+    
+    if choice == 'y':
+        print('Updating as per your wish...')
+        inifile_tools.replace_ini_value(inifile, 'Time', 'CFL_nu', '99999')
+        # reload newly set value
+        CFL_nu = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_nu', dtype=float, default=0.10)
+        
+    print("\n\n")
+    
 
-# reference RK4 simulation
+# cost of a reference RK4 simulation
 CFL4   = 1.0
 dt4    = min([0.094*dx**2/nu, 0.99*C_eta, CFL4*dx/c0])
 cost4  = np.round(4.0 * 1.0 / dt4)
+
+
 print(";-------------------")
 print("; Using RK4, the cost would be %i NRHS/T dt=%e" % (cost4, dt4) )
 
-#------------------------------------------------------------------------------
-# FIND SCHEME
-#------------------------------------------------------------------------------
+#%% obtain eigenvalues of the discrete 1D acm operator
 
 # define some (arbitrary) mask function
 x        = np.linspace( start=0.0, stop=1.0, num=512, endpoint=False)
@@ -156,16 +174,41 @@ mask     = sponge_mask(x, L_sponge, 'hard')
 o = ACM_operator(c0, C_eta, nu, dx, mask, order=order)
 eigenvalues, dummy = np.linalg.eig(o)
 
-# see 2023 note on eigenvalues of 3D operator (CFD1 lecture)    
-w = eigenvalues
-# NOTE: /home/engels/Documents/Research/Teaching/CFD1_2022/VL13/spectrum_1D_vs_3D-2.eps
-# The actual scaling is found to be 3*real(eigenvalues) and sqrt(3)*imag(eigenvalues) in the case
-# of no penalization. Empirically, we find a scaling 1.10*real and 1.74*imag, but of course
-# without the nonlinear term. Therefore, multiplying all eigenvalues by 3 is a conservative estimate.
-# w *= 3.0 # 2023, for 3D simulation
-# w *= np.sqrt(3)
-w.imag *= np.sqrt(3.0)
-w.real *= 1.15
+#%% scale the 1D eigenvalues to 3D and find the best RKC scheme to integrate it
+
+# For the low Re-flyers (and only for those the RKC scheme makes sense), the transport 
+# (nonlinear + pressure waves) are relatively slow and can almost be neglected. The remaining
+# terms are the diffusion (laplace), and the penalization. Both discrete operators are positive
+# semi-definite, and the penalization is even a diagonal matrix.
+# Now, given that the penalization parameter C_\eta is linked to the viscosity \nu, we only 
+# have to look at the coupling constant, which is K_\eta (or its square).
+# If K_\eta is large, say 3.0, then we recover the eigenvalue ratio of the discrete 
+#        laplacian, which is simply the dimension D. Hence, we need to multiply the 
+#        \lambda_1D by 3 in the 3D case.
+# If K_\eta is small, say 0.1, then the penalization term dominates, and as this
+#         is a diagonal matrix, its eigenvalue is simply -1/C_eta and independent 
+#         of the dimension D.
+# There is no direct analytical way to determine the eigenvalues of the sum of both
+# matrices, if they are both significant. We determined them numerically, and determined
+# as a function of K_\eta, how the real part needs to be scaled from the 1D to the 2D/3D case.
+# Those factors are listed below and interpolated to scale the 1D eigenvalues appropriately. 
+if dim == 3:
+    Scale_vct = [1.0923, 1.0923, 1.3211, 1.5941, 1.8467, 2.0553, 2.2197, 2.3478, 2.4481, 2.5278, 2.5923, 2.6455, 2.6900, 2.7276, 2.7594, 2.7864, 2.8094, 2.8291, 2.8460, 2.8606, 3.0000, 3.0000]
+    Keta_vct  = [0.0000, 0.1000, 0.2000, 0.3000, 0.4000, 0.5000, 0.6000, 0.7000, 0.8000, 0.9000, 1.0000, 1.1000, 1.2000, 1.3000, 1.4000, 1.5000, 1.6000, 1.7000, 1.8000, 1.9000, 2.0000, 100.00]
+elif dim == 2:
+    Scale_vct = [1.0501, 1.0501, 1.1741, 1.3212, 1.4560, 1.5661, 1.6514, 1.7167, 1.7665, 1.8049, 1.8348, 1.8585, 1.8774, 1.8928, 1.9054, 1.9158, 1.9245, 1.9319, 1.9382, 1.9437, 2.0000, 2.0000]
+    Keta_vct  = [0.0000, 0.1000, 0.2000, 0.3000, 0.4000, 0.5000, 0.6000, 0.7000, 0.8000, 0.9000, 1.0000, 1.1000, 1.2000, 1.3000, 1.4000, 1.5000, 1.6000, 1.7000, 1.8000, 1.9000, 2.0000, 100.00] 
+    
+safety_factor = 1.1 # should be > 1
+scaling_real = np.interp(K_eta, Keta_vct, Scale_vct) * safety_factor
+print("eigenvalue scaling is: %f" % (scaling_real))
+
+# scale real parts
+eigenvalues.real *= scaling_real
+# the scaling of the imaginary part is more or less useless: it's just a small safety margin
+# to account for the nonlinear terms etc. Even multiplying by 10 or more did not alter the RKC
+# scheme at all for the low Reynolds numbers.
+eigenvalues.imag *= 3.0
 
 print(";-------------------")
 print( "; C0=%f C_eta=%e K_eta=%f Bs=%i" % (c0, C_eta, K_eta, Bs) )
@@ -173,7 +216,8 @@ print( "; dx=%e CFL=%f jmax=%i nu=%e" % (dx, CFL, Jmax, nu ) )
 
 safety = False
 plot = True
-s_best, eps_best = finite_differences.select_RKC_scheme(w, dt_set, plot=plot, safety=safety, eps_min=2.0)
+s_best, eps_best = finite_differences.select_RKC_scheme(eigenvalues, dt_set, plot=plot, safety=safety, eps_min=2.0)
+
 
 if safety:
     for i in range(5):
@@ -183,14 +227,14 @@ if plot:
     plt.savefig('RKC.pdf')
     plt.savefig('RKC.png')
 
-print( "; s=%i eps=%2.2f, Cost RK4=%i RKC=%i %s speed-up-factor=%2.1f %s" % (s_best, eps_best, cost4, s_best/dt_set, bcolors.OKGREEN, cost4/(s_best/dt_set), bcolors.ENDC) )
+print( "; s=%i eps=%2.2f, Cost RK4=%i RKC=%i %s speed-up-factor (RKC vs RK4)=%2.1f %s" % (s_best, eps_best, cost4, s_best/dt_set, bcolors.OKGREEN, cost4/(s_best/dt_set), bcolors.ENDC) )
 print("\n\n")
+
+#%% last step: write the scheme we found in the PARAMS file:
 mu, mu_tilde, nu, gamma_tilde, c, eps = finite_differences.RKC_coefficients(s_best, eps_best)
 
 
-
-def print_array(a):
-    
+def print_array(a):    
     # NOTE: the coefficients are padded with an first element due to pythons
     # 0-based indexing. This element is NAN for safety. It is cut here, as in
     # fortran, we use 1-based indexing
