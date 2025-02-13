@@ -2237,6 +2237,7 @@ def wing_contour_from_file(fname, N=1024):
     """
     import os
     import inifile_tools
+    from shapely.geometry.polygon import Polygon
     
     # does the ini file exist?
     if not os.path.isfile(fname):
@@ -2248,7 +2249,7 @@ def wing_contour_from_file(fname, N=1024):
 
     wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     
-    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier':
+    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier' and wtype != 'fourierY':
         print(wtype)
         raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
                          "Fourier or linear encoded wing (maybe with bristles)")
@@ -2272,13 +2273,7 @@ def wing_contour_from_file(fname, N=1024):
         xc = x0 + np.cos(theta2)*r_fft
         yc = y0 + np.sin(theta2)*r_fft
         
-        area = 0.0
-        dtheta = theta2[1]-theta2[0]
-        
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta2.shape[0]):
-            area += dtheta * (r_fft[j]**2 / 2.0)        
+        area = Polygon( zip(xc,yc) ).area      
         
     elif wtype == "linear":
         # description with points (not a radius)
@@ -2292,14 +2287,28 @@ def wing_contour_from_file(fname, N=1024):
         xc = x0 + np.cos(theta_i)*R_i
         yc = y0 + np.sin(theta_i)*R_i        
         
-        area = 0.0
-        dtheta = theta_i[1]-theta_i[0]
+        # there was a bug in here somewhere but i am too lazy to find it ... now I just
+        # use polygon.area and am less unhappy. TE 12/feb/2025
+        area = Polygon( zip(xc,yc) ).area
         
-        # the formula is: 
-        # $A=\int_{0}^{R}dr\int_{0}^{2\pi}d\theta\,r=\int_{0}^{2\pi}d\theta R(\theta)^{2}/2$
-        for j in np.arange(theta_i.shape[0]):
-            area += dtheta * (R_i[j]**2 / 2.0)
-            
+    elif wtype == 'fourierY':
+        # used for the 2021 Nature Paper (Paratuposa)
+        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+                
+        Rblade = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+        
+        y = np.linspace(0, Rblade, 100)
+        theta = np.arccos(1.0 - 2.0*y/Rblade)
+        
+        xle = Fserieseval(a0, ai, bi, (theta + np.pi) / (2.0*np.pi) )
+        xte = Fserieseval(a0, ai, bi, 1-(theta + np.pi) / (2.0*np.pi) )
+                
+        xc = np.hstack([xle,xte[::-1]])
+        yc = np.hstack([y[::-1],y])
+        area = Polygon( zip(xc,yc) ).area
+        
     elif wtype == "kleemeier":
         B, H = 8.6/130, 100/130
         xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
@@ -2308,13 +2317,97 @@ def wing_contour_from_file(fname, N=1024):
   
     return xc, yc, area
 
+def compute_wing_inertia_tensor(fname, density_membrane=1.0, density_bristles=0.0, dx=1e-3):
+    """
+    COmpute the inertia tensor of wing INI file.
+
+    Parameters
+    ----------
+    fname : path to inifile
+        File to read the wing geometry from.
+    density_membrane : float
+        Density of the membrane [mass/R**2]. The output will be in the same unit. If you pass kg/R**2, then the 
+        inertia tensor will also be in kg*R**2. Note you'd M_wing (in kg) and divide it by area returned by wing_contour_from_file.
+        The density then had the dimension kg/R² -
+        You can also pass unity and add units afterwards.
+    density_bristles : float
+        Density of bristles in mass/R (mass per lengh). If you 
+        The default is 0.0 - this neglects bristles in inertia computation. You shall use the same unit as
+        for the membrane density. 
+
+    Returns
+    -------
+    Jxx, Jyy, Jzz, Jxy
+
+    """
+    import inifile_tools
+    
+    
+    # evaluate wing file
+    x, y = get_wing_membrane_grid(fname, dx=dx, dy=dx)
+    # assume a thin wing
+    z = x * 0.0
+    
+    Jxx = np.sum( y**2 + z**2 )*dx*dx*density_membrane
+    Jyy = np.sum( x**2 + z**2 )*dx*dx*density_membrane
+    Jzz = np.sum( x**2 + y**2 )*dx*dx*density_membrane
+    Jxy = -np.sum( x*y )*dx*dx*density_membrane
+    
+    del x,y,z 
+    
+    # does the wing have bristled?
+    if inifile_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False):
+        # read in the bristles array
+        bristles_coords = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
+        
+        for j in range( bristles_coords.shape[0]):
+            x0 = bristles_coords[j,0]
+            y0 = bristles_coords[j,1]          
+            x1 = bristles_coords[j,2]
+            y1 = bristles_coords[j,3]  
+            
+            # unit vector in bristle direction
+            ex, ey = x1-x0, y1-y0
+            L = np.sqrt(ex**2 + ey**2)
+            ex /= L
+            ey /= L
+            dL = dx
+            
+            l = np.linspace(0, L, int(np.round(L/dL)) )
+            # print(l.shape)
+            
+            for i in range(l.shape[0]):
+                x, y, z = x0 + ex*float(i)*dL, y0 + ey*float(i)*dL, 0.0
+                
+                Jxx += ( y**2 + z**2 )*dL*density_bristles
+                Jyy += ( x**2 + z**2 )*dL*density_bristles
+                Jzz += ( x**2 + y**2 )*dL*density_bristles
+                Jxy += -( x*y )*dL*density_bristles
+                # Jxy += dL
+                
+    
+    # note how Jxz and Jyz are zero by the thin wing assumption.
+    return np.asarray([Jxx, Jyy, Jzz, Jxy])
+    
 
 def compute_wing_geom_factors(fname):
     """
     Compute geometrical factors for a wing-shape *.ini file. 
     
+    To be extended in the future.
+    
     returns area, S1, S2, 
     """
+    dx, dy = 1e-3, 1e-3 
+    
+    # evaluate wing file
+    x, y = get_wing_membrane_grid(fname, dx=dx, dy=dy)
+    
+    area = np.sum( y**0 * dx*dy)
+    S1 = np.sum( y**1 * dx*dy)
+    S2 = np.sum( y**2 * dx*dy)
+    
+    return area, S1, S2
 
     
 def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15, 
@@ -2602,6 +2695,7 @@ def compute_aero_power_individual_wings(run_directory, file_output='aero_power_i
     ----------
     run_directory : TYPE
         Directory of the CFD simulation. We look for the PARAMS.ini file, as well as the *.t files there.
+    file_output : *.csv file to dump the result of the calculation to.
     """
     import matplotlib.pyplot as plt
     
@@ -2709,14 +2803,12 @@ def compute_aero_power_individual_wings(run_directory, file_output='aero_power_i
     
     
 
-def compute_inertial_power(file_kinematics='kinematics.t'):
+def compute_inertial_power(file_kinematics='kinematics.t', Jxx=0.0, Jyy=0.0, Jzz=0.0, Jxy=0.0):
     """
     Post-processing: Compute the insects inertial power. 
     
     The routine reads the kinematics.t file (for angular velocity and acceleration
-    of the wings). The inertia tensor can be 
-        (i) read from a PARAMS.INI file
-        (ii) passed to this routine
+    of the wings). The inertia tensor can be passed to this routine
     The background is that often, during the simulation, we do not bother to compute the
     inertia tensor, and it is thus not contained in the PARAMS.ini files
     
@@ -2818,6 +2910,61 @@ def compute_inertial_power(file_kinematics='kinematics.t'):
         
     #     inertial_power_right = rot_rel_wing_r_w1 * iwmoment1 + rot_rel_wing_r_w2 * iwmoment2 + rot_rel_wing_r_w3 * iwmoment3
 
+def get_wing_membrane_grid(fname, dx=1e-3, dy=1e-3):
+    """
+    Get a list of (x,y) points on the wing membrane, but on a regular grid with spacing
+    dx, dy. This function is convenient when performing geometrical tasks (integration of S2 etc)
+    on the wing. 
+    
+    NOTE: we also have a version with randomized points.    
+
+    Parameters
+    ----------
+    fname : inifile
+        Wing shape file.
+    dx,dy : float
+        Lattice spacing in both directions.
+
+    Returns
+    -------
+    x, y : list
+        A list of points on a regular, cartesian grid that are inside the wing contour.
+
+    """
+    
+    from shapely.geometry.polygon import Polygon
+    from shapely.geometry import Point
+    import numpy as np
+    import inifile_tools
+    
+    damaged = inifile_tools.get_ini_parameter(fname, "Wing", "damaged", bool, default=False)
+    
+    if damaged:
+        raise ValueError("This function is not yet ready for damaged wings!!!!")
+    
+    # evaluate wing shape file.
+    xc, yc, area = wing_contour_from_file(fname) 
+    
+    # create a polygon with the wing contour
+    polygon = Polygon( zip(xc,yc) )
+    
+    
+    # target grid
+    x_grid = np.linspace( np.min(xc), np.max(xc), int(np.round( (np.max(xc)- np.min(xc))/dx )) )
+    y_grid = np.linspace( np.min(yc), np.max(yc), int(np.round( (np.max(yc)- np.min(yc))/dy )) )
+    
+    # initialize lists to return
+    x, y = [], []
+    
+    # loop over all grid points (2D grid and check if the point is inside the polygon)
+    for i in range(x_grid.shape[0]):
+        for j in range(y_grid.shape[0]):
+            if polygon.contains( Point(x_grid[i], y_grid[j]) ):
+                # yes, the point is on the membrane -> add it to the return list
+                x.append(x_grid[i])
+                y.append(y_grid[j])   
+                
+    return np.asarray(x), np.asarray(y)
 
 def get_wing_pointcloud_from_inifile(fname):
     """
@@ -2837,6 +2984,7 @@ def get_wing_pointcloud_from_inifile(fname):
     ----------
     fname : string
         ini file describing the wing
+    
 
     Returns
     -------
