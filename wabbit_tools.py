@@ -61,6 +61,7 @@ class WabbitHDF5file:
 
     # some helping constructs
     tc_dict = []
+    tc_find = []
     orig_file = ""
 
     """
@@ -171,6 +172,7 @@ class WabbitHDF5file:
         # create objects which are handy to have
         # dictionary to quickly check if a block exists
         self.tc_dict = {(self.block_treecode_num[j], self.level[j]): True for j in range(self.total_number_blocks)}
+        self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
         self.orig_file = file
 
     # init a wabbit state by data
@@ -500,9 +502,16 @@ class WabbitHDF5file:
 
     # given a level and treecode, give me the block ID
     def get_block_id(self, treecode, level):
-        if (treecode, level) not in self.tc_dict: return -1
-        return list(zip(self.block_treecode_num, self.level)).index((treecode, level))
-    
+        return self.tc_find.get((treecode, level), -1)
+
+    # returns sort list where the elements are in ascending order for first treecode and then level
+    def sort_list(self):
+        combined_list = list(zip(self.block_treecode_num, self.level, range(self.total_number_blocks)))
+        # Sort the list based on treecode first, then level
+        sorted_combined_list = sorted(combined_list, key=lambda x: (x[0], x[1]))
+        # Extract the sorted indices
+        return [idx for _, _, idx in sorted_combined_list]
+
 
     # check if logically two objects are considered to be close to equal
     def isClose(self, other, verbose=True, logger=None, return_norm=False):
@@ -687,8 +696,10 @@ class WabbitHDF5file:
         if out_str: return fname
         else: return int(fname) / 1e6
 
-    # some informations
-    def get_max_min_level(self):
+    def get_min_max_level(self):
+        '''
+            Retrieve the minimum and maximum level in the grid
+        '''
         return np.min(self.level), np.max(self.level)
         
 
@@ -1133,7 +1144,7 @@ def level_from_treecode(tc, tc_array, max_level=21, dim=3):
         
         
 # for a treecode list, return max and min level found
-def get_max_min_level( treecode ):
+def get_min_max_level( treecode ):
 
     min_level = 99
     max_level = -99
@@ -1267,7 +1278,7 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
 
     # if only the grid is plotted, we use grayscale for the blocks, and for
     # proper scaling we need to know the max/min level in the grid
-    jmin, jmax = wabbit_obj.get_max_min_level()
+    jmin, jmax = wabbit_obj.get_min_max_level()
 
 
 

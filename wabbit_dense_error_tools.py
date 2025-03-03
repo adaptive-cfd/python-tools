@@ -97,7 +97,7 @@ def dense_matrix(  x0, dx, data, level, dim=2, verbose=True, new_format=False ):
 
 
 #
-def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
+def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2, verbose=True):
     """ Compute the error (in some norm) wrt a flusi field.
     Useful for example for the half-swirl test where no exact solution is available
     at mid-time (the time of maximum distortion)
@@ -111,24 +111,24 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     import matplotlib.pyplot as plt
 
     if dim==3:
-        print('I think due to fft2usapmle, this routine works only in 2D')
+        print('I think due to fft2usample, this routine works only in 2D')
         raise ValueError
 
     # read in flusi's reference solution
-    time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi )
-    print(data_ref.shape)
+    time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi, verbose=verbose)
+    if verbose: print(data_ref.shape)
     ny = data_ref.shape[1]
 
     # wabbit field to be analyzed: note has to be full already
     wabbit_obj = WabbitHDF5file()
-    wabbit_obj.read(fname_wabbit)
+    wabbit_obj.read(fname_wabbit, verbose=verbose)
     x0 = wabbit_obj.coords_origin
     dx = wabbit_obj.coords_spacing
     data = wabbit_obj.blocks
     level = wabbit_obj.level
     Bs = data.shape[1]
     Jflusi = (np.log2(ny/(Bs-1)))
-    print("Flusi resolution: %i %i %i so desired level is Jmax=%f" % (data_ref.shape[0], data_ref.shape[2], data_ref.shape[2], Jflusi) )
+    if verbose: print("Flusi resolution: %i %i %i so desired level is Jmax=%f" % (data_ref.shape[0], data_ref.shape[2], data_ref.shape[2], Jflusi) )
 
     if dim==2:
         # squeeze 3D flusi field (where dim0 == 1) to true 2d data
@@ -136,7 +136,7 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
         box_ref = box_ref[1:2].copy()
 
     # convert wabbit to dense field
-    data_dense, box_dense = dense_matrix( x0, dx, data, level, dim )
+    data_dense, box_dense = dense_matrix( x0, dx, data, level, dim, verbose=verbose)
     
     if data_dense.shape[0] < data_ref.shape[0]:
         # both datasets have different size
@@ -147,14 +147,13 @@ def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2):
     if data_dense.shape[0] > data_ref.shape[0]:
         bcolors.warn("WARNING! The reference solution is not fine enough for the comparison! UPSAMPLING!")
         import fourier_tools
-        print(data_ref.shape)
-        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[1] )
+        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[1], verbose=True)
 
     err = np.ndarray.flatten(data_ref-data_dense)
     exc = np.ndarray.flatten(data_ref)
 
     err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
-    print( "error was e=%e" % (err) )
+    if verbose: print( "error was e=%e" % (err) )
 
     return err
 

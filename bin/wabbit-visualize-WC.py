@@ -44,7 +44,7 @@ w_obj = wabbit_tools.WabbitHDF5file()
 w_obj.read(args.FILE)
 
 
-level_min, level_max = w_obj.get_max_min_level()
+level_min, level_max = w_obj.get_min_max_level()
 if args.level == 'all':
     level = level_max
 else:

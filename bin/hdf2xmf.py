@@ -124,7 +124,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             Nb = dset_id.shape[0]
             w_obj = wabbit_tools.WabbitHDF5file()
             w_obj.read(file, verbose=False, read_var='meta')
-            Jmin, Jmax = w_obj.get_max_min_level()
+            Jmin, Jmax = w_obj.get_min_max_level()
             print("timestamp "+timestamps[i]+" has Nb=%i blocks J=(%i,%i)" % (Nb, Jmin, Jmax) )
             
             b = f['coords_origin'][:]

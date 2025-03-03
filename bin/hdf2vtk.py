@@ -67,7 +67,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   i_count = 0
   for i_wobj in w_obj_list:
     dim = i_wobj.dim
-    l_min, l_max = w_obj.get_max_min_level()
+    l_min, l_max = w_obj.get_min_max_level()
     depth = 1 if not split_levels else l_max - l_min+1  # how many different grids are there?
 
     ### initialize hypertreegrid and all arrays
@@ -161,7 +161,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
         i_digit = X + 2*Y + 4*Z
 
         for i_d in range(depth):
-          if i_level > l_min+i_d: continue
+          if i_level > l_min+i_d and split_levels: continue
 
           if cursor[i_d].IsLeaf(): cursor[i_d].SubdivideLeaf()
           cursor[i_d].ToChild(i_digit)
@@ -502,7 +502,8 @@ if __name__ == "__main__":
     filelist = sorted( glob.glob(os.path.join(args.infile,"*.h5")) )
     for i_file in filelist:
       state_1 = wabbit_tools.WabbitHDF5file()
-      state_1.read(i_file, verbose=args.verbose)
+      if args.vtm: state_1.read(i_file, verbose=args.verbose)
+      else: state_1.read(i_file, read_var="meta", verbose=args.verbose)
       time_1 = np.round(state_1.time, 12)  # round to 12 digits to avoid floating points diffrences
       if not time_1 in time_process:
         time_process[time_1] = []
