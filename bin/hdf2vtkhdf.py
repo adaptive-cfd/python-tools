@@ -2,11 +2,13 @@
 import h5py, os, sys, argparse, glob, time, numpy as np
 try:
   try: from mpi4py import MPI
-  except: print("Could not load mpi4py - do you have it installed? h5py parallel needs it!")
+  except: print("Could not load mpi4py")
   mpi_size = MPI.COMM_WORLD.Get_size()
   mpi_parallel = mpi_size > 1
   mpi_rank = MPI.COMM_WORLD.Get_rank()
+  print(f"Running code in parallel on {mpi_size} cores")
 except:
+  print("Running code in serial")
   mpi_parallel = False
   mpi_rank = 0
   mpi_size = 1
@@ -202,7 +204,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   coords_origin, coords_spacing = [coords_origin[i] for i in id_sorted], [coords_spacing[i] for i in id_sorted]
   level, treecode = [level[i] for i in id_sorted], [treecode[i] for i in id_sorted]
   sub_tree, block_id = [sub_tree[i] for i in id_sorted], [block_id[i] for i in id_sorted]
-  print(f"    Init blocks :    {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+  if args.verbose and mpi_rank == 0: print(f"    Init blocks :    {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
 
   # this is the actual merging loop, we loop until no new blocks are merged
   jmin, jmax = w_main.get_min_max_level()
