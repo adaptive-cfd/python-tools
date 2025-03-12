@@ -65,7 +65,7 @@ def uniquelist( l ):
         return l[0]
 
 
-def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory):
+def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, vectors, directory, cell):
     import numpy as np
     import wabbit_tools
     
@@ -85,6 +85,11 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
 
     # close file
     f.close()
+    
+    if cell:
+        datatype = 'Cell'
+    else:
+        datatype = "Node"
 
     if (len(res) == 3):
         # ------------------------------------------------------
@@ -146,14 +151,14 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 fid.write('            </Geometry>\n\n')
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
-                    fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
+                    fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="%s">\n' % (prefix, datatype) )
                     fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs[0],Bs[1]) )
                     fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
                     fid.write('                  %i 0 0\n' % (b) )
                     fid.write('                  1 1 1\n')
                     fid.write('                  1 %i %i\n' % (Bs[0],Bs[1]) )
                     fid.write('              </DataItem>\n')
-                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs[0],Bs[1]) )
+                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i" AttributeType="Scalar" Center="%s">\n' % (Nb,Bs[0],Bs[1],datatype) )
                     fid.write('                  %s:/blocks\n' % (directory + prefix + '_' + timestamps[i] + '.h5') )
                     fid.write('                </DataItem>\n')
                     fid.write('              </DataItem>\n')
@@ -162,7 +167,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # although the following code appears to be correct, paraview fails to read it correctly. it reports a 3d vector
                 # for the moment, we just deactivate vectors...
 #                for prefix in vectors:
-#                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Node">\n' % (prefix) )
+#                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Cell">\n' % (prefix) )
 #                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
@@ -255,14 +260,14 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 fid.write('            </Geometry>\n\n')
                 # for each time step and each block, we have different quantities (prefixes)
                 for prefix in prefixes:
-                    fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="Node">\n' % (prefix) )
+                    fid.write('            <Attribute Name="%s"  AttributeType="Scalar" Center="%s">\n' % (prefix, datatype) )
                     fid.write('              <DataItem ItemType="HyperSlab" Dimensions="%i %i %i" Type="HyperSlab">\n' % (Bs[0], Bs[1], Bs[2]) )
                     fid.write('                <DataItem Dimensions="3 4" Format="XML">\n')
                     fid.write('                  %i 0 0 0\n' % (b) )
                     fid.write('                  1 1 1 1 \n')
                     fid.write('                  1 %i %i %i\n' % (Bs[0], Bs[1], Bs[2]) )
                     fid.write('              </DataItem>\n')
-                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i %i" AttributeType="Scalar" Center="Node">\n' % (Nb,Bs[0], Bs[1], Bs[2]) )
+                    fid.write('                <DataItem Format="HDF" Dimensions="%i %i %i %i" AttributeType="Scalar" Center="Cell">\n' % (Nb,Bs[0], Bs[1], Bs[2]) )
                     fid.write('                  %s:/blocks\n' % (directory + prefix + '_' + timestamps[i] + '.h5') )
                     fid.write('                </DataItem>\n')
                     fid.write('              </DataItem>\n')
@@ -271,7 +276,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
                 # although the following code appears to be correct, paraview fails to read it correctly. it reports a 3d vector
                 # for the moment, we just deactivate vectors...
 #                for prefix in vectors:
-#                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Node">\n' % (prefix) )
+#                    fid.write('            <Attribute Name="%s"  AttributeType="Vector" Center="Cell">\n' % (prefix) )
 #                    fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="%i %i 2">\n' % (Bs[0], Bs[1]) )
 #                    fid.write('         <DataItem ItemType="HyperSlab" Dimensions="%i %i" Type="HyperSlab">\n' % (Bs,Bs) )
 #                    fid.write('                <DataItem Dimensions="3 3" Format="XML">\n')
@@ -441,7 +446,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             # no striding, read the entire HDF5 file
             fid.write('\n')
             fid.write('    <!--Scalar-->\n')
-            fid.write('    <Attribute Name="%s" AttributeType="Scalar" Center="Node">\n' % p)
+            fid.write('    <Attribute Name="%s" AttributeType="Scalar" Center="Cell">\n' % p)
             fid.write('    <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
             fid.write('    %s%s_%s.h5:/%s\n' % (directory, p, timestamps[k], p) )
             fid.write('    </DataItem>\n')
@@ -452,7 +457,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             if len(res) == 3:
                 fid.write('\n')
                 fid.write('    <!--Vector-->\n')
-                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Node">\n' % p)
+                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Cell">\n' % p)
                 fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1, $2)" Dimensions="&nxnynz; 3" NumberType="Float">\n')
                 fid.write('        <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
                 fid.write('        %s%s_%s.h5:/%s\n' % (directory, p+'x', timestamps[k], p+'x') )
@@ -470,7 +475,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             else:
                 fid.write('\n')
                 fid.write('    <!--Vector-->\n')
-                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Node">\n' % p)
+                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Cell">\n' % p)
                 fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="&nxnynz; 2" NumberType="Float">\n')
                 fid.write('        <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
                 fid.write('        %s%s_%s.h5:/%s\n' % (directory, p+'x', timestamps[k], p+'x') )
@@ -512,6 +517,7 @@ def main():
     files. If -o outfile.xmf is set, then the files are named outfile_0000.xmf, outfile_0001.xmf etc.""", action="store_true")
     parser.add_argument("-o", "--outfile", help="XMF file to write to, default is ALL.xmf")
     parser.add_argument("-0", "--ignore-origin", help="force origin to 0,0,0", action="store_true")
+    parser.add_argument("-c", "--cell", help="Interpret data as CELLS not POINTS for paraview", action="store_true")
     parser.add_argument("-k", "--global-origin", help="Pass an artificial origin (shifts the whole grid by this amount", 
                         nargs="+", default=[0.0,0.0,0.0])
     parser.add_argument("-u", "--unit-spacing", help="use unit spacing dx=dy=dz=1 regardless of what is specified in h5 files", action="store_true")
@@ -871,7 +877,7 @@ def main():
             if mode == 'flusi':
                 write_xmf_file_flusi( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory)
             elif mode == 'wabbit':
-                write_xmf_file_wabbit( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory)
+                write_xmf_file_wabbit( args, outfile, [times[i]], [timestamps[i]], prefixes, scalars, vectors, directory, args.cell)
     else:
         # one file for the dataset
         # write the acual xmf file with the information extracted above
@@ -879,7 +885,7 @@ def main():
         if mode == 'flusi':
             write_xmf_file_flusi( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory)
         elif mode == 'wabbit':
-            write_xmf_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory)
+            write_xmf_file_wabbit( args, args.outfile, times, timestamps, prefixes, scalars, vectors, directory, args.cell)
 
     print("Done. Enjoy!")
 
