@@ -10,7 +10,7 @@ FAIL = '\033[91m'
 ENDC = '\033[0m'
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
-
+BLINK = '\033[5m'
 
 def warn( msg ):
     print( WARNING + "WARNING! " + ENDC + msg)
@@ -19,7 +19,7 @@ def warn_deprc( msg ):
     print( WARNING + "DEPRECATION WARNING! " + ENDC + msg)
 
 def err( msg ):
-    print( FAIL + "CRITICAL! " + ENDC + msg)
+    print( BLINK + FAIL + "CRITICAL! " + ENDC + msg)
 
 def info( msg ):
     print( OKBLUE + "Information:  " + ENDC + msg)
