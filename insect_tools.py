@@ -2351,7 +2351,7 @@ def compute_wing_inertia_tensor(fname, density_membrane=1.0, density_bristles=0.
     Jxx = np.sum( y**2 + z**2 )*dx*dx*density_membrane
     Jyy = np.sum( x**2 + z**2 )*dx*dx*density_membrane
     Jzz = np.sum( x**2 + y**2 )*dx*dx*density_membrane
-    Jxy = -np.sum( x*y )*dx*dx*density_membrane
+    Jxy = np.sum( x*y )*dx*dx*density_membrane
     
     del x,y,z 
     
@@ -2382,7 +2382,7 @@ def compute_wing_inertia_tensor(fname, density_membrane=1.0, density_bristles=0.
                 Jxx += ( y**2 + z**2 )*dL*density_bristles
                 Jyy += ( x**2 + z**2 )*dL*density_bristles
                 Jzz += ( x**2 + y**2 )*dL*density_bristles
-                Jxy += -( x*y )*dL*density_bristles
+                Jxy += ( x*y )*dL*density_bristles
                 # Jxy += dL
                 
     

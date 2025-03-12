@@ -101,6 +101,7 @@ def check_parameters_for_stupid_errors( file ):
     CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
     c0           = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     nu           = get_ini_parameter( file, 'ACM-new', 'nu', float)
+    skew_symmetry= get_ini_parameter( file, 'ACM-new', 'skew_symmetry', int, default=0)
     ceta         = get_ini_parameter( file, 'VPM', 'C_eta', float, default=0.0)
     penalized    = get_ini_parameter( file, 'VPM', 'penalization', bool, default=False)
     geometry     = get_ini_parameter( file, 'VPM', 'geometry', str, default='default')
@@ -136,9 +137,13 @@ def check_parameters_for_stupid_errors( file ):
     
     
     
-    
-    print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
-          (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+    if penalized == 1:
+        print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
+              (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+    else:
+        print("use_penalization= %i %s~~~> no penalization used! %s" % 
+              (penalized, bcolors.OKBLUE, bcolors.ENDC))
+        
     if sponged:
         print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
               (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
@@ -248,7 +253,35 @@ def check_parameters_for_stupid_errors( file ):
             to be at the maximum refinement level.""")
 
 
+    if skew_symmetry==1 and dealias==1:
+        bcolors.warn("""You use ACM skew symmetry but still have force_maxlevel_dealiasing=1.
+        As the whole point of skew symmetry is to get rid of dealiasing, this combination
+        is unusual: check if that is really what you want. Code will run, though.\n""")  
+        
+    if penalized and ceta <= 1.0e-15:
+        bcolors.err('Penalization is used but C_eta=%e' % (ceta) )
 
+    # -----------------saving section ---------------------------------
+    N_fields_saved = get_ini_parameter( file, 'Saving', 'N_fields_saved', int)
+    field_names = get_ini_parameter( file, 'Saving', 'field_names', str, vector=True)
+    
+    if len(field_names) != N_fields_saved:
+        bcolors.err("You set N_fields_saved=%i but did not give the right number of names!" %(N_fields_saved))
+        print(field_names)
+    
+    if "vor" in field_names and dim==2:
+        if not field_names[0] == "vor":
+            bcolors.err('You want to save the vorticity, but you MUST choose this as first entry in field_names. Strange, right? At least it is nice outside. Go play.')
+        if N_fields_saved < 3:
+            bcolors.err('You want to save the vorticity, you MUST save at least 3 fields. Strange, right? Time for a drink.')
+    
+    for field_name in field_names:
+        if not field_name in ['ux', 'Ux', 'UX', 'uy', 'Uy', 'UY', 'uz', 'Uz', 'UZ', 'p', 'P', 'vor', 'div', 'mask', 'usx', 'usy', 'usz', 'color', 'sponge', 'scalar1', 'scalar2', 'scalar3']:
+            bcolors.err('In field_names for saving, you have set %s_ %s _%s but that is not a valid choice!' % (bcolors.FAIL,field_name, bcolors.ENDC))
+    
+    
+    
+    #-------------------------------
     # loop over ini file and check that each non-commented line with a "=" contains the trailing semicolon ";"
     with open(file) as f:
         # loop over all lines
@@ -490,7 +523,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
         # you can use the strip() to remove trailing and leading spaces.
         value_string.strip()
         l = value_string.split()
-        return np.asarray( [float(i) for i in l] )
+        return np.asarray( [dtype(i) for i in l] )
 
 
 
@@ -502,10 +535,16 @@ def exists_ini_parameter( inifile, section, keyword ):
     found_section = False
     found_parameter = False
 
-    # read jobfile
+    # read inifile
     with open(inifile) as f:
         # loop over all lines
         for line in f:
+            
+            # remove all comments from the file
+            # remove everything after ; character
+            if ";" in line:
+                i = line.find(';')
+                line = line[:i+1]
 
             # once found, do not run to next section
             if found_section and line[0] == "[":
