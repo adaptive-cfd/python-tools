@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import h5py, os, sys, argparse, glob, time, numpy as np
+import h5py, os, sys, argparse, glob, time, numpy as np, json
 try:
   try: from mpi4py import MPI
   except: print("Could not load mpi4py")
@@ -99,7 +99,7 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
 
 
 
-def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True):
+def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, data_type="CellData"):
   """
   Create a multi block dataset from the available data
     w_obj        - Required  : Object representeing the wabbit data or List of objects
@@ -224,7 +224,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   start_time = time.time()
   for i_block in range(total_blocks):
     # for overfull CVS grids we have the option to split them into levels to make the overlay visible
-    split_levels_add = (split_levels * (level[i_block]-1) * np.max(w_main.domain_size))
+    split_levels_add = (split_levels * (level[i_block]-1) * np.max(w_main.domain_size)) * 1.1
 
     # Create this block itself
     block_group = vtkhdf_group.create_group(f'Block{i_block}')
@@ -232,7 +232,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     # Add attributes to block
     if w_main.dim == 2:
       block_group.attrs.create('Direction', np.array([1, 0, 0, 0, 1, 0, 0, 0, 1], dtype='f8'))
-      block_group.attrs.create('Origin', np.append(coords_origin[i_block][::-1], 0) + np.array([0,0,split_levels_add]), dtype='f8')
+      block_group.attrs.create('Origin', np.append(coords_origin[i_block][::-1], 0) + np.array([0,split_levels_add,0]), dtype='f8')
       block_group.attrs.create('Spacing', np.append(coords_spacing[i_block][::-1], 0), dtype='f8')
       block_group.attrs.create('WholeExtent', np.array([0, bs_o[0]*sub_tree[i_block][0], 0, bs_o[1]*sub_tree[i_block][1], 0, 1], dtype='i8'))      
     else:
@@ -246,18 +246,20 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     assembly_group[f'Block{i_block}'] = h5py.SoftLink(f'/VTKHDF/Block{i_block}')
 
     # Add block data
-    cell_data_group = block_group.create_group('CellData')
+    if data_type == "CellData": data_group = block_group.create_group('CellData')
+    elif data_type == "PointData": data_group = block_group.create_group('PointData')
 
     # Create empty dataset for scalars
     bs_now = np.array(sub_tree[i_block]) * bs_o
+    if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] == 1
     for i_s, i_n in zip(s_names, s_ind):
-      if w_main.dim == 2: cell_data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
-      else: cell_data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+      if w_main.dim == 2: data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+      else: data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
     # Create empty datasets for vectors
     for i_v, i_n in zip(v_names, v_ind):
-      if w_main.dim == 2: cell_data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
-      else: cell_data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+      if w_main.dim == 2: data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+      else: data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
   if args.verbose and mpi_rank == 0: print(f"   Created metadata: {time.time() - start_time:.3f} seconds")
 
   ### independent loop attaching the actual data - this is parallelized
@@ -271,11 +273,13 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         print_progress_bar(i_block, int(total_blocks/mpi_size), prefix=f'   Processing data:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s')
 
     # get celldatagroup
-    cell_data_group = vtkhdf_group[f'Block{i_block}']['CellData']
+    if data_type == "CellData": vtkhdf_group[f'Block{i_block}']['CellData']
+    elif data_type == "PointData": vtkhdf_group[f'Block{i_block}']['PointData']
 
     # Attach data for scalars - currently copying but maybe there is a more clever way
     id_now = block_id[i_block]
     bs_now = np.array(sub_tree[i_block]) * bs_o
+    if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] == 1
     for i_s, i_n in zip(s_names, s_ind):  
       # block is composed of subtree
@@ -288,10 +292,10 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         b_id = np.array(wabbit_tools.tc_decoding(i_sister,level=int(np.log2(len(id_now))//w_main.dim), max_level=int(np.log2(len(id_now))//w_main.dim),dim=w_main.dim))-1
         if w_main.dim == 2: b_id = np.append(b_id, 0)
         # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
-        data_append[bs_o[2]*b_id[2]:bs_o[2]+bs_o[2]*b_id[2], \
-                bs_o[1]*b_id[1]:bs_o[1]+bs_o[1]*b_id[1], \
-                bs_o[0]*b_id[0]:bs_o[0]+bs_o[0]*b_id[0]] = j_block[tuple([slice(None,-1)]*w_main.dim)]
-      cell_data_group[i_s][:] = data_append
+        data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
+                bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
+                bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0]] = j_block[tuple([slice(None,-1 if data_type == "CellData" else None)]*w_main.dim)]
+      data_group[i_s][:] = data_append
     # Attach data for vectors - currently copying but maybe there is a more clever way
     for i_v, i_n in zip(v_names, v_ind):
       # block is composed of subtree
@@ -305,10 +309,10 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
           b_id = np.array(wabbit_tools.tc_decoding(i_sister,level=int(np.log2(len(id_now))//w_main.dim), max_level=int(np.log2(len(id_now))//w_main.dim),dim=w_main.dim))-1
           if w_main.dim == 2: b_id = np.append(b_id, 0)
           # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
-          data_append[bs_o[2]*b_id[2]:bs_o[2]+bs_o[2]*b_id[2], \
-                  bs_o[1]*b_id[1]:bs_o[1]+bs_o[1]*b_id[1], \
-                  bs_o[0]*b_id[0]:bs_o[0]+bs_o[0]*b_id[0],i_depth] = j_block[tuple([slice(None,-1)]*w_main.dim)]
-      cell_data_group[i_v][:] = data_append
+          data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
+                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
+                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0],i_depth] = j_block[tuple([slice(None,-1 if data_type == "CellData" else None)]*w_main.dim)]
+      data_group[i_v][:] = data_append
 
   # close file
   f.close()
@@ -317,6 +321,23 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
 
   if mpi_parallel: MPI.Finalize()
             
+def vtkhdf_time_bundle(in_folder, out_name, verbose=True):
+  vtkhdf_files = sorted(glob.glob(os.path.join(in_folder, f"{out_name}_*.vtkhdf")))
+  # extract times
+  vtkhdf_timesteps = []
+  for i, filename in enumerate(vtkhdf_files): vtkhdf_timesteps.append(filename.split("_")[-1].split(".")[0])
+  # Create a list of file entries with time indices
+  vtkhdf_entries = [{"name": os.path.split(fname)[1], "time": float(vtkhdf_timesteps[i])} for i, fname in enumerate(vtkhdf_files)]
+  # Create the JSON structure
+  vtkhdf_data = {
+      "file-series-version": "1.0",
+      "files": vtkhdf_entries
+  }
+  # Write the JSON file
+  series_filename = os.path.join(in_folder, f"{out_name}.vtkhdf.series")
+  with open(series_filename, "w") as json_file:
+      json.dump(vtkhdf_data, json_file, indent=4)
+  if verbose: print(f"Bundled data for different times: {series_filename}")
 
 
 if __name__ == "__main__":
@@ -329,6 +350,9 @@ if __name__ == "__main__":
   parser.add_argument("-m", "--merge-grid", help="Use the merge algorithm to merge full sister blocks", action="store_true")
 
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
+
+  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input.", action="store_true")
+  parser.add_argument("-p", "--point-data", help="Save as pointdata, elsewise celldata is saved", action="store_true")
 
   # parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
   # files at the same time, which have different file names. Then you'll want to
@@ -398,7 +422,10 @@ if __name__ == "__main__":
     if args.verbose and mpi_rank == 0: print(f"Time {i_time}, {i_n+1}/{len(time_process)}")
 
     # create vtkhdf
-    hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid)
+    hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, data_type="CellData" if not args.point_data else "PointData")
 
     # output timing
     if args.verbose and mpi_rank == 0: print(f"   Converted file:   {time.time() - start_time:.3f} seconds")
+
+  # vtkhdf is created one file for each time-step, but we can luckily bundle them all up so let's do this!
+  if args.time_bundle: vtkhdf_time_bundle(args.infile, args.outfile, args.verbose)

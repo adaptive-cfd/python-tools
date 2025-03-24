@@ -105,13 +105,13 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
 
     ### Define grid coordinates
     for i_d in range(depth):
-      offset = 1.2*np.max(i_wobj.domain_size) * i_d
+      offset = 1.1*np.max(i_wobj.domain_size) * (i_d + (l_min-1)*split_levels)
       for i_dim in range(3):
         val_range = vtkDoubleArray()
         val_range.SetNumberOfValues(2 - (i_dim == dim+1))
-        val_range.SetValue(0, 0 + (i_dim==2)*offset)
+        val_range.SetValue(0, 0 + (i_dim==1)*offset)
         # if not 2D and we look at Z we set the second direction
-        if i_dim != dim: val_range.SetValue(1, i_wobj.domain_size[i_dim] + (i_dim==2)*offset)
+        if i_dim != dim: val_range.SetValue(1, i_wobj.domain_size[i_dim] + (i_dim==1)*offset)
         if i_dim == 0: htg[i_d].SetXCoordinates(val_range)
         elif i_dim == 1: htg[i_d].SetYCoordinates(val_range)
         elif i_dim == 2: htg[i_d].SetZCoordinates(val_range)
@@ -126,6 +126,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
 
     # lets create the cursor and root cell
     cursor = [None for _ in range(depth)]
+    block_added = [{} for _ in range(depth)]
     for i_d in range(depth):
       cursor[i_d] = vtkHyperTreeGridNonOrientedCursor()
       offsetIndex = 0
@@ -168,11 +169,13 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
           c_index = cursor[i_d].GetGlobalNodeIndex()
 
           # insert zero for non-leafs as we only have leafs in our code currently
-          for i_a in range(len(s_data)):
-            s_data[i_a][i_d].InsertTuple1(c_index, unknown_value)
-          for i_a in range(len(v_data)):
-            for i_dim in range(dim):
-              v_data[i_a][i_d].InsertComponent(c_index, i_dim, unknown_value)
+          # only insert values the first time this branch is walked and new blocks are encountered
+          if not block_added[i_d].get(c_index, False):
+            for i_a in range(len(s_data)):
+              s_data[i_a][i_d].InsertTuple1(c_index, unknown_value)
+            for i_a in range(len(v_data)):
+              for i_dim in range(dim):
+                v_data[i_a][i_d].InsertComponent(c_index, i_dim, unknown_value)
 
       # insert points on block level
       for i_a in range(len(s_data)):
@@ -180,6 +183,8 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       for i_a in range(len(v_data)):
         for i_dim in range(dim):
           v_data[i_a][d_p].InsertComponent(cursor[d_p].GetGlobalNodeIndex(), i_dim, wabbit_v[i_a][i_block, i_dim])
+      # insert index as treated
+      block_added[d_p][cursor[d_p].GetGlobalNodeIndex()] = True
 
       # In theory we could create a 16x16x16 block or 32x32x32 block and treat them as full childrens in the HyperTreeGrid
       # However, this is painfully slow and creates unnecessary large files
@@ -246,6 +251,21 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   elif save_mode.lower() == "appended": writer.SetDataModeToAppended()
   else: print(bcolors.FAIL + f"ERROR: save mode unknown - {save_mode}" + bcolors.ENDC)
   writer.Write()
+
+
+def htg_time_bundle(in_folder, out_name, verbose=True):
+  htg_files = sorted(glob.glob(os.path.join(in_folder, f"{out_name}_*.htg")))
+  # Create PVD file content
+  grid_content = '<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n  <Collection>\n'
+  # write grid files
+  for i, filename in enumerate(htg_files):
+      time_stamp = filename.split("_")[-1].split(".")[0]
+      grid_content += f'    <DataSet timestep="{time_stamp}" file="{os.path.split(filename)[1]}"/>\n'
+  grid_content += '  </Collection>\n</VTKFile>'
+  # Write to PVD files
+  with open(os.path.join(in_folder, f"{out_name}-grid.pvd"), "w") as f: f.write(grid_content)
+      
+  if verbose: print(f"Bundled grids for different times in file {out_name}-grid.pvd'")
 
 
 def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False):
@@ -343,7 +363,7 @@ def hdf2vtm(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       # block = vtk.vtkUniformGrid()
       block = vtk.vtkImageData()
       # for overfull CVS grids we have the option to split them into levels to make the overlay visible
-      split_levels_add = (split_levels * (w_main.level[i_b]-1) * np.max(w_main.domain_size))
+      split_levels_add = (split_levels * (w_main.level[i_b]-1) * np.max(w_main.domain_size)) * 1.1
       # attention: the spacings have to be inverted, I don't completely know why but it is necessary
       if w_main.dim == 2:
         block.SetDimensions(w_main.block_size[1], w_main.block_size[0], 1)
@@ -445,6 +465,8 @@ if __name__ == "__main__":
   parser.add_argument("-o", "--outfile", help="vtk file to write to, default is all_[Time].vtm / *.htg", default="all")
   parser.add_argument("-i", "--infile", help="file or directory of h5 files, if not ./", default="./")
 
+  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input.", action="store_true")
+
   parser.add_argument("--cvs-split-levels", help="For overfull CVS grids, divide them by levels", action="store_true")
 
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
@@ -527,6 +549,9 @@ if __name__ == "__main__":
     # create vtm with blockdata
     if args.vtm:
       hdf2vtm(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels)
+
+  # vtkhdf is created one file for each time-step, but we can luckily bundle them all up so let's do this!
+  if args.time_bundle: htg_time_bundle(args.infile, args.outfile, args.verbose)
 
   # # debug stuff
   # # state1 = wabbit_tools2.WabbitState("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
