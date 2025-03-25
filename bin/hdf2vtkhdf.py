@@ -222,6 +222,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
 
   ### collective loop creating the metadata - all processes need to do this
   start_time = time.time()
+  data_group = [[]]*total_blocks
   for i_block in range(total_blocks):
     # for overfull CVS grids we have the option to split them into levels to make the overlay visible
     split_levels_add = (split_levels * (level[i_block]-1) * np.max(w_main.domain_size)) * 1.1
@@ -246,20 +247,20 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     assembly_group[f'Block{i_block}'] = h5py.SoftLink(f'/VTKHDF/Block{i_block}')
 
     # Add block data
-    if data_type == "CellData": data_group = block_group.create_group('CellData')
-    elif data_type == "PointData": data_group = block_group.create_group('PointData')
+    if data_type == "CellData": data_group[i_block] = block_group.create_group('CellData')
+    elif data_type == "PointData": data_group[i_block] = block_group.create_group('PointData')
 
     # Create empty dataset for scalars
     bs_now = np.array(sub_tree[i_block]) * bs_o
     if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] == 1
     for i_s, i_n in zip(s_names, s_ind):
-      if w_main.dim == 2: data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
-      else: data_group.create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+      if w_main.dim == 2: data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+      else: data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
     # Create empty datasets for vectors
     for i_v, i_n in zip(v_names, v_ind):
-      if w_main.dim == 2: data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
-      else: data_group.create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+      if w_main.dim == 2: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+      else: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
   if args.verbose and mpi_rank == 0: print(f"   Created metadata: {time.time() - start_time:.3f} seconds")
 
   ### independent loop attaching the actual data - this is parallelized
@@ -295,7 +296,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
                 bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
                 bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0]] = j_block[tuple([slice(None,-1 if data_type == "CellData" else None)]*w_main.dim)]
-      data_group[i_s][:] = data_append
+      data_group[i_block][i_s][:] = data_append
     # Attach data for vectors - currently copying but maybe there is a more clever way
     for i_v, i_n in zip(v_names, v_ind):
       # block is composed of subtree
@@ -312,7 +313,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
           data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
                   bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
                   bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0],i_depth] = j_block[tuple([slice(None,-1 if data_type == "CellData" else None)]*w_main.dim)]
-      data_group[i_v][:] = data_append
+      data_group[i_block][i_v][:] = data_append
 
   # close file
   f.close()
