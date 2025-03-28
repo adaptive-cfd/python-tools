@@ -581,7 +581,7 @@ def exists_ini_section( inifile, section ):
 
 def replace_ini_value(file, section, keyword, new_value):
     """
-    replace ini value: Sets a value in an INI file. Useful for scripting of preprocessing
+    replace ini value: Sets a value in an INI file. Useful for scripting of preprocessing.
     
 
     Parameters
@@ -602,9 +602,10 @@ def replace_ini_value(file, section, keyword, new_value):
     """
     import bcolors
     
-    found_section, found_keyword = False, False
+    found_section = False
     i = 0
-
+    # in case we do not find the parameter
+    value_old = "DID NOT EXIST YET"
 
     with open(file, 'r') as f:
         # read a list of lines into data
@@ -613,45 +614,50 @@ def replace_ini_value(file, section, keyword, new_value):
         
 
     # loop over all lines
-    for line in data:
+    for k, line in enumerate(data):
         line = line.lstrip().rstrip()
         if len(line) > 0:
             if line[0] != ';':
-                if '['+section+']' in line:
-                    found_section = True
-                    
-                if ';' in line:
-                    line_nocomments = line[0:line.index(';')]
-                else:
-                    line_nocomments = ""
+                # copy line string and remove comments
+                line_nocomments = line
                 
+                if ';' in line:
+                    line_nocomments = line_nocomments[0:line.index(';')]
                     
-                if '[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section:
-                    # left section again
-                    found_section = False         
+                # is this the beginning of the section ?
+                if '['+section+']' in line_nocomments:
+                    found_section = True
+                                    
+                if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)-1) :
+                    print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
+                    
+                    data.insert(k, keyword+'='+new_value+';\n')
+                    # left section again, this is the next section already
                     break
                     
-                if keyword+'=' in line and found_section:
-                    # found keyword in section
-                    found_keyword = True
+                if keyword+'=' in line_nocomments and found_section:
                     # if they forgot the semicolon, add it
-                    if not ';' in line:
-                        line+=';'
+                    if not ';' in line_nocomments:
+                        line_nocomments += ';'
                         
-                    old_value = line[ line.index(keyword+"="):line.index(";") ]
+                    value_old = line_nocomments[ line_nocomments.index(keyword+"="):line_nocomments.index(";") ]
      
-                    line = line.replace(old_value, keyword+'='+new_value)
-                    data[i] = line+'\n'
-                    
-                    print("changed: "+bcolors.FAIL+old_value+bcolors.ENDC+" to: "+bcolors.OKGREEN+keyword+'='+new_value+bcolors.ENDC)
+                    # use "line" to keep possible comments in the INI file
+                    line_new = line.replace(value_old, keyword+'='+new_value)
+                    data[i] = line_new+'\n'
                     break
         i += 1
-       
+
+    # .... and write everything back
+    with open(file, 'w') as f:
+        f.writelines( data )
+
+    # re-read from inifile to check if the substitution REALLY worked
+    value_new_control = get_ini_parameter(file, section, keyword, dtype=str)
+    
+    print("changed: "+bcolors.FAIL+value_old+bcolors.ENDC+" to: "+bcolors.OKGREEN+keyword+'='+value_new_control+bcolors.ENDC)
                     
-    if found_keyword:
-        # .... and write everything back
-        with open(file, 'w') as f:
-            f.writelines( data )
+
 
 
 #

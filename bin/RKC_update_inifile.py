@@ -107,19 +107,16 @@ CFL_nu  = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_nu', dtype=float
 L       = inifile_tools.get_ini_parameter(inifile, 'Domain', 'domain_size', vector=True)[0]
 order   = inifile_tools.get_ini_parameter(inifile, 'Discretization', 'order_discretization', dtype=str)
 
-
-
-
-# this will be the time step used in the simulation
 dx     = 2**(-Jmax)*L/Bs
-dt_set = np.min( [CFL * dx / c0, CFL_eta*C_eta] )
-print("dt_selected: dt_CFL=%e dt_CFLeta=%e used=%e" % (CFL * dx / c0, CFL_eta*C_eta, dt_set))
 K_eta  = np.sqrt(nu*C_eta)/dx
 
-
-
+if inifile_tools.get_ini_parameter(inifile, 'Time', 'time_step_method', dtype=str) != "RungeKuttaChebychev":
+    print("\n\n\n%sWARNING ! TIME STEPPER NOT SET TO RungeKuttaChebychev ... I auto-correct your mistake.%s" % (bcolors.WARNING, bcolors.ENDC))
+    inifile_tools.replace_ini_value(inifile, 'Time', 'time_step_method', 'RungeKuttaChebychev')
+    
+    
 # warn if the time step is still determined by C_eta
-if np.abs( dt_set  - CFL_eta*C_eta ) <= 1e-6:    
+if CFL_eta < 2.0:    
     print("\n\n\n%sWARNING ! POSSIBLE ERROR IN INIFILE%s" % (bcolors.WARNING, bcolors.ENDC))
     print("""The time step dt when using a traditional RK4 scheme must be smaller than C_eta, the penalization
     constant. This is often a severe restriction. This script chooses the best RKC (note C instead of 4) 
@@ -152,7 +149,11 @@ if CFL_nu < 1.0:
         CFL_nu = inifile_tools.get_ini_parameter(inifile, 'Time', 'CFL_nu', dtype=float, default=0.10)
         
     print("\n\n")
+
     
+# this will be the time step used in the simulation
+dt_set = np.min( [CFL * dx / c0, CFL_eta*C_eta] )
+print("dt_selected: dt_CFL=%e dt_CFLeta=%e used=%e" % (CFL * dx / c0, CFL_eta*C_eta, dt_set))
 
 # cost of a reference RK4 simulation
 CFL4   = 1.0
