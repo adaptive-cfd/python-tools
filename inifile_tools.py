@@ -627,14 +627,18 @@ def replace_ini_value(file, section, keyword, new_value):
                 # is this the beginning of the section ?
                 if '['+section+']' in line_nocomments:
                     found_section = True
-                                    
+                            
+                # add parameter to INI file - it was not there before. its
+                # appended at the end of a section, right before the next section.
+                # that may look ugly, but it is correct.
                 if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)-1) :
                     print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
-                    
+                    # insert parameter
                     data.insert(k, keyword+'='+new_value+';\n')
                     # left section again, this is the next section already
                     break
                     
+                # do we find the keyword here?
                 if keyword+'=' in line_nocomments and found_section:
                     # if they forgot the semicolon, add it
                     if not ';' in line_nocomments:
@@ -643,7 +647,15 @@ def replace_ini_value(file, section, keyword, new_value):
                     value_old = line_nocomments[ line_nocomments.index(keyword+"="):line_nocomments.index(";") ]
      
                     # use "line" to keep possible comments in the INI file
-                    line_new = line.replace(value_old, keyword+'='+new_value)
+                    if ';' in line:
+                        # The line is like "test=something;" and we replace 'test=something' by 'test=new_value'
+                        line_new = line.replace(value_old, keyword+'='+new_value)
+                    else:
+                        # if there is no ';', then there are no comments, but we should add it at the end of the line
+                        # In this case, the line is like "test=" (no ';')
+                        line_new = line.replace(value_old, keyword+'='+new_value+';')
+                        
+                    # copy modified line to array
                     data[i] = line_new+'\n'
                     break
         i += 1

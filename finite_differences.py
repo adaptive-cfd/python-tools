@@ -6,7 +6,6 @@ Created on Thu Dec  5 21:41:23 2019
 @author: tommy
 """
 import numpy as np
-import scipy.special
 import matplotlib.pyplot as plt
 
 
