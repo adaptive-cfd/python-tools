@@ -5,16 +5,16 @@ Created on Tue Sep 17 17:27:43 2024
 
 @author: engels
 """
+import time
+
 
 import bcolors
 import numpy as np
-import scipy.special
 import matplotlib.pyplot as plt
 import finite_differences
-import wabbit_tools
+
 import sys, os
 import inifile_tools
-
 
 def ACM_operator(c0, C_eta, nu, dx, mask=None, U=1.0, order="4th-classical"):
     """
@@ -91,9 +91,12 @@ def sponge_mask(x, L_sponge, typ):
 # PARAMETERS
 #------------------------------------------------------------------------------
 
+
 inifile = sys.argv[1]
 if not os.path.isfile(inifile):
     print("ERROR: I did not find any inifile :(")
+    
+
 
 c0    = inifile_tools.get_ini_parameter(inifile, 'ACM-new', 'c_0')
 nu    = inifile_tools.get_ini_parameter(inifile, 'ACM-new', 'nu')
@@ -110,10 +113,18 @@ order   = inifile_tools.get_ini_parameter(inifile, 'Discretization', 'order_disc
 dx     = 2**(-Jmax)*L/Bs
 K_eta  = np.sqrt(nu*C_eta)/dx
 
+#%% catch some typical mistakes
+
+
+# obviously, the time stepper needs to be RKC. Otherwise, we correct that
 if inifile_tools.get_ini_parameter(inifile, 'Time', 'time_step_method', dtype=str) != "RungeKuttaChebychev":
     print("\n\n\n%sWARNING ! TIME STEPPER NOT SET TO RungeKuttaChebychev ... I auto-correct your mistake.%s" % (bcolors.WARNING, bcolors.ENDC))
     inifile_tools.replace_ini_value(inifile, 'Time', 'time_step_method', 'RungeKuttaChebychev')
     
+# otherwise it's possible wabbit ignores the beautiful work that we do here
+# RKC_custom_scheme=yes is mandatory
+if inifile_tools.get_ini_parameter(inifile, 'Time', 'RKC_custom_scheme', dtype=str) != "yes":
+    inifile_tools.replace_ini_value(inifile, 'Time', 'RKC_custom_scheme', 'yes')
     
 # warn if the time step is still determined by C_eta
 if CFL_eta < 2.0:    
@@ -150,7 +161,10 @@ if CFL_nu < 1.0:
         
     print("\n\n")
 
-    
+
+#%% ready with checks, actual important part of the script
+
+
 # this will be the time step used in the simulation
 dt_set = np.min( [CFL * dx / c0, CFL_eta*C_eta] )
 print("dt_selected: dt_CFL=%e dt_CFLeta=%e used=%e" % (CFL * dx / c0, CFL_eta*C_eta, dt_set))
@@ -193,6 +207,11 @@ eigenvalues, dummy = np.linalg.eig(o)
 # matrices, if they are both significant. We determined them numerically, and determined
 # as a function of K_\eta, how the real part needs to be scaled from the 1D to the 2D/3D case.
 # Those factors are listed below and interpolated to scale the 1D eigenvalues appropriately. 
+# 
+# Internal note (TE):
+# script used: ACM_eigenvalues_1d2d3d_newVersion_scanKeta.m
+# output plot: eigenvalue_ratios_Keta.eps
+#
 if dim == 3:
     Scale_vct = [1.0923, 1.0923, 1.3211, 1.5941, 1.8467, 2.0553, 2.2197, 2.3478, 2.4481, 2.5278, 2.5923, 2.6455, 2.6900, 2.7276, 2.7594, 2.7864, 2.8094, 2.8291, 2.8460, 2.8606, 3.0000, 3.0000]
     Keta_vct  = [0.0000, 0.1000, 0.2000, 0.3000, 0.4000, 0.5000, 0.6000, 0.7000, 0.8000, 0.9000, 1.0000, 1.1000, 1.2000, 1.3000, 1.4000, 1.5000, 1.6000, 1.7000, 1.8000, 1.9000, 2.0000, 100.00]
