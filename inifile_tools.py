@@ -631,7 +631,7 @@ def replace_ini_value(file, section, keyword, new_value):
                 # add parameter to INI file - it was not there before. its
                 # appended at the end of a section, right before the next section.
                 # that may look ugly, but it is correct.
-                if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)-1) :
+                if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)) :
                     print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
                     # insert parameter
                     data.insert(k, keyword+'='+new_value+';\n')
