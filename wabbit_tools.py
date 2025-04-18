@@ -758,7 +758,7 @@ class WabbitHDF5file:
                         # replace function values
                         fun_val = function(coords_point)
 
-                        if len(block.shape) == 4: self.blocks[i_block, i_x, i_y, i_z] = fun_val
+                        if len(block.shape) == 3: self.blocks[i_block, i_x, i_y, i_z] = fun_val
                         else: self.blocks[i_block, i_x, i_y] = fun_val
 
 

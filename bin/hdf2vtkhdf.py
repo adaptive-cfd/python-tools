@@ -322,11 +322,12 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
 
   if mpi_parallel: MPI.Finalize()
             
-def vtkhdf_time_bundle(in_folder, out_name, verbose=True):
+def vtkhdf_time_bundle(in_folder, out_name, timestamps=[], verbose=True):
   vtkhdf_files = sorted(glob.glob(os.path.join(in_folder, f"{out_name}_*.vtkhdf")))
   # extract times
-  vtkhdf_timesteps = []
-  for i, filename in enumerate(vtkhdf_files): vtkhdf_timesteps.append(filename.split("_")[-1].split(".")[0])
+  vtkhdf_timesteps = timestamps
+  if len(vtkhdf_timesteps) == 0 or len(vtkhdf_timesteps) != len(vtkhdf_files):
+    for i, filename in enumerate(vtkhdf_files): vtkhdf_timesteps.append(filename.split("_")[-1].split(".")[0])
   # Create a list of file entries with time indices
   vtkhdf_entries = [{"name": os.path.split(fname)[1], "time": float(vtkhdf_timesteps[i])} for i, fname in enumerate(vtkhdf_files)]
   # Create the JSON structure
@@ -429,4 +430,4 @@ if __name__ == "__main__":
     if args.verbose and mpi_rank == 0: print(f"   Converted file:   {time.time() - start_time:.3f} seconds")
 
   # vtkhdf is created one file for each time-step, but we can luckily bundle them all up so let's do this!
-  if args.time_bundle: vtkhdf_time_bundle(args.infile, args.outfile, args.verbose)
+  if args.time_bundle: vtkhdf_time_bundle(args.infile, args.outfile, timestamps=sorted(time_process.keys()), verbose=args.verbose)

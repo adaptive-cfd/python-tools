@@ -253,13 +253,16 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   writer.Write()
 
 
-def htg_time_bundle(in_folder, out_name, verbose=True):
+def htg_time_bundle(in_folder, out_name, timestamps=[], verbose=True):
   htg_files = sorted(glob.glob(os.path.join(in_folder, f"{out_name}_*.htg")))
   # Create PVD file content
   grid_content = '<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1" byte_order="LittleEndian">\n  <Collection>\n'
   # write grid files
   for i, filename in enumerate(htg_files):
-      time_stamp = filename.split("_")[-1].split(".")[0]
+      if len(timestamps) == 0 or len(timestamps) != len(htg_files):
+        time_stamp = filename.split("_")[-1].split(".")[0]
+      else:
+        time_stamp = timestamps[i]
       grid_content += f'    <DataSet timestep="{time_stamp}" file="{os.path.split(filename)[1]}"/>\n'
   grid_content += '  </Collection>\n</VTKFile>'
   # Write to PVD files
@@ -551,7 +554,7 @@ if __name__ == "__main__":
       hdf2vtm(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels)
 
   # vtkhdf is created one file for each time-step, but we can luckily bundle them all up so let's do this!
-  if args.time_bundle: htg_time_bundle(args.infile, args.outfile, args.verbose)
+  if args.time_bundle: htg_time_bundle(args.infile, args.outfile, timestamps=sorted(time_process.keys()), verbose=args.verbose)
 
   # # debug stuff
   # # state1 = wabbit_tools2.WabbitState("../WABBIT/TESTING/jul/vorabs_000002000000.h5")
