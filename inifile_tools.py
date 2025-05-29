@@ -5,7 +5,7 @@ import numpy as np
 import bcolors
 
 
-#
+# This routine is WABBIT specific, so it actually belongs in WABBIT_TOOLS
 def check_parameters_for_stupid_errors( file ):
     """
     For a given WABBIT parameter file, check for the most common stupid errors
@@ -154,8 +154,30 @@ def check_parameters_for_stupid_errors( file ):
     
     if geometry == "Insect":
         h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
-        print('--- insect ----')
-        print('h_wing/dx = %2.2f' % (h_wing/dx))
+        print('-- insect')
+        print('    h_wing/dx = %2.2f' % (h_wing/dx))
+        print('')
+    
+    
+    if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool ):
+        # we use a fractal tree
+        file_tree = get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str)
+        if not os.path.isfile(file_tree):
+            bcolors.err('Fractal tree module in use but input file not found: '+file_tree)
+        
+        d_tree = np.loadtxt(get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str))
+        d_tree *= get_ini_parameter(file, 'Insects', 'fractal_tree_scaling')
+        
+        # file contains radius not diameter
+        D_min = 2.0*np.min(d_tree[:,6])
+        D_max = 2.0*np.max(d_tree[:,6])
+        # tree height
+        H_tree = np.max(d_tree[:,5])-np.min(d_tree[:,2])
+        
+        print('-- fractal tree:')
+        print('    Dmin=%f (%2.2f dx) Dmax=%f (%2.2f dx)' %(D_min, D_min/dx, D_max, D_max/dx))
+        print('    H_tree=%f H_tree/dx=%2.1f' % (H_tree, H_tree/dx)  )
+        print('')
     
     print("======================================================================================")
     
@@ -179,6 +201,15 @@ def check_parameters_for_stupid_errors( file ):
           
     if g < g_default:
         bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
+        
+    if geometry == "Insect":
+        x0_insect = get_ini_parameter( file, 'Insects', 'x0', float, vector=True, default=[L/2.0])
+        
+        if any(x0_insect>L) or any(x0_insect<0):
+            print(x0_insect)
+            print(L)
+            bcolors.err('Insect placed outside of domain?' )
+            
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
@@ -260,6 +291,8 @@ def check_parameters_for_stupid_errors( file ):
         
     if penalized and ceta <= 1.0e-15:
         bcolors.err('Penalization is used but C_eta=%e' % (ceta) )
+        
+
 
     # -----------------saving section ---------------------------------
     N_fields_saved = get_ini_parameter( file, 'Saving', 'N_fields_saved', int)
@@ -356,6 +389,8 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     import configparser
     import os
     import numpy as np
+    # regular expressions:
+    import re
 
     # check if the file exists, at least
     if not os.path.isfile(inifile):
@@ -441,6 +476,14 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     for line in fid:
         # remove leading and trailing spaces from line
         line = line.strip()
+        
+        # in FORTRAN we permitted the following comment characters: ! % # ;
+        line.replace('%', ';')
+        line.replace('!', ';')
+        line.replace('#', ';')
+        
+        # collapse multiple blanks into one
+        line = re.sub(' +', ' ', line)
         
         # remove trailing comments (including the ';')
         if ';' in line:

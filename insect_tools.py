@@ -196,14 +196,6 @@ def cm2inch(value):
 def deg2rad(value):
     return value*np.pi/180.0
 
-# construct a column-vector for math operatrions. I hate python.
-def vct(x):
-    # use the squeeze function in case x is a [3,1] or [1,3]
-    v = np.matrix(x)
-    v = v[np.newaxis]
-    v = v.reshape(len(x),1)
-    return v
-
 def ylim_auto(ax, x, y):
    # ax: axes object handle
    #  x: data for entire x-axes
@@ -739,8 +731,10 @@ def Fserieseval(a0, ai, bi, time):
     """
     if ai.shape[0] != bi.shape[0]:
         raise ValueError("ai and bi must be of the same length!")
+        
+    y = np.zeros_like(time)
+    y[:] = a0/2.0
     
-    y = a0/2.0
     for k in range( ai.size ):
         # note pythons tedious 0-based indexing, so wavenumber is k+1
         y = y + ai[k]*np.cos(2.0*np.pi*float(k+1)*time) + bi[k]*np.sin(2.0*np.pi*float(k+1)*time)
@@ -819,20 +813,17 @@ def Hserieseval(a0, ai, bi, time):
 
 
 def read_kinematics_file( fname, unit_out='deg' ):
-    import configparser
     import os
     import inifile_tools
     
     if not os.path.isfile(fname):
         raise ValueError("File "+fname+" not found!")
-
-    config = configparser.ConfigParser( inline_comment_prefixes=(';'), allow_no_value=True )
-    # read the ini-file
-    config.read(fname)
-
-    if config['kinematics']:
-        convention = read_param(config,'kinematics','convention')
-        series_type = read_param(config,'kinematics','type')
+        
+        
+    if inifile_tools.exists_ini_section(fname, 'kinematics'):
+        convention = inifile_tools.get_ini_parameter(fname, 'kinematics', 'convention', dtype=str, default='flusi')
+        series_type = inifile_tools.get_ini_parameter(fname, 'kinematics', 'type', dtype=str)
+        
         # input file units
         unit_in = inifile_tools.get_ini_parameter(fname,'kinematics', 'units', default='deg', dtype=str)
         
@@ -845,25 +836,25 @@ def read_kinematics_file( fname, unit_out='deg' ):
         if unit_in == ["radian","RADIAN","Radian","radiant","RADIANT","Radiant","rad","RAD"]:
             # simplified to deg/rad
             unit_in = 'rad'
-
+        
         if convention != "flusi":
             raise ValueError("The kinematics file %s is using a convention not supported yet" % (fname))
-
+            
         if series_type == "fourier":
-            a0_phi   = float(read_param(config,'kinematics','a0_phi'))
-            a0_alpha = float(read_param(config,'kinematics','a0_alpha'))
-            a0_theta = float(read_param(config,'kinematics','a0_theta'))
+            a0_phi   = inifile_tools.get_ini_parameter(fname, 'kinematics', 'a0_phi')
+            a0_alpha = inifile_tools.get_ini_parameter(fname, 'kinematics', 'a0_alpha')
+            a0_theta = inifile_tools.get_ini_parameter(fname, 'kinematics', 'a0_theta')
         else:
             a0_phi, a0_theta, a0_alpha = 0.0, 0.0, 0.0
             
-        ai_alpha = read_param_vct(config,'kinematics','ai_alpha')
-        bi_alpha = read_param_vct(config,'kinematics','bi_alpha')
+        ai_alpha = inifile_tools.get_ini_parameter(fname, 'kinematics', 'ai_alpha', vector=True)
+        bi_alpha = inifile_tools.get_ini_parameter(fname, 'kinematics', 'bi_alpha', vector=True)
 
-        ai_theta = read_param_vct(config,'kinematics','ai_theta')
-        bi_theta = read_param_vct(config,'kinematics','bi_theta')
+        ai_theta = inifile_tools.get_ini_parameter(fname, 'kinematics', 'ai_theta', vector=True)
+        bi_theta = inifile_tools.get_ini_parameter(fname, 'kinematics', 'bi_theta', vector=True)
 
-        ai_phi   = read_param_vct(config,'kinematics','ai_phi')
-        bi_phi   = read_param_vct(config,'kinematics','bi_phi')
+        ai_phi   = inifile_tools.get_ini_parameter(fname, 'kinematics', 'ai_phi', vector=True)
+        bi_phi   = inifile_tools.get_ini_parameter(fname, 'kinematics', 'bi_phi', vector=True)
         
         if unit_out != unit_in:
             # factor1 converts input to deg
@@ -889,12 +880,12 @@ def read_kinematics_file( fname, unit_out='deg' ):
             
             ai_phi   *= factor1*factor2
             bi_phi   *= factor1*factor2
-            
-
+           
 
         return a0_phi, ai_phi, bi_phi, a0_alpha, ai_alpha, bi_alpha, a0_theta, ai_theta, bi_theta, series_type
+            
     else:
-        print('This seems to be an invalid ini file as it does not contain the kinematics section')
+        raise ValueError('This seems to be an invalid ini file as it does not contain the kinematics section')
 
 
 
@@ -997,41 +988,37 @@ def eval_angles_kinematics_file(fname, time=None, unit_out='deg'):
         phi   = Hserieseval(a0_phi  , ai_phi  , bi_phi  , t)
         theta = Hserieseval(a0_theta, ai_theta, bi_theta, t)
     
-        
-    
+   
     return t, phi, alpha, theta
 
 
 
 
-def Rx( angle ):
+def Rx( angle, unit_in="rad" ):
+    if unit_in != "rad":
+        angle = deg2rad(angle)
     # rotation matrix around x axis
-    Rx = np.ndarray([3,3])
-    Rx = [[1.0,0.0,0.0],[0.0,np.cos(angle),np.sin(angle)],[0.0,-np.sin(angle),np.cos(angle)]]
-    # note the difference between array and matrix (it is the multiplication)
-    Rx = np.matrix( Rx )
+    Rx = np.asarray([[1.0,0.0,0.0],[0.0,np.cos(angle),np.sin(angle)],[0.0,-np.sin(angle),np.cos(angle)]])        
     return Rx
 
 
-def Ry( angle ):
+def Ry( angle, unit_in="rad" ):
+    if unit_in != "rad":
+        angle = deg2rad(angle)
     # rotation matrix around y axis
-    Rx = np.ndarray([3,3])
-    Rx = [[np.cos(angle),0.0,-np.sin(angle)],[0.0,1.0,0.0],[+np.sin(angle),0.0,np.cos(angle)]]
-    # note the difference between array and matrix (it is the multiplication)
-    Rx = np.matrix( Rx )
+    Rx = np.asarray([[np.cos(angle),0.0,-np.sin(angle)],[0.0,1.0,0.0],[+np.sin(angle),0.0,np.cos(angle)]])
     return Rx
 
 
-def Rz( angle ):
+def Rz( angle, unit_in="rad" ):
+    if unit_in != "rad":
+        angle = deg2rad(angle)
     # rotation matrix around z axis
-    Rx = np.ndarray([3,3])
-    Rx = [[ np.cos(angle),+np.sin(angle),0.0],[-np.sin(angle),np.cos(angle),0.0],[0.0,0.0,1.0]]
-    # note the difference between array and matrix (it is the multiplication)
-    Rx = np.matrix( Rx )
+    Rx = np.asarray([[ np.cos(angle),+np.sin(angle),0.0],[-np.sin(angle),np.cos(angle),0.0],[0.0,0.0,1.0]])
     return Rx
 
 
-def Rmirror( x0, n):
+def Rmirror( x0, n ):
     # mirror by a plane through origin x0 with given normal n
     # source: https://en.wikipedia.org/wiki/Transformation_matrix#Reflection_2
     Rmirror =  np.zeros([4,4])
@@ -1039,9 +1026,7 @@ def Rmirror( x0, n):
     a, b, c = n[0], n[1], n[2]
     d = -(a*x0[0] + b*x0[1] + c*x0[2])
 
-    Rmirror = [ [1-2*a**2,-2*a*b,-2*a*c,-2*a*d], [-2*a*b,1-2*b**2,-2*b*c,-2*b*d], [-2*a*c,-2*b*c,1-2*c**2,-2*c*d],[0,0,0,1] ]
-    # note the difference between array and matrix (it is the multiplication)
-    Rmirror = np.matrix( Rmirror )
+    Rmirror = np.asarray([ [1-2*a**2,-2*a*b,-2*a*c,-2*a*d], [-2*a*b,1-2*b**2,-2*b*c,-2*b*d], [-2*a*c,-2*b*c,1-2*c**2,-2*c*d],[0,0,0,1] ])
 
     return(Rmirror)
 
@@ -1078,7 +1063,7 @@ def get_M_b2s(eta, side, unit_in="rad"):
     if side =="left":
         M_stroke = Ry(eta)
     elif side == "right":
-        M_stroke = Rx(np.pi)*Ry(eta)
+        M_stroke = Rx(np.pi) @ Ry(eta)
     else:
         raise("Neither right nor left wing")
         
@@ -1110,9 +1095,9 @@ def get_M_s2w(alpha, theta, phi, side, unit_in='rad'):
         phi = deg2rad(phi)
     
     if side =="left":
-        M = Ry(alpha)*Rz(theta)*Rx(phi)
+        M = Ry(alpha) @ Rz(theta) @ Rx(phi)
     elif side == "right":
-        M = Ry(-alpha)*Rz(theta)*Rx(-phi)
+        M = Ry(-alpha) @ Rz(theta) @ Rx(-phi)
     else:
         raise("Neither right nor left wing")
     return M
@@ -1141,13 +1126,13 @@ def get_M_g2b(psi, beta, gamma, unit_in='rad'):
         beta = deg2rad(beta)
         gamma = deg2rad(gamma)
     
-    M_body = Rx(psi)*Ry(beta)*Rz(gamma)
+    M_body = Rx(psi) @ Ry(beta) @ Rz(gamma)
     return M_body
 
 
 def get_M_b2w(alpha, theta, phi, eta, side, unit_in='rad'):
     # composite matrix
-    return get_M_s2w(alpha, theta, phi, side, unit_in)*get_M_b2s(eta, side, unit_in)
+    return get_M_s2w(alpha, theta, phi, side, unit_in) @ get_M_b2s(eta, side, unit_in)
 
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
@@ -1283,13 +1268,13 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         
     # read kinematics data:
     time, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time, unit_out='deg')
+    
         
     # wing tip in wing coordinate system
-    x_tip_w = vct([0.0, 1.0, 0.0])
-    x_le_w  = vct([ 0.5*chord_length,1.0,0.0])
-    x_te_w  = vct([-0.5*chord_length,1.0,0.0])
-
-    x_pivot_b = vct(x_pivot_b)
+    x_tip_w = np.asarray([0.0, 1.0, 0.0])
+    x_le_w  = np.asarray([ 0.5*chord_length,1.0,0.0])
+    x_te_w  = np.asarray([-0.5*chord_length,1.0,0.0])
+    x_pivot_b = np.asarray(x_pivot_b)
 
     # array of color (note normalization to 1 for query values)
     if cmap is None:
@@ -1299,6 +1284,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     else:
         # if its a constant color, jus create a list of colors
         colors = time.size*[cmap]
+        
     # default is using same colormap for both
     if cmap_forces is None:
         cmap_forces = cmap
@@ -1322,16 +1308,16 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
 
         # convert wing points to sagittal coordinate system
-        x_tip_m =  M_b2sagittal * ( np.transpose(M_b2w) * x_tip_w + x_pivot_b ) 
-        x_le_m  =  M_b2sagittal * ( np.transpose(M_b2w) * x_le_w  + x_pivot_b ) 
-        x_te_m  =  M_b2sagittal * ( np.transpose(M_b2w) * x_te_w  + x_pivot_b )
+        x_tip_m =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_tip_w + x_pivot_b ) 
+        x_le_m  =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_le_w  + x_pivot_b ) 
+        x_te_m  =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_te_w  + x_pivot_b )
 
         if not draw_true_chord:
             # the wing chord changes in length, as the wing moves and is oriented differently
             # note if the wing is perpendicular, it is invisible
             # so this vector goes from leading to trailing edge:
             e_chord = x_te_m - x_le_m
-            e_chord[1] = [0.0]
+            e_chord[1] = 0.0
 
             # normalize it to have the right length
             e_chord = e_chord / (np.linalg.norm(e_chord))
@@ -1344,7 +1330,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         # mark leading edge with a marker
         ax.plot( x_le_m[0], x_le_m[2], marker='o', color=colors[i], markersize=4 )
         # draw wing chord
-        ax.plot( [x_te_m[0,0], x_le_m[0,0]], [x_te_m[2,0], x_le_m[2,0]], '-', color=colors[i])
+        ax.plot( [x_te_m[0], x_le_m[0]], [x_te_m[2], x_le_m[2]], '-', color=colors[i])
         
         # draw arrow for forces
         if force_vectors:
@@ -1354,14 +1340,14 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
             Fy_g = np.interp( time[i]+T0_forces, d_forces[:,0], d_forces[:,2] )
             Fz_g = np.interp( time[i]+T0_forces, d_forces[:,0], d_forces[:,3] )
             # to sagittal plane
-            F_m = M_b2sagittal * M_g2b * vct([Fx_g, Fy_g, Fz_g])  
+            F_m = M_b2sagittal @ M_g2b @ np.asarray([Fx_g, Fy_g, Fz_g])  
             
             # force vector starts at mid-lollipop
-            point0x = 0.5*(x_te_m[0,0] + x_le_m[0,0])
-            point0y = 0.5*(x_te_m[2,0] + x_le_m[2,0])
+            point0x = 0.5*(x_te_m[0] + x_le_m[0])
+            point0y = 0.5*(x_te_m[2] + x_le_m[2])
             # force vector end point            
-            point1x = point0x + scale_forces * F_m[0,0]
-            point1y = point0y + scale_forces * F_m[2,0]
+            point1x = point0x + scale_forces * F_m[0]
+            point1y = point0y + scale_forces * F_m[2]
 
             ax.arrow( point0x, point0y, point1x-point0x, point1y-point0y, head_width=0.04, color=colors_forces[i])
             
@@ -1388,10 +1374,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
             # rotation matrix from body to wing coordinate system 
             M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
             # convert wing points to sagittal coordinate system
-            x_tip_m = M_b2sagittal * np.transpose(M_b2w) * x_tip_w + x_pivot_b
+            x_tip_m = M_b2sagittal @ np.transpose(M_b2w) @ x_tip_w + x_pivot_b
 
-            xpath[i] = x_tip_m[0,0]
-            zpath[i] = x_tip_m[2,0]
+            xpath[i] = x_tip_m[0]
+            zpath[i] = x_tip_m[2]
         ax.plot( xpath, zpath, linestyle='--', color=PathColor, linewidth=1.0 )
 
 
@@ -1401,15 +1387,15 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         M_b2s = get_M_b2s(eta_stroke, wing, unit_in='deg')
         
         # we draw the line between [0,0,-1] and [0,0,1] in the stroke system        
-        x1_s = vct([0.0, 0.0, +1.0])
-        x2_s = vct([0.0, 0.0, -1.0])
+        x1_s = np.asarray([0.0, 0.0, +1.0])
+        x2_s = np.asarray([0.0, 0.0, -1.0])
         
         # bring these points back to the global system
-        x1_m = M_b2sagittal * ( np.transpose(M_b2s)*x1_s + x_pivot_b )
-        x2_m = M_b2sagittal * ( np.transpose(M_b2s)*x2_s + x_pivot_b )       
+        x1_m = M_b2sagittal @ ( np.transpose(M_b2s) @ x1_s + x_pivot_b )
+        x2_m = M_b2sagittal @ ( np.transpose(M_b2s) @ x2_s + x_pivot_b )       
     
         # remember we're in the x-z plane
-        ax.plot( [x1_m[0,0],x2_m[0,0]], [x1_m[2,0],x2_m[2,0]], color='k', linewidth=1.0, linestyle='--')
+        ax.plot( [x1_m[0],x2_m[0]], [x1_m[2],x2_m[2]], color='k', linewidth=1.0, linestyle='--')
 
 
     if mark_pivot:
@@ -1447,38 +1433,36 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
 
 
-def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0]):
+def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0],
+                 alpha=None, theta=None, phi=None):
    
     if time is None:
         time = np.linspace(0, 1.0, 1000, endpoint=True)
         
     # wing tip in wing coordinate system
-    x_tip_w   = vct([0.0, 1.0, 0.0])
-    x_body_g  = vct([0.0, 0.0, 0.0])
-    x_pivot_b = vct(x_pivot_b)
+    x_tip_w   = np.asarray([0.0, 1.0, 0.0])
+    x_body_g  = np.asarray([0.0, 0.0, 0.0])
+    x_pivot_b = np.asarray(x_pivot_b)
         
     # body transformation matrix
-    M_body = Rx(deg2rad(psi))*Ry(deg2rad(beta))*Rz(deg2rad(gamma))
-
-    # rotation matrix from body to stroke coordinate system:
-    M_stroke_l = Ry(deg2rad(eta_stroke))
-    M_stroke_r = Rx(np.pi)*Ry(deg2rad(eta_stroke))
+    M_g2b = get_M_g2b(psi, beta, gamma, unit_in='deg')
     
-    # evaluate kinematics
-    t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname, time=time)
+    if fname is not None and alpha is None and theta is None and phi is None:
+        # evaluate kinematics fom file
+        t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname, time=time)
+    else:
+        # use values passed as arrays
+        phi_l, alpha_l, theta_l = phi, alpha, theta
     
     # allocation
     xb, yb, zb = np.zeros(time.shape), np.zeros(time.shape), np.zeros(time.shape)
        
     for i in range(time.shape[0]):
         # rotation matrix from body to wing coordinate system
-        if wing == 'left':
-            M_wing = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))*M_stroke_l
-        elif wing == 'right':
-            M_wing = Ry(-deg2rad(alpha_l[i]))*Rz(+deg2rad(theta_l[i]))*Rx(-deg2rad(phi_l[i]))*M_stroke_r
+        M_b2w = get_M_b2w(alpha_l[i], theta_l[i], phi_l[i], eta_stroke, side=wing, unit_in='deg')
 
         # convert wing points to global coordinate system
-        x_tip_g = np.transpose(M_body) * ( np.transpose(M_wing) * x_tip_w + x_pivot_b ) + x_body_g
+        x_tip_g = np.transpose(M_g2b) @ ( np.transpose(M_b2w) @ x_tip_w + x_pivot_b ) + x_body_g
 
         xb[i] = (x_tip_g[0])
         yb[i] = (x_tip_g[1])
@@ -1486,40 +1470,48 @@ def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0
     
     return xb, yb, zb
 
-def wingtip_velocity( fname_kinematics, time=None ):
+
+def wingtip_velocity( fname_kinematics, time=None, side='left' ):
     """ Compute wingtip velocity as a function of time, given a wing kinematics parameter
     file. Note we assume the body at rest (hence relative to body).
     """    
     if time is None:
+        # for good temporal accuracy (differentiation)
         time = np.linspace(0, 1.0, 1000, endpoint=True)
+        
+    # because velocity magnitude does not depend on the stroke plane
+    eta_stroke = 0.0
     
     # evaluate kinematics file (may be hermite or Fourier file)        
-    t, phi_l, alpha_l, theta_l = eval_angles_kinematics_file(fname_kinematics, time=time)
+    t, phi, alpha, theta = eval_angles_kinematics_file(fname_kinematics, time=time)
     
     # wing tip in wing coordinate system
-    x_tip_w = vct([0.0, 1.0, 0.0])
+    x_tip_w = np.asarray([0.0, 1.0, 0.0])
     
+    # allocation
     v_tip_b = np.zeros(time.shape)
     
     for i in range(time.size-1):
         # we use simple differentiation (finite differences) to get the velocity
         dt = time[1]-time[0]
 
-        # rotation matrix from body to wing coordinate system
-        M_wing_l = Ry(deg2rad(alpha_l[i]))*Rz(deg2rad(theta_l[i]))*Rx(deg2rad(phi_l[i]))
+        # rotation matrix from body to wing coordinate system (time i)
+        M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, side)
         
         # convert wing points to body coordinate system
-        x1_tip_b = np.transpose(M_wing_l) * x_tip_w
+        x1_tip_b = np.transpose(M_b2w) @ x_tip_w
 
-        # rotation matrix from body to wing coordinate system
-        M_wing_l = Ry(deg2rad(alpha_l[i+1]))*Rz(deg2rad(theta_l[i+1]))*Rx(deg2rad(phi_l[i+1]))
+        # rotation matrix from body to wing coordinate system (time i+1)
+        M_b2w = get_M_b2w(alpha[i+1], theta[i+1], phi[i+1], eta_stroke, side)
 
         # convert wing points to body coordinate system
-        x2_tip_b = np.transpose(M_wing_l) * x_tip_w
+        x2_tip_b = np.transpose(M_b2w) @ x_tip_w
 
         v_tip_b[i] = np.linalg.norm( (x2_tip_b - x1_tip_b)/dt )
 
+    # periodization (because we did not compute the last point)
     v_tip_b[-1] = v_tip_b[0]
+    
     return v_tip_b
 
 
@@ -1538,17 +1530,7 @@ def interp_matrix( d, time_new ):
     # loop over columns and interpolate
     for i in range(1,ncols):
         # interpolate this column i to equidistant data
-        # d2[:,i] = np.interp( time_new, d[:,0], d[:,i] )
-
-
         d2[:,i]  = interp1d(d[:,0], d[:,i], fill_value='extrapolate')(time_new)
-            # gammas_interp = interp1d(time_it, gammas_it, fill_value='extrapolate')
-            # etas_interp   = interp1d(time_it, etas_it  , fill_value='extrapolate')
-            # alphas_interp = interp1d(time_it, alphas_it, fill_value='extrapolate')
-            # phis_interp   = interp1d(time_it, phis_it  , fill_value='extrapolate')
-            # thetas_interp = interp1d(time_it, thetas_it, fill_value='extrapolate')
-            
-            # self.psis[ii]   = psis_interp(self.timeline)
 
     return d2
 
@@ -1661,45 +1643,17 @@ def add_shaded_background( t0, t1, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
     # Add collection to axes
     ax.add_collection(pc)
 
-def make_white_plot( ax ):
-    # for the poster, make a couple of changes: white font, white lines, all transparent.
-    legend = ax.legend()
-    if not legend is None:
-        frame = legend.get_frame()
-        frame.set_alpha(0.0)
-        # set text color to white for all entries
-        for label in legend.get_texts():
-            label.set_color('w')
-
-
-    ax.xaxis.label.set_color('w')
-    ax.tick_params(axis='x', colors='w')
-
-    ax.yaxis.label.set_color('w')
-    ax.tick_params(axis='y', colors='w')
-
-    ax.spines['bottom'].set_color('w')
-    ax.spines['top'].set_color('w')
-    ax.spines['left'].set_color('w')
-    ax.spines['right'].set_color('w')
-
-    ax.tick_params( which='both', direction='in', top=True, right=True, color='w' )
-
-
-
 
 def insectSimulation_postProcessing( run_directory='./', output_filename='data_wingsystem.csv', plot=True, filename_plot='forcesMoments_wingSystem.pdf' ):
     """ 
     Post-Processes an existing insect simulation done with WABBIT.
     
     Reads the forces_XXwing.t, moments_XX_wing.t and kinematics.t (XX=left/right)
-    and computes the forces and moments in the respective wing reference frame.
+    and computes the forces and moments in the respective WING reference frame.
     
     Output is saved to CSV file and plotted to PDF file.
     """
     import numpy as np
-    import glob
-    import wabbit_tools
     
     # avoid silly mistakes and be sure there is a slash at the end of the string
     run_directory += '/'
@@ -1775,26 +1729,22 @@ def insectSimulation_postProcessing( run_directory='./', output_filename='data_w
         data_new[it, 0] = time[it]
         
         #--- body rotation matrix
-        M_body = Rx(psi[it])*Ry(beta[it])*Rz(gamma[it])
+        M_g2b = get_M_g2b(psi[it],beta[it], gamma[it], unit_in='rad')
         
-        #--- rotation matrix from body to stroke coordinate system:
-        M_stroke_l = Ry(eta_stroke[it])
-        M_stroke_r = Rx(np.pi)*Ry(eta_stroke[it])
-       
-        #--- rotation matrix from body to wing coordinate system
-        M_wing_r = Ry(-alpha_r[it])*Rz(+theta_r[it])*Rx(-phi_r[it])*M_stroke_r
-        M_wing_l = Ry(+alpha_l[it])*Rz(+theta_l[it])*Rx(+phi_l[it])*M_stroke_l
+        #--- rotation matrix from body to wing coordinate system        
+        M_b2w_r = get_M_b2w(alpha_r[it], theta_r[it], phi_r[it], eta_stroke[it], 'right', unit_in='rad')
+        M_b2w_l = get_M_b2w(alpha_l[it], theta_l[it], phi_l[it], eta_stroke[it], 'left', unit_in='rad')
 
         #--- right wing
-        F = M_wing_r*M_body * vct( [forces_R[it,1], forces_R[it,2], forces_R[it,3]] )
-        M = M_wing_r*M_body * vct( [moments_R[it,1], moments_R[it,2], moments_R[it,3]] )
+        F = M_b2w_r @ M_g2b @ forces_R[it,1:3+1]
+        M = M_b2w_r @ M_g2b @ moments_R[it,1:3+1]
 
         data_new[it,1], data_new[it,2], data_new[it,3] = F[0], F[1], F[2]
         data_new[it,4], data_new[it,5], data_new[it,6] = M[0], M[1], M[2]
         
         #--- left wing
-        F = M_wing_l*M_body * vct( [forces_L[it,1], forces_L[it,2], forces_L[it,3]] )
-        M = M_wing_l*M_body * vct( [moments_L[it,1], moments_L[it,2], moments_L[it,3]] )
+        F = M_b2w_l @ M_g2b @ forces_L[it,1:3+1]
+        M = M_b2w_l @ M_g2b @ moments_L[it,1:3+1]
         
         data_new[it,1+6], data_new[it,2+6], data_new[it,3+6] = F[0], F[1], F[2]
         data_new[it,4+6], data_new[it,5+6], data_new[it,6+6] = M[0], M[1], M[2]
@@ -1862,8 +1812,6 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
     flusi_tools.write_flusi_HDF5( fname, time, box, data, viscosity=viscosity, origin=origin, dtype=dtype )
 
 
-
-
 def load_image( infilename ):
     from PIL import Image
     import numpy as np
@@ -1918,150 +1866,6 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
 
         write_flusi_HDF5( outfile, 0.0, [float(nx)*dx,float(ny)*dx,float(nz)*dx], data, viscosity=0.0, origin=origin )
 
-
-def integrated_L2_difference_signal( data1, data2, qty ):
-    """ compute the integrated L2 difference between two signals.
-    Data is assumed in matrix form d[:,0] is time. Normalization is done with data1 """
-
-    # interpolate signal 2 to time vector of signal 1
-    sig2 = np.interp( data1[:,0], data2[:,0], data2[:,qty])
-    sig1 = data1[:,qty]
-
-#    import matplotlib.pyplot as plt
-#    plt.figure()
-#    plt.plot( sig1 , label='ref')
-#    plt.plot( sig2 , label='this')
-
-    err = np.sqrt(np.trapz( (sig2-sig1)**2, x=data1[:,0] ) ) / np.sqrt(np.trapz( sig1**2, x=data1[:,0] ))
-#    err = np.linalg.norm( sig2-sig1 ) / np.linalg.norm(sig1)
-
-    return err
-
-
-def forces_L2_error( data, data_ref, idx_data, idx_ref, normalized=True):
-    """ Similar to suzuki_error, but more general. compute integrated L2 difference
-    wrt a reference data set """
-    import numpy as np
-
-    # interpolate reference data (assumed to be high-precision) to
-    # the time vector of the actual data
-    data_ref = interp_matrix(data_ref, data[:,0])
-
-    err = []
-    for IDX_DATA, IDX_REF in zip(idx_data, idx_ref):
-        if normalized:
-            err.append( np.trapz( abs(data[:,IDX_DATA]-data_ref[:,IDX_REF]), x=data[:,0] ) /
-                        np.trapz( abs(data_ref[:,IDX_REF]), x=data[:,0]) )
-        else:
-            err.append( np.trapz( abs(data[:,IDX_DATA]), x=data[:,0] ) )
-
-    err = np.asarray(err)
-
-#    return np.linalg.norm(err)
-    return np.mean(err)
-
-def suzuki_error( filename, component=None, reference='suzuki', T0=None ):
-    """compute the error for suzukis test case"""
-
-
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    # read reference data, digitized from suzukis paper
-    reference_file = '/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/Digitize/LBM_lift.csv'
-    dref_lift = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
-
-    reference_file = '/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/Digitize/LBM_drag.csv'
-    dref_drag = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
-
-#    reference_file = '/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/Digitize/mediana_lift.csv'
-#    dref_lift2 = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
-#
-#    reference_file = '/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/Digitize/mediana_drag.csv'
-#    dref_drag2 = np.loadtxt( reference_file, delimiter=',', skiprows=1 )
-
-    # read actual data
-    data = load_t_file( filename, T0=T0 )
-
-    # Suzuki et al. eq. in appendix B.5.2
-    L = 0.833
-    c = 0.4167
-    rho = 1
-    utip = 2*np.pi*(80*np.pi/180)*(0.1667+0.833)/1.0
-    fcoef = 0.5*rho*(utip**2)*(L*c)
-    # apply normalization
-    data[:,1:3+1] /= fcoef
-
-    # after some experimentation, I can tell what suzuki calls 'drag': it is indeed the force
-    # in x-direction, but the standard suzuki test includes gamma=45° hence some modification is required
-    data[:,1] = (data[:,1] + data[:,2]) / np.sqrt( 2.0 )
-
-
-    if reference == 'suzuki':
-        data_flusi = load_t_file('/home/engels/Documents/Research/Insects/3D/projects/suzuki_validation/level3_small/forces.t')
-        data_flusi[:,1:3+1] /= fcoef
-        data_flusi[:,1] = (data_flusi[:,1] + data_flusi[:,2]) / np.sqrt( 2.0 )
-        data_flusi = interp_matrix(data_flusi, dref_drag[:,0])
-
-        # interpolate actual data on ref data points
-        data1 = interp_matrix( data, dref_lift[:,0] )
-        data2 = interp_matrix( data, dref_drag[:,0] )
-
-
-        plt.figure()
-    #    plt.plot(data[:,0], data[:,3])
-        plt.plot(data1[:,0], data1[:,3],  label='this data')
-        plt.plot(dref_lift[:,0], dref_lift[:,1], 'k', label='ref scan data')
-    #    plt.plot(dref_lift2[:,0]+0.5, dref_lift2[:,1], 'c-',label='medina thesis')
-
-
-        plt.plot(dref_drag[:,0], dref_drag[:,1],'k--', label='ref (scan)')
-        plt.plot(data2[:,0], data2[:,1], '-.', label='this data')
-        plt.plot(data_flusi[:,0], data_flusi[:,1],'-.',label='flusi-reference-data')
-    #    plt.plot(dref_drag2[:,0], dref_drag2[:,1], 'c-', label='medina drag')
-
-        plt.title(filename)
-        plt.legend()
-
-
-        err1 = np.trapz( abs(data1[:,3]-dref_lift[:,1]), x=data1[:,0] ) / np.trapz( abs(dref_lift[:,1]), x=data1[:,0] )
-        err2 = np.trapz( abs(data2[:,1]-dref_drag[:,1]), x=data2[:,0] ) / np.trapz( abs(dref_drag[:,1]), x=data2[:,0] )
-
-        return np.sqrt(err1**2 + err2**2)
-
-    else:
-        data_flusi = load_t_file( reference, T0=T0 )
-
-        data_flusi[:,1:3+1] /= fcoef
-        data_flusi[:,1] = (data_flusi[:,1] + data_flusi[:,2]) / np.sqrt( 2.0 )
-        data_flusi = interp_matrix(data_flusi, data[:,0])
-
-#        plt.figure()
-#
-#        plt.plot( data[:,0], data[:,1], label='this data (x)')
-#        plt.plot( data[:,0], data[:,2], label='this data (y)')
-#        plt.plot( data[:,0], data[:,3], label='this data (z)')
-#
-#        # reset color cycle
-#        plt.gca().set_prop_cycle(None)
-#
-#        plt.plot( data_flusi[:,0], data_flusi[:,1], '--', label='reference (flusi,1024) (x)')
-#        plt.plot( data_flusi[:,0], data_flusi[:,2], '--', label='reference (flusi,1024) (y)')
-#        plt.plot( data_flusi[:,0], data_flusi[:,3], '--', label='reference (flusi,1024) (z)')
-#
-#        plt.grid()
-#        plt.title(filename)
-#        plt.legend()
-#        plt.xlim((3.0, 4.0))
-#        plt.ylim((-0.75, 0.75))
-
-
-        err1 = np.trapz( abs(data[:,1]-data_flusi[:,1]), x=data_flusi[:,0] ) / np.trapz( abs(data_flusi[:,1]), x=data_flusi[:,0] )
-        err2 = np.trapz( abs(data[:,2]-data_flusi[:,2]), x=data_flusi[:,0] ) / np.trapz( abs(data_flusi[:,2]), x=data_flusi[:,0] )
-        err3 = np.trapz( abs(data[:,3]-data_flusi[:,3]), x=data_flusi[:,0] ) / np.trapz( abs(data_flusi[:,3]), x=data_flusi[:,0] )
-
-        # error is magnitude of all 3 components
-        return np.sqrt(err1**2 + err2**2 + err3**2)
 
 
 def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header goes here']):
@@ -2777,14 +2581,14 @@ def compute_aero_power_individual_wings(run_directory, file_output='aero_power_i
             # wing angles
             alpha, phi, theta = d[it,ia], d[it,ip], d[it,i2]
             # angular velocity vector (in wing system)
-            omega_wing_w = vct([d[it,ix], d[it,iy], d[it,iz]])
+            omega_wing_w = np.asarray([d[it,ix], d[it,iy], d[it,iz]])
                 
             # moment in global system
-            T_g = vct(m[it, 1:3+1])
+            T_g = np.asarray(m[it, 1:3+1])
             # rotation matrix
-            M_g2w = np.matmul( get_M_b2w(alpha, theta, phi, eta, side), get_M_g2b(psi, beta, gamma)  )
+            M_g2w = get_M_b2w(alpha, theta, phi, eta, side) @ get_M_g2b(psi, beta, gamma)
             # moment in wing system
-            T_w = np.matmul(M_g2w, T_g)
+            T_w = M_g2w @ T_g
             
             power = -np.dot( T_w.T, omega_wing_w )
             
@@ -3172,8 +2976,8 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
 
     #%% scaling, shifting and rotation
 
-    e_span  = vct([x2-x1, y2-y1])
-    e_chord = vct([(y2-y1), -(x2-x1)])
+    e_span  = np.asarray([x2-x1, y2-y1])
+    e_chord = np.asarray([(y2-y1), -(x2-x1)])
     
     e_span /= np.linalg.norm(e_span)
     e_chord /= np.linalg.norm(e_chord)
@@ -3200,11 +3004,11 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
         all_bristles_new = all_bristles.copy()
         
         # projection on unit vectors
-        all_bristles_new[:,0] = all_bristles[:,0]*e_chord[0,0] + all_bristles[:,1]*e_chord[1,0]
-        all_bristles_new[:,1] = all_bristles[:,0]* e_span[0,0] + all_bristles[:,1] *e_span[1,0]
+        all_bristles_new[:,0] = all_bristles[:,0]*e_chord[0] + all_bristles[:,1]*e_chord[1]
+        all_bristles_new[:,1] = all_bristles[:,0]* e_span[0] + all_bristles[:,1] *e_span[1]
         
-        all_bristles_new[:,2] = all_bristles[:,2]*e_chord[0,0] + all_bristles[:,3]*e_chord[1,0]
-        all_bristles_new[:,3] = all_bristles[:,2]* e_span[0,0] + all_bristles[:,3] *e_span[1,0]
+        all_bristles_new[:,2] = all_bristles[:,2]*e_chord[0] + all_bristles[:,3]*e_chord[1]
+        all_bristles_new[:,3] = all_bristles[:,2]* e_span[0] + all_bristles[:,3] *e_span[1]
         
         all_bristles = all_bristles_new
 
@@ -3215,9 +3019,9 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     x1, y1 = 0.0, 0.0
     
     # projection on unit vectors
-    xbn, ybn = xb*e_chord[0,0] + yb*e_chord[1,0], xb*e_span[0,0] + yb*e_span[1,0]
-    x2n, y2n = x2*e_chord[0,0] + y2*e_chord[1,0], x2*e_span[0,0] + y2*e_span[1,0]
-    xcn, ycn = xc*e_chord[0,0] + yc*e_chord[1,0], xc*e_span[0,0] + yc*e_span[1,0]
+    xbn, ybn = xb*e_chord[0] + yb*e_chord[1], xb*e_span[0] + yb*e_span[1]
+    x2n, y2n = x2*e_chord[0] + y2*e_chord[1], x2*e_span[0] + y2*e_span[1]
+    xcn, ycn = xc*e_chord[0] + yc*e_chord[1], xc*e_span[0] + yc*e_span[1]
     # annoying but necessary (classical mistake)
     xb, yb, x2, y2, xc, yc = xbn, ybn, x2n, y2n, xcn, ycn
         
@@ -3374,10 +3178,10 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # first pair of wings (forewings or in diptera the only wings)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        ML = M_wing(alpha_L[it], theta_L[it], phi_L[it], 'left') * M_stroke(eta, 'left')
+        ML = get_M_b2w(alpha_L[it], theta_L[it], phi_L[it], eta, 'left')
         wing_pointcloud_L_g = np.transpose( ML.T * wing_pointcloud_L_w.T) 
         
-        MR = M_wing(alpha_R[it], theta_R[it], phi_R[it], 'right') * M_stroke(eta, 'right')
+        MR = get_M_b2w(alpha_R[it], theta_R[it], phi_R[it], eta, 'right')
         wing_pointcloud_R_g = np.transpose( MR.T * wing_pointcloud_R_w.T) 
         
         for dim in range(3):
@@ -3388,7 +3192,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         # second wing pair
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         if wing_pointcloud_L2_w is not None:
-            ML2 = M_wing(alpha_L2[it], theta_L2[it], phi_L2[it], 'left') * M_stroke(eta, 'left')
+            ML2 = get_M_b2w(alpha_L2[it], theta_L2[it], phi_L2[it], eta, 'left')
             wing_pointcloud_L2_g = np.transpose( ML2.T * wing_pointcloud_L2_w.T) 
             
             for dim in range(3):
@@ -3398,7 +3202,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
             wing_pointcloud_L_g = np.vstack( (wing_pointcloud_L_g, wing_pointcloud_L2_g) )
             
         if wing_pointcloud_R2_w is not None:
-            MR2 = M_wing(alpha_R2[it], theta_R2[it], phi_R2[it], 'right') * M_stroke(eta, 'right')
+            MR2 = get_M_b2w(alpha_R2[it], theta_R2[it], phi_R2[it], eta, 'right')
             wing_pointcloud_R2_g = np.transpose( MR2.T * wing_pointcloud_R2_w.T) 
             
             for dim in range(3):
