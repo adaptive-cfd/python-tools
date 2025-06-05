@@ -94,7 +94,7 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
         print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i %i " % (fname, dset_name, np.max(data), np.min(data), nx,ny,nz) )
         # i dont really know why, but there is a messup in fortran vs c ordering, so here we have to swap
         # axis
-        data = np.swapaxes(data, 0, 2)
+        # data = np.swapaxes(data, 0, 2)
         nxyz = np.array([nz,nx,ny])
     else:
         #2d data

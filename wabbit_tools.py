@@ -50,6 +50,7 @@ class WabbitHDF5file:
 
     # lets define all fields
     blocks = np.array([])
+    blocks_order = np.array([])  # in case we are reordering, this is used for reading back the blocks in the original order
     coords_origin = np.array([])
     coords_spacing = np.array([])
     block_treecode_num = np.array([])
@@ -112,6 +113,7 @@ class WabbitHDF5file:
             self.coords_spacing = np.array(fid['coords_spacing'][:])
         if read_var in ["blocks", "all"]:
             self.blocks = np.array(fid['blocks'], dtype=np.float64)
+        self.blocks_order = np.arange(self.total_number_blocks)  # default order is the order in the file
         
         # very old versions do not have fancy variables
         if self.version <= 20200902:
@@ -190,6 +192,7 @@ class WabbitHDF5file:
         self.total_number_blocks = blocks.shape[0]
         self.time = time
         self.iteration = iteration
+        self.blocks_order = np.arange(self.total_number_blocks)  # default order is the order in the file
 
         # compute attrs which are not set
         self.version = 20240410
@@ -198,7 +201,7 @@ class WabbitHDF5file:
         self.max_level = max_level  # for now set to max
 
         # set fields for meta data of blocks
-        self.lgt_ids = np.arange(self.total_number_blocks)
+        self.lgt_ids = np.arange(1,self.total_number_blocks+1)
         self.procs = np.zeros(self.total_number_blocks)
         self.refinement_status = np.zeros(self.total_number_blocks)
         self.block_treecode = tcb_level_2_tcarray(treecode, level, self.max_level, self.dim)
@@ -210,30 +213,34 @@ class WabbitHDF5file:
     
 
     # init values from a matrix and set them into a grid on uniform level
-    def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0):
+    def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0, includes_g=False):
         # extract level from size of array
-        level_num = np.log2(block_values.shape[0]/bs[0])
+        level_num = np.log2((block_values.shape[0]-includes_g)/bs[0])
         if int(level_num) != level_num:
-            print(f"Input array has wrong size: {block_values.shape[0]}. Ensure size/bs is a power of 2")
+            print(f"Input array has wrong size: {block_values.shape[0]-includes_g}. Ensure size/bs is a power of 2")
             return
         level_num = int(level_num)
 
         # alter values, we need to copy first line as we have redundant setting - this assumes periodicity
-        block_red = np.zeros(np.array(block_values.shape)+1)
-        if dim == 2:
-            block_red[:-1,:-1] = block_values[:,:]   # copy interior
-            block_red[ -1,:-1] = block_values[0,:]   # copy x-line
-            block_red[:-1, -1] = block_values[:,0]   # copy y-line
-            block_red[ -1, -1] = block_values[0,0]   # copy last corner
+        block_red = np.zeros(np.array(block_values.shape)+1-includes_g)
+        if not includes_g:
+            if dim == 2:
+                block_red[:-1,:-1] = block_values[:,:]   # copy interior
+                block_red[ -1,:-1] = block_values[0,:]   # copy x-line
+                block_red[:-1, -1] = block_values[:,0]   # copy y-line
+                block_red[ -1, -1] = block_values[0,0]   # copy last corner
+            else:
+                block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
+                block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
+                block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
+                block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
+                block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
+                block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
+                block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
+                block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
         else:
-            block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
-            block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
-            block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
-            block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
-            block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
-            block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
-            block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
-            block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
+            if dim == 2: block_red[:,:] = block_values[:,:]   # copy interior
+            if dim == 3: block_red[:,:,:] = block_values[:,:,:]   # copy interior
 
         number_blocks = 2**(level_num*dim)
         treecode = np.zeros(number_blocks)
@@ -341,7 +348,7 @@ class WabbitHDF5file:
             return None
 
         fid = h5py.File(file_read,'r')
-        block = fid['blocks'][i_b, :]
+        block = fid['blocks'][self.blocks_order[i_b], :]
         fid.close()
         return block
 
@@ -362,7 +369,7 @@ class WabbitHDF5file:
             return None
 
         fid = h5py.File(file_write,'r')
-        fid['blocks'][i_b, :] = block  # we assume here that block sizes are equal
+        fid['blocks'][self.blocks_order[i_b], :] = block  # we assume here that block sizes are equal
         fid.close()
         return
             
@@ -504,13 +511,27 @@ class WabbitHDF5file:
     def get_block_id(self, treecode, level):
         return self.tc_find.get((treecode, level), -1)
 
+
     # returns sort list where the elements are in ascending order for first treecode and then level
-    def sort_list(self):
+    def sort_list(self, do_resorting):
         combined_list = list(zip(self.block_treecode_num, self.level, range(self.total_number_blocks)))
         # Sort the list based on treecode first, then level
         sorted_combined_list = sorted(combined_list, key=lambda x: (x[0], x[1]))
+
+        # if we want to resort, we do that now
+        if do_resorting:
+            self.blocks_order = np.array(sorted_combined_list)[:,2]
+            self.coords_origin, self.coords_spacing = self.coords_origin[self.blocks_order, :], self.coords_spacing[self.blocks_order, :]
+            self.level, self.block_treecode_num = self.level[self.blocks_order], self.block_treecode_num[self.blocks_order]
+            if len(self.blocks) > 0: self.blocks = self.blocks[self.blocks_order, :]
+            if len(self.lgt_ids) > 0: self.lgt_ids = self.lgt_ids[self.blocks_order]
+            if len(self.procs) > 0: self.procs = self.procs[self.blocks_order]
+            if len(self.refinement_status) > 0: self.refinement_status = self.refinement_status[self.blocks_order]
+            if len(self.block_treecode) > 0: self.block_treecode = self.block_treecode[self.blocks_order, :]
+            self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
+
         # Extract the sorted indices
-        return [idx for _, _, idx in sorted_combined_list]
+        return np.array(sorted_combined_list)[:,2]
 
 
     # check if logically two objects are considered to be close to equal
@@ -611,6 +632,7 @@ class WabbitHDF5file:
                 
         mismatch_count = 0
         # Iterate through self once, checking against the dictionary
+        # ToDo: Treecode might be similar but with different max level, this is not taken into account here
         for i in range(self.block_treecode_num.shape[0]):
             if (self.block_treecode_num[i], self.level[i]) not in other.tc_dict:
                 mismatch_count += 1
@@ -955,6 +977,7 @@ def tc_encoding(ixyz, level=21, max_level=21, dim=3):
             if bit:
                 # max for if one forgets to set the level
                 tc += bit << ((i_level) * dim + p_dim + max(max_level-level, 0)*dim)
+    # print(f"{ixyz} - {tc}")
     return tc
 
 def tc_decoding(treecode, level=None, dim=3, max_level=21):

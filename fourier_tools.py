@@ -244,5 +244,3 @@ def fft1_downsample(u, res):
     print( "downsampling1d: energy was=%15.10e is now=%15.10e (loss is desired!)" % (np.sum(u**2)/u.size, np.sum(u2**2)/u2.size))
 
     return u2
-
-
