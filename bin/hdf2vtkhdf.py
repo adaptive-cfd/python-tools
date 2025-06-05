@@ -130,22 +130,22 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
     # skip this block if it has already been merged
     if i_b in id_merged: continue
 
-    # extract it's position and get it's position
+    # extract it's position
     i_treecode, i_level = treecode_o[i_b], level_o[i_b]
     correct_neighbor = True
     id_n, position_n = np.array([]), np.zeros([0,3])
     i_sub_tree_size = np.array(sub_tree_o[i_b].copy())  # copy the original block size
-    # let's add this block itself
+    # let's add this block itself to the final list
     id_n = np.append(id_n, block_id_o[i_b]).astype(int)  # append block indices
     position_n = np.append(position_n, sub_tree_positions_o[i_b], axis=0)  # append positions of the block
 
-    # now lets loop in direction and always try to find new blocks
+    # now lets loop in direction and always try to find new blocks until we cannot find no more
     position_shift = np.array([0,0,0])
     while correct_neighbor:
-      position_shift[direction] = i_sub_tree_size[direction]  # shift in the given direction
+      position_shift[direction] = i_sub_tree_size[direction]  # shift in the given direction to where the neighbor should be
 
       idx_b = wabbit_tools.tc_decoding(i_treecode,level=i_level, max_level=max_level,dim=dim)
-      idx_n = idx_b + position_shift[:dim]  # shift in the given direction
+      idx_n = idx_b + position_shift[:dim]  # shift indices in the given direction
       # there is a special case where the neighboring block is outside the periodic domain, then we do not proceed
       if idx_n[direction] >= 2**i_level:
         correct_neighbor = False
@@ -179,7 +179,6 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
     
   
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
-  # return block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_o, sub_tree_positions_o
 
 
 def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
@@ -307,7 +306,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     # call merge function which does all the job
     block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = merge_sisters(block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, w_main.max_level, w_main.dim)
     total_blocks = len(block_id)
-    if args.verbose and mpi_rank == 0: print(f"Merged subtrees, it {i_merge+1:2d}:     {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+    if args.verbose and mpi_rank == 0: print(f"Merged subtrees, it {i_merge+1:2d}:         {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
     if total_blocks_old == total_blocks: break
 
   # now we are merging blocks in one direction, this is useful for highly adapted grids
@@ -319,7 +318,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
       # call merge function which does all the job
       block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = merge_directional(block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, w_main.max_level, dim=w_main.dim, direction=i_dir)
       total_blocks = len(block_id)
-      if args.verbose and mpi_rank == 0: print(f"Merged blocks in {dir_names[i_dir]}-dir:     {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+      if args.verbose and mpi_rank == 0: print(f"Merged neighbours in {dir_names[i_dir]}-dir:     {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
 
   ### collective loop creating the metadata - all processes need to do this
   start_time = time.time()
