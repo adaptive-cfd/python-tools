@@ -50,6 +50,7 @@ class WabbitHDF5file:
 
     # lets define all fields
     blocks = np.array([])
+    blocks_order = np.array([])  # in case we are reordering, this is used for reading back the blocks in the original order
     coords_origin = np.array([])
     coords_spacing = np.array([])
     block_treecode_num = np.array([])
@@ -61,6 +62,7 @@ class WabbitHDF5file:
 
     # some helping constructs
     tc_dict = []
+    tc_find = []
     orig_file = ""
 
     """
@@ -111,6 +113,7 @@ class WabbitHDF5file:
             self.coords_spacing = np.array(fid['coords_spacing'][:])
         if read_var in ["blocks", "all"]:
             self.blocks = np.array(fid['blocks'], dtype=np.float64)
+        self.blocks_order = np.arange(self.total_number_blocks)  # default order is the order in the file
         
         # very old versions do not have fancy variables
         if self.version <= 20200902:
@@ -121,6 +124,8 @@ class WabbitHDF5file:
         else:
             if read_var in ["refinement_status", "all", "meta"]:
                 self.refinement_status = np.array(fid['refinement_status'])
+                # # JB HACK for float numbers saved in refinement status
+                # self.refinement_status = np.frombuffer(self.refinement_status.tobytes(), dtype=np.float32)
             if read_var in ["procs", "all", "meta"]:
                 self.procs = np.array(fid['procs'])
             if read_var in ["lgt_ids", "all", "meta"]:
@@ -169,6 +174,7 @@ class WabbitHDF5file:
         # create objects which are handy to have
         # dictionary to quickly check if a block exists
         self.tc_dict = {(self.block_treecode_num[j], self.level[j]): True for j in range(self.total_number_blocks)}
+        self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
         self.orig_file = file
 
     # init a wabbit state by data
@@ -186,6 +192,7 @@ class WabbitHDF5file:
         self.total_number_blocks = blocks.shape[0]
         self.time = time
         self.iteration = iteration
+        self.blocks_order = np.arange(self.total_number_blocks)  # default order is the order in the file
 
         # compute attrs which are not set
         self.version = 20240410
@@ -194,7 +201,7 @@ class WabbitHDF5file:
         self.max_level = max_level  # for now set to max
 
         # set fields for meta data of blocks
-        self.lgt_ids = np.arange(self.total_number_blocks)
+        self.lgt_ids = np.arange(1,self.total_number_blocks+1)
         self.procs = np.zeros(self.total_number_blocks)
         self.refinement_status = np.zeros(self.total_number_blocks)
         self.block_treecode = tcb_level_2_tcarray(treecode, level, self.max_level, self.dim)
@@ -206,30 +213,34 @@ class WabbitHDF5file:
     
 
     # init values from a matrix and set them into a grid on uniform level
-    def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0):
+    def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0, includes_g=False):
         # extract level from size of array
-        level_num = np.log2(block_values.shape[0]/bs[0])
+        level_num = np.log2((block_values.shape[0]-includes_g)/bs[0])
         if int(level_num) != level_num:
-            print(f"Input array has wrong size: {block_values.shape[0]}. Ensure size/bs is a power of 2")
+            print(f"Input array has wrong size: {block_values.shape[0]-includes_g}. Ensure size/bs is a power of 2")
             return
         level_num = int(level_num)
 
         # alter values, we need to copy first line as we have redundant setting - this assumes periodicity
-        block_red = np.zeros(np.array(block_values.shape)+1)
-        if dim == 2:
-            block_red[:-1,:-1] = block_values[:,:]   # copy interior
-            block_red[ -1,:-1] = block_values[0,:]   # copy x-line
-            block_red[:-1, -1] = block_values[:,0]   # copy y-line
-            block_red[ -1, -1] = block_values[0,0]   # copy last corner
+        block_red = np.zeros(np.array(block_values.shape)+1-includes_g)
+        if not includes_g:
+            if dim == 2:
+                block_red[:-1,:-1] = block_values[:,:]   # copy interior
+                block_red[ -1,:-1] = block_values[0,:]   # copy x-line
+                block_red[:-1, -1] = block_values[:,0]   # copy y-line
+                block_red[ -1, -1] = block_values[0,0]   # copy last corner
+            else:
+                block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
+                block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
+                block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
+                block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
+                block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
+                block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
+                block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
+                block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
         else:
-            block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
-            block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
-            block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
-            block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
-            block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
-            block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
-            block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
-            block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
+            if dim == 2: block_red[:,:] = block_values[:,:]   # copy interior
+            if dim == 3: block_red[:,:,:] = block_values[:,:,:]   # copy interior
 
         number_blocks = 2**(level_num*dim)
         treecode = np.zeros(number_blocks)
@@ -262,7 +273,8 @@ class WabbitHDF5file:
                 blocks[i_b, :, :, :] = block_red[ix:ix+bs[0]+1, iy:iy+bs[1]+1, iz:iz+bs[2]+1].transpose(2, 1, 0)
         
         self.fill_vars(domain_size, blocks, treecode, level, time, iteration, max_level)
-    
+
+
     # let it write itself
     def write(self, file, verbose=True):
         """ Write data from wabbit to an HDF5 file
@@ -316,7 +328,52 @@ class WabbitHDF5file:
         # those are optional and not read in from wabbit
         # currently none
         fid.close()
-        
+
+
+    # for large data, we do not want to read all block values at once, as it is simply not feasible
+    # however, we might still want to read or write single blocks, so those functions deal with that
+    def block_read(self, i_b, file=None):
+        # some safety checks
+        file_read = self.orig_file if not file else file
+        if not file_read:
+            print("Tried to access a single block but no file is given")
+            return None
+
+        if not self.total_number_blocks:
+            print("Tried to access a single block before the WabbitStateOject was initialized?")
+            return None
+
+        if i_b < 0 or i_b >= self.total_number_blocks:
+            print("Tried to access a block outside block range")
+            return None
+
+        fid = h5py.File(file_read,'r')
+        block = fid['blocks'][self.blocks_order[i_b], :]
+        fid.close()
+        return block
+
+
+    def block_write(self, i_b, block, file=None):
+        # some safety checks
+        file_write = self.orig_file if not file else file
+        if not file_write:
+            print("Tried to access a single block but no file is given")
+            return None
+
+        if not self.total_number_blocks:
+            print("Tried to access a single block before the WabbitStateOject was initialized?")
+            return None
+
+        if i_b < 0 or i_b >= self.total_number_blocks:
+            print("Tried to access a block outside block range")
+            return None
+
+        fid = h5py.File(file_write,'r')
+        fid['blocks'][self.blocks_order[i_b], :] = block  # we assume here that block sizes are equal
+        fid.close()
+        return
+            
+
     # define the == operator for objects
     # this is only true if objects are 100% similar
     # this is not the case for different simulations so use other function for that
@@ -452,9 +509,30 @@ class WabbitHDF5file:
 
     # given a level and treecode, give me the block ID
     def get_block_id(self, treecode, level):
-        if (treecode, level) not in self.tc_dict: return -1
-        return list(zip(self.block_treecode_num, self.level)).index((treecode, level))
-    
+        return self.tc_find.get((treecode, level), -1)
+
+
+    # returns sort list where the elements are in ascending order for first treecode and then level
+    def sort_list(self, do_resorting):
+        combined_list = list(zip(self.block_treecode_num, self.level, range(self.total_number_blocks)))
+        # Sort the list based on treecode first, then level
+        sorted_combined_list = sorted(combined_list, key=lambda x: (x[0], x[1]))
+
+        # if we want to resort, we do that now
+        if do_resorting:
+            self.blocks_order = np.array(sorted_combined_list)[:,2]
+            self.coords_origin, self.coords_spacing = self.coords_origin[self.blocks_order, :], self.coords_spacing[self.blocks_order, :]
+            self.level, self.block_treecode_num = self.level[self.blocks_order], self.block_treecode_num[self.blocks_order]
+            if len(self.blocks) > 0: self.blocks = self.blocks[self.blocks_order, :]
+            if len(self.lgt_ids) > 0: self.lgt_ids = self.lgt_ids[self.blocks_order]
+            if len(self.procs) > 0: self.procs = self.procs[self.blocks_order]
+            if len(self.refinement_status) > 0: self.refinement_status = self.refinement_status[self.blocks_order]
+            if len(self.block_treecode) > 0: self.block_treecode = self.block_treecode[self.blocks_order, :]
+            self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
+
+        # Extract the sorted indices
+        return np.array(sorted_combined_list)[:,2]
+
 
     # check if logically two objects are considered to be close to equal
     def isClose(self, other, verbose=True, logger=None, return_norm=False):
@@ -554,6 +632,7 @@ class WabbitHDF5file:
                 
         mismatch_count = 0
         # Iterate through self once, checking against the dictionary
+        # ToDo: Treecode might be similar but with different max level, this is not taken into account here
         for i in range(self.block_treecode_num.shape[0]):
             if (self.block_treecode_num[i], self.level[i]) not in other.tc_dict:
                 mismatch_count += 1
@@ -639,8 +718,10 @@ class WabbitHDF5file:
         if out_str: return fname
         else: return int(fname) / 1e6
 
-    # some informations
-    def get_max_min_level(self):
+    def get_min_max_level(self):
+        '''
+            Retrieve the minimum and maximum level in the grid
+        '''
         return np.min(self.level), np.max(self.level)
         
 
@@ -699,7 +780,7 @@ class WabbitHDF5file:
                         # replace function values
                         fun_val = function(coords_point)
 
-                        if len(block.shape) == 4: self.blocks[i_block, i_x, i_y, i_z] = fun_val
+                        if len(block.shape) == 3: self.blocks[i_block, i_x, i_y, i_z] = fun_val
                         else: self.blocks[i_block, i_x, i_y] = fun_val
 
 
@@ -896,6 +977,7 @@ def tc_encoding(ixyz, level=21, max_level=21, dim=3):
             if bit:
                 # max for if one forgets to set the level
                 tc += bit << ((i_level) * dim + p_dim + max(max_level-level, 0)*dim)
+    # print(f"{ixyz} - {tc}")
     return tc
 
 def tc_decoding(treecode, level=None, dim=3, max_level=21):
@@ -1085,7 +1167,7 @@ def level_from_treecode(tc, tc_array, max_level=21, dim=3):
         
         
 # for a treecode list, return max and min level found
-def get_max_min_level( treecode ):
+def get_min_max_level( treecode ):
 
     min_level = 99
     max_level = -99
@@ -1219,7 +1301,7 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
 
     # if only the grid is plotted, we use grayscale for the blocks, and for
     # proper scaling we need to know the max/min level in the grid
-    jmin, jmax = wabbit_obj.get_max_min_level()
+    jmin, jmax = wabbit_obj.get_min_max_level()
 
 
 

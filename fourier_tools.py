@@ -81,7 +81,7 @@ def spectrum1(u):
     return k, ek
 
 
-def fft2_resample(u, res):
+def fft2_resample(u, res, verbose=True):
     """
     Resampling of 2D data field in Fourier space.
 
@@ -104,15 +104,15 @@ def fft2_resample(u, res):
     nold = np.asarray(u.shape)
 
     if (np.all(res > nold)):
-        u = fft2_upsample(u, res)
+        u = fft2_upsample(u, res, verbose=verbose)
     elif (res < u.shape[0]):
-        u = fft2_downsample(u, res)
+        u = fft2_downsample(u, res, verbose=verbose)
 
     return u
 
 
 
-def fft2_upsample(u, resolution):
+def fft2_upsample(u, resolution, verbose=True):
     """
     u is a 2d field
     resolution of the upsampled field [nx,ny] or just n
@@ -182,12 +182,9 @@ def fft2_upsample(u, resolution):
 #
 #    raise ValueError
 
-    print( " fft: upsampling: energy was=%20.15e is now=%20.15e " % (E_in, E_out) )
-    print(" New Resolution:", u2.shape)
-    print(" Old Resolution:", nold)
-    print( " delta_E=%20.15e" % (E_in - E_out) )
-    print( " delta_E=%20.15e" % ((E_in - E_out)/E_in) )
-#    print( "rfft: upsampling: energy was=%20.15e is now=%20.15e (from %i to %i points)" % (np.sum(u**2)/u.size, np.sum(u22**2)/u2.size, nold, res))
+    if verbose: 
+        print(f" fft: upsampling: energy {E_in:.5e} -> {E_out:.5e}, resolution {nold} to {u2.shape}, delta_E={E_in - E_out:.5e}, rel={(E_in - E_out)/E_in:.5e}")
+    #    print( "rfft: upsampling: energy was=%20.15e is now=%20.15e (from %i to %i points)" % (np.sum(u**2)/u.size, np.sum(u22**2)/u2.size, nold, res))
 
     return u2
 
@@ -197,7 +194,7 @@ def fft2_upsample(u, resolution):
 #
 #fft2_upsample(u[0,::8,::8], 3072)
 
-def fft2_downsample(u, res):
+def fft2_downsample(u, res, verbose=True):
     import numpy as np
 
     uk = np.fft.fft2(u)
@@ -217,7 +214,8 @@ def fft2_downsample(u, res):
     # goback to x-space
     u2 =  np.real( np.fft.ifft2( uk ) )
 
-    print( "downsampling: energy was=%15.10e is now=%15.10e (loss is desired!)" % (np.sum(u**2)/u.size, np.sum(u2**2)/u2.size))
+    if verbose:
+        print( "downsampling: energy was=%15.10e is now=%15.10e (loss is desired!)" % (np.sum(u**2)/u.size, np.sum(u2**2)/u2.size))
 
     return u2
 
@@ -246,5 +244,3 @@ def fft1_downsample(u, res):
     print( "downsampling1d: energy was=%15.10e is now=%15.10e (loss is desired!)" % (np.sum(u**2)/u.size, np.sum(u2**2)/u2.size))
 
     return u2
-
-

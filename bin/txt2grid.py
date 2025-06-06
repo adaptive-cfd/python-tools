@@ -33,7 +33,7 @@ parser.add_argument('TEXT', type=str, help='Input Wabbit-grid text-file')
 parser.add_argument('-o', '--output', type=str, help='Output location of H5 file, if not provided it is saved under same name as input.', default=None)
 parser.add_argument('--bs', type=int, help='Block size of grid, default is 16.', default=16)
 parser.add_argument('--max-level', type=int, help='Maxmium level for treecode of data, default is 9', default=9)
-parser.add_argument('--domain-size', type=int, help='Size of computational domain, default is 1', default=1)
+parser.add_argument('--domain-size', type=float, help='Size of computational domain, default is 1', default=1)
 parser.add_argument('--time', type=float, help='Current time of WABBIT-file, default is 0.0', default=0.0)
 parser.add_argument('--iteration', type=float, help='Current iteration of WABBIT-file, default is 0', default=0)
 

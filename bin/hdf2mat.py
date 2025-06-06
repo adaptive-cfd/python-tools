@@ -93,7 +93,7 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             file = directory + prefix + '_' + timestamps[i] + '.h5'
             w_obj = wabbit_tools.WabbitHDF5file()
             w_obj.read(file)
-            l_min, l_max = w_obj.get_max_min_level()
+            l_min, l_max = w_obj.get_min_max_level()
             if not l_min == l_max or (level > 0 and level == l_min == l_max):
                 file_dense = densedir + prefix + '_' + timestamps[i] + '.h5'
                 if level == -1: 

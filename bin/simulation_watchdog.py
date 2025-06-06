@@ -60,7 +60,7 @@ def age_of_youngest_file( directory='./' ):
     return(time.time() - os.path.getctime(youngest_file))
 
 
-def SendMail(subject: str, body: str, recipient="thomas.engels@ens.fr"):
+def SendMail(subject: str, body: str, recipient):
     body_str_encoded_to_byte = body.encode()
     return_stat = subprocess.run([f"mail", f"-s {subject}", recipient], input=body_str_encoded_to_byte)
     # print(return_stat) 
@@ -82,6 +82,8 @@ parser.add_argument("-j", "--jobfile", help="""The name of the jobfile. Should b
 parser.add_argument("-d", "--dir", help="""Data directory of the job, used to check for activity.""")
 parser.add_argument("-i", "--ID", help="""The ID of the job. We use this for the cancel command: mycancel $ID. This, of course,
                     is used only if the job fails""", type=int)
+parser.add_argument("-m", "--mail", help="Mail adress to send updates to", default="thomas.engels@univ-amu.fr")
+parser.add_argument("--cluster", help="Name of cluster", default="Irene")
 args = parser.parse_args()
 #---------------------------------------------------------------------------------------------------------------------------------------
 
@@ -110,7 +112,7 @@ while stat != "ERR":
         
         if a > TIME_KILL:
             print("KILLING")
-            SendMail(subject="IRENE:AUTOKILL:%s" % (jobdir), body="KILLED\nKilled the job %i %s\nAge=%f min" %(ID, jobdir, a/60.0))
+            SendMail(subject="%s:AUTOKILL:%s" % (args.cluster.upper(), jobdir), body="KILLED\nKilled the job %i %s\nAge=%f min" %(ID, jobdir, a/60.0), recipient=args.mail)
             # time to die.
             kill_job = True
             # exit while loop (even before checking for a warning.)
@@ -118,7 +120,7 @@ while stat != "ERR":
         
         if a > TIME_WARNING and time.time()-TIME_LASTMAIL>TIME_WARNING_INTERVAL:
             print("WARNING")
-            SendMail(subject="IRENE:WARNING:%s" % (jobdir), body="WARNING\nWe are about to kill the job %i %s\nAge=%f min" %(ID, jobdir, a/60.0))
+            SendMail(subject="%s:WARNING:%s" % (args.cluster.upper(), jobdir), body="WARNING\nWe are about to kill the job %i %s\nAge=%f min" %(ID, jobdir, a/60.0), recipient=args.mail)
             TIME_LASTMAIL = time.time()
             
 

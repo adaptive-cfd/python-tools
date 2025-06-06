@@ -209,7 +209,7 @@ cpuh_left2 = int(ncpu_now*time_left2/3600)
 if verbose:
     print(f"Right now, running on       {c_b}{int(ncpu_now):d}{c_e} CPUS")
     print(f"Already consumed:           {c_g}{cpuh_now}{c_e} CPUh")
-    print(f"Runtime:                    {c_g}{runtime:4.1f}{c_e} h")
+    print(f"Runtime:                    {c_g}{str(datetime.timedelta(seconds=int(3600*runtime)))}{c_e} (H:M:S)")
     print(f"RHS evals per time step:    {c_g}{int(nrhs)}{c_e}")
     print(f"mean dt total:              {c_g}{dt:e}{c_e}")
     print(f"mean dt now:                {c_b}{dt2:e}{c_e}")
@@ -231,10 +231,10 @@ if verbose:
     print(f"Time to reach: T= {c_g}{T:10.5f}{c_e}")
     print(f"Current time:  t= {c_g}{d[-1,0]:10.5f}{c_e} (it={c_g}{nt_now}{c_e})")
     if d[-1,0] != T:
-        try: cpuh_l_len = int(max(np.log10(cpuh_left),np.log10(cpuh_left2)))
-        except: cpuh_l_len = 0
-        try: cpuh_t_len = int(max(np.log10(cpuh_left+cpuh_now),np.log10(cpuh_left2+cpuh_now)))
-        except: cpuh_t_len = 0
+        if cpuh_left >= 10 or cpuh_left2 >= 10: cpuh_l_len = int(max(np.log10(cpuh_left),np.log10(cpuh_left2)))
+        else: cpuh_l_len = 0
+        if cpuh_left+cpuh_now >= 10 or cpuh_left2+cpuh_now >= 10: cpuh_t_len = int(max(np.log10(cpuh_left+cpuh_now),np.log10(cpuh_left2+cpuh_now)))
+        else: cpuh_t_len = 0
         print(f"Remaining time [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{str(datetime.timedelta(seconds=time_left))}{c_e}   [{cpuh_left:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
         print(f"Remaining time [based on last {nt} time steps]: {c_b}{str(datetime.timedelta(seconds=time_left2))}{c_e}   [{cpuh_left2:{cpuh_l_len+1}d} CPUH left] = [{cpuh_left2+cpuh_now:{cpuh_t_len+1}d} CPUH total]")
         print(f"ETA [based on all   {' '*int(np.log10(nt))} time steps]: {c_g}{eta.strftime('%Y-%m-%d %H:%M:%S')}{c_e}")
@@ -308,7 +308,7 @@ if args.plot:
     
     if args.plot_procs:
         if not latex: label_now = "#CPU"
-        else: label_now = "\#CPU"   
+        else: label_now = r"\#CPU"   
         plt.subplot(np.ceil(n_plots/2).astype(int),2,5)    
         plt.plot( d[:,0], d[:,7], label=label_now )
         plt.xlabel('time')
