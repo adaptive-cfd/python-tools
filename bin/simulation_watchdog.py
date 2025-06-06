@@ -82,7 +82,7 @@ parser.add_argument("-j", "--jobfile", help="""The name of the jobfile. Should b
 parser.add_argument("-d", "--dir", help="""Data directory of the job, used to check for activity.""")
 parser.add_argument("-i", "--ID", help="""The ID of the job. We use this for the cancel command: mycancel $ID. This, of course,
                     is used only if the job fails""", type=int)
-parser.add_argument("-m", "--mail", help="Mail adress to send updates to", default="thomas.engels@ens.fr")
+parser.add_argument("-m", "--mail", help="Mail adress to send updates to", default="thomas.engels@univ-amu.fr")
 parser.add_argument("--cluster", help="Name of cluster", default="Irene")
 args = parser.parse_args()
 #---------------------------------------------------------------------------------------------------------------------------------------
