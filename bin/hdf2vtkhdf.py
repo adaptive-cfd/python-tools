@@ -84,7 +84,7 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
         all_sisters = False
         break
       id_sisters = np.append(id_sisters, block_id_o[id_find]).astype(int)  # append treecodes
-      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.log2(sub_tree_size_o[0])+1).astype(int)  # shift position according to position on highest level
+      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.log2(sub_tree_size_o[i_b])+1).astype(int)  # shift position according to position on highest level
       position_sisters = np.append(position_sisters, sub_tree_positions_o[id_find] + position_shift, axis=0)  # append positions of the sisters
       if id_find_0 in id_merged: break
     # we have found all sisters and proceed with merging
@@ -147,7 +147,7 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
       idx_b = wabbit_tools.tc_decoding(i_treecode,level=i_level, max_level=max_level,dim=dim)
       idx_n = idx_b + position_shift[:dim]  # shift indices in the given direction
       # there is a special case where the neighboring block is outside the periodic domain, then we do not proceed
-      if idx_n[direction] >= 2**i_level:
+      if idx_n[direction] > 2**i_level:
         correct_neighbor = False
         break
       else:
