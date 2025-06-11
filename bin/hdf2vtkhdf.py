@@ -578,7 +578,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       hours, rem = divmod(rem_time, 3600)
       minutes, seconds = divmod(rem, 60)
       if verbose and mpi_rank==0:
-        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'    Processing htg:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
+        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'    Processing {save_file}:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
 
       # go down the tree
       for i_level in np.arange(level)+1:
