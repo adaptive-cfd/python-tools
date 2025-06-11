@@ -255,6 +255,8 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         # if pre+'y' in p_names: scalars.append(pre+'y')
         # if pre+'z' in p_names: scalars.append(pre+'z')
 
+  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''} and {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\"' if len(v_names) > 0 else ''} to vtkhdf file")
+
   ### prepare filename
   file_ending = '.vtkhdf'
   if save_file is None: save_file = w_main.orig_file.replace(".h5", file_ending)
@@ -462,7 +464,7 @@ def vtkhdf_time_bundle(in_folder, out_name, timestamps=[], verbose=True):
       json.dump(vtkhdf_data, json_file, indent=4)
   if verbose: print(f"Bundled data for different times: {series_filename}")
 
-def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False):
+def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False, exclude_prefixes=[], include_prefixes=[]):
   """
   Create a HTG containing all block information
   Creating a HTG for actual block data is not possible and very expensive as each point in a hypertreegrid cannot be further divided
@@ -488,6 +490,10 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   multi_block_dataset = vtk.vtkMultiBlockDataSet()
   i_count = 0
   for i_wobj in w_obj_list:
+    # skip if this prefix is excluded or not included
+    if i_wobj.var_from_filename() in exclude_prefixes: continue  # skip excluded prefixes
+    if len(include_prefixes) > 0 and i_wobj.var_from_filename() not in include_prefixes: continue  # skip not included prefixes
+
     dim = i_wobj.dim
     l_min, l_max = w_obj.get_min_max_level()
     depth = 1 if not split_levels else l_max - l_min+1  # how many different grids are there?
@@ -713,7 +719,7 @@ if __name__ == "__main__":
 
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
 
-  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input.", action="store_true")
+  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input and for --vtkhdf or --htg1.", action="store_true")
   parser.add_argument("-p", "--point-data", help="Save as pointdata, elsewise celldata is saved", action="store_true")
 
   # parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
@@ -823,8 +829,8 @@ if __name__ == "__main__":
     if args.htg1: hdf2htg(time_process[i_time][0], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, split_levels=args.cvs_split_levels)
     elif args.htg:
       for i_wobj in time_process[i_time]:
-        save_file = f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}_{i_wobj.var_from_filename(verbose=False)}"
-        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels)
+        save_file = f"{args.outfile}-{i_wobj.var_from_filename(verbose=False)}_{wabbit_tools.time2wabbitstr(i_time)}"
+        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels, exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
 
     # create vtkhdf
     if args.vtkhdf:
