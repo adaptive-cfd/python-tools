@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 import h5py, os, sys, argparse, glob, time, numpy as np, json
 try:
-  try: from mpi4py import MPI
-  except: print("Could not load mpi4py")
+  from mpi4py import MPI
   mpi_size = MPI.COMM_WORLD.Get_size()
   mpi_parallel = mpi_size > 1
   mpi_rank = MPI.COMM_WORLD.Get_rank()
@@ -84,7 +83,7 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
         all_sisters = False
         break
       id_sisters = np.append(id_sisters, block_id_o[id_find]).astype(int)  # append treecodes
-      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.log2(sub_tree_size_o[i_b])+1).astype(int)  # shift position according to position on highest level
+      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.array(sub_tree_size_o[i_b])).astype(int)  # shift position according to position on highest level
       position_sisters = np.append(position_sisters, sub_tree_positions_o[id_find] + position_shift, axis=0)  # append positions of the sisters
       if id_find_0 in id_merged: break
     # we have found all sisters and proceed with merging
@@ -294,7 +293,11 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   coords_origin, coords_spacing = [coords_origin[i] for i in id_sorted], [coords_spacing[i] for i in id_sorted]
   level, treecode = [level[i] for i in id_sorted], [treecode[i] for i in id_sorted]
   sub_tree_size, block_id = [sub_tree_size[i] for i in id_sorted], [block_id[i] for i in id_sorted]
-  if args.verbose and mpi_rank == 0: print(f"    Init blocks :    {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+  # print to user
+  if args.verbose and mpi_rank == 0:
+    minutes, seconds = divmod(time.time() - start_time, 60)
+    if minutes > 0: print(f"    Init blocks :          {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
+    else: print(f"    Init blocks :          {total_blocks:7d} blocks, took {seconds:.1g}s")
 
   # this is the actual merging loop, we loop until no new blocks are merged
   jmin, jmax = w_main.get_min_max_level()
@@ -306,7 +309,11 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     # call merge function which does all the job
     block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = merge_sisters(block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, w_main.max_level, w_main.dim)
     total_blocks = len(block_id)
-    if args.verbose and mpi_rank == 0: print(f"Merged subtrees, it {i_merge+1:2d}:         {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+    # print to user
+    if args.verbose and mpi_rank == 0:
+      minutes, seconds = divmod(time.time() - start_time, 60)
+      if minutes > 0: print(f"    Merged subtrees it {i_merge+1:2d}: {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
+      else: print(f"    Merged subtrees it {i_merge+1:2d}: {total_blocks:7d} blocks, took {seconds:.1g}s")
     if total_blocks_old == total_blocks: break
 
   # now we are merging blocks in one direction, this is useful for highly adapted grids
@@ -318,7 +325,11 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
       # call merge function which does all the job
       block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = merge_directional(block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, w_main.max_level, dim=w_main.dim, direction=i_dir)
       total_blocks = len(block_id)
-      if args.verbose and mpi_rank == 0: print(f"Merged neighbours in {dir_names[i_dir]}-dir:     {time.time() - start_time:.3f} seconds, {total_blocks} blocks")
+      # print to user
+      if args.verbose and mpi_rank == 0:
+        minutes, seconds = divmod(time.time() - start_time, 60)
+        if minutes > 0: print(f"    Merged in {dir_names[i_dir]}-dir:       {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
+        else: print(f"    Merged in {dir_names[i_dir]}-dir:       {total_blocks:7d} blocks, took {seconds:.1g}s")
 
   ### collective loop creating the metadata - all processes need to do this
   start_time = time.time()
@@ -361,7 +372,10 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     for i_v, i_n in zip(v_names, v_ind):
       if w_main.dim == 2: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
       else: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
-  if args.verbose and mpi_rank == 0: print(f"   Created metadata: {time.time() - start_time:.3f} seconds")
+  if args.verbose and mpi_rank == 0:
+    minutes, seconds = divmod(time.time() - start_time, 60)
+    if minutes > 0: print(f"    Created metadata:                      took {int(minutes)}m {seconds:04.1f}s")
+    else: print(f"    Created metadata:                      took {seconds:.1g}s")
 
   ### independent loop attaching the actual data - this is parallelized
   start_time = time.time()
@@ -371,7 +385,9 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     hours, rem = divmod(rem_time, 3600)
     minutes, seconds = divmod(rem, 60)
     if verbose and mpi_rank==0 and i_block < int(total_blocks/mpi_size):
-        print_progress_bar(i_block, int(total_blocks/mpi_size), prefix=f'   Processing data:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s')
+        hours, rem = divmod(time.time() - start_time, 3600)
+        minutes, seconds = divmod(rem, 60)
+        print_progress_bar(i_block, int(total_blocks/mpi_size), prefix=f'    Processing data:', suffix=f'ETA: {int(hours)}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
 
     # get celldatagroup
     if data_type == "CellData": vtkhdf_group[f'Block{i_block}']['CellData']
@@ -418,7 +434,10 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   # close file
   f.close()
 
-  if args.verbose and mpi_rank == 0: print(f"   Added data:       {time.time() - start_time:.3f} seconds")
+  if args.verbose and mpi_rank == 0:
+    minutes, seconds = divmod(time.time() - start_time, 60)
+    if minutes > 0: print(f"    Added data:                            took {int(minutes)}m {seconds:04.1f}s")
+    else: print(f"    Added data:                            took {seconds:.1g}s")
 
   if mpi_parallel: MPI.Finalize()
             
@@ -552,8 +571,8 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       # Format remaining time in HH:MM:SS format
       hours, rem = divmod(rem_time, 3600)
       minutes, seconds = divmod(rem, 60)
-      if verbose:
-        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'Processing htg:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s')
+      if verbose and mpi_rank==0:
+        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'    Processing htg:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
 
       # go down the tree
       for i_level in np.arange(level)+1:
@@ -812,7 +831,10 @@ if __name__ == "__main__":
       hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
 
     # output timing
-    if args.verbose and mpi_rank == 0: print(f"   Converted file:   {time.time() - start_time:.3f} seconds")
+    if args.verbose and mpi_rank == 0:
+      minutes, seconds = divmod(time.time() - start_time, 60)
+      if minutes > 0: print(f"    Converted file:                        took {int(minutes)}m {seconds:04.1f}s")
+      else: print(f"    Converted file:                        took {seconds:.1g}s")
 
   # vtkhdf or htg files are created one file for each time-step, but we can luckily bundle them all up so let's do this!
   if args.time_bundle:
