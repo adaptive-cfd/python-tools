@@ -84,7 +84,7 @@ def check_parameters_for_stupid_errors( file ):
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
     jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int, default=1)
-    adapt_mesh      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
+    adapt_tree      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
     g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
@@ -116,7 +116,8 @@ def check_parameters_for_stupid_errors( file ):
     CFL_eta      = get_ini_parameter( file, 'Time', 'CFL_eta', float, default=0.99)
     filter_type  = get_ini_parameter( file, 'Discretization', 'filter_type', str, default='no_filter')
     filter_freq  = get_ini_parameter( file, 'Discretization', 'filter_freq', int, default=-1)
-    
+    useCoarseExtension = get_ini_parameter(file, 'Blocks', 'useCoarseExtension', int, default=0)
+    useSecurityZone    = get_ini_parameter(file, 'Blocks', 'useSecurityZone', int, default=0)
     
     dx = L[0]*2**-jmax/(bs[0])
     keta = np.sqrt(ceta*nu)/dx
@@ -126,7 +127,6 @@ def check_parameters_for_stupid_errors( file ):
     print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
           (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
     print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
-    print("C_eps = %2.2e   wavelet    = %s    dealias = %i     adapt_mesh = %i" % (ceps, wavelet, dealias, adapt_mesh))
     print("T_max = %2.2f   CFL        = %2.2f CFL_eta = %2.2f  CFL_nu     = %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
     print("equidistant grids: Jmin=%i^%i, Jmax=%i^%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
     
@@ -135,15 +135,6 @@ def check_parameters_for_stupid_errors( file ):
     else:
         print("discretization=%s %s~~>check if that matches wavelet wavelet %s%s" % (discretization, bcolors.FAIL, wavelet, bcolors.ENDC))
     
-    
-    
-    if penalized == 1:
-        print("use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
-              (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
-    else:
-        print("use_penalization= %i %s~~~> no penalization used! %s" % 
-              (penalized, bcolors.OKBLUE, bcolors.ENDC))
-        
     if sponged:
         print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
               (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
@@ -152,11 +143,51 @@ def check_parameters_for_stupid_errors( file ):
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
     
+    print('\n-- wavelet')
+    print("   C_eps = %2.2e   wavelet = %s  dealias = %i  adapt_tree = %i" % (ceps, wavelet, dealias, adapt_tree))
+    print("   useCoarseExtension = %i useSecurityZone = %i" % (useCoarseExtension, useSecurityZone))
+    
+    print('\n-- penalization')
+    if penalized == 1:
+        print("   use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
+              (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+        print("   soft_penalization_startup= %i" % (get_ini_parameter( file, 'VPM', 'soft_penalization_startup', bool, default=False)))
+    else:
+        print("   use_penalization= %i %s~~~> no penalization used! %s" % 
+              (penalized, bcolors.OKBLUE, bcolors.ENDC))
+    
     if geometry == "Insect":
         h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
-        print('-- insect')
-        print('    h_wing/dx = %2.2f' % (h_wing/dx))
+        print('\n-- insect')
+        print('   h_wing/dx = %2.2f' % (h_wing/dx))
         print('')
+        
+        coff = bcolors.ENDC        
+        cl,cr,cr2,cl2,cb = '\033[30m','\033[30m','\033[30m','\033[30m','\033[30m'
+        
+        if get_ini_parameter(file, 'Insects', 'RightWing', bool, False):
+            cr = bcolors.OKBLUE# '\033[37m'
+        if get_ini_parameter(file, 'Insects', 'LeftWing', bool, False):
+            cl = bcolors.OKBLUE#'\033[37m'
+        if get_ini_parameter(file, 'Insects', 'RightWing2', bool, default=False):
+            cr2 = bcolors.OKBLUE#'\033[37m'
+        if get_ini_parameter(file, 'Insects', 'LeftWing2', bool, default=False):
+            cl2 = bcolors.OKBLUE#'\033[37m'    
+        if get_ini_parameter(file, 'Insects', 'BodyType', str, 'nobody') != "nobody":
+            cb = bcolors.OKBLUE#'\033[37m'    
+        
+        print("%s.==-.%s   configuration   %s.-==.%s  " % (cl,coff,cr,coff))
+        print("%s \\()8`-._%s  %s`.   .'%s  %s_.-'8()/ %s  " % (cl,coff, cb, coff, cr, coff))
+        print("%s (88'   ::.%s  %s\\./%s  %s.::   '88)%s   " % (cl,coff, cb, coff, cr, coff))
+        print("%s  \\_.'`-::::.%s%s(#)%s%s.::::-'`._/    %s" % (cl,coff, cb, coff, cr, coff))
+        print("    %s`._... .q%s%s(_)%s%sp. ..._.' %s" % (cl,coff, cb, coff, cr, coff)       )
+        print("    %s  ''-..-'%s%s|=|%s%s`-..-''%s" % (cl,coff, cb, coff, cr, coff))
+        print("    %s  .''' .'%s%s|=|%s%s`. `''.%s   " % (cl2,coff, cb, coff, cr2, coff))
+        print("    %s,':8(o)./%s%s|=|%s%s\\.(o)8:`.%s" % (cl2,coff, cb, coff, cr2, coff))
+        print("  %s (O :8 ::/ %s%s\\_/%s%s \\:: 8: O) %s" % (cl2,coff, cb, coff, cr2, coff))      
+        print("  %s  \\O `::/ %s    %s  \\::' O/%s" % (cl2,coff, cr2, coff))
+        print("  %s   ''--'  %s     %s  `--''%s" % (cl2,coff, cr2, coff))
+
     
     
     if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool ):
@@ -174,12 +205,15 @@ def check_parameters_for_stupid_errors( file ):
         # tree height
         H_tree = np.max(d_tree[:,5])-np.min(d_tree[:,2])
         
-        print('-- fractal tree:')
-        print('    Dmin=%f (%2.2f dx) Dmax=%f (%2.2f dx)' %(D_min, D_min/dx, D_max, D_max/dx))
-        print('    H_tree=%f H_tree/dx=%2.1f' % (H_tree, H_tree/dx)  )
+        print('\n-- fractal tree:')
+        print('   Dmin=%f (%2.2f dx) Dmax=%f (%2.2f dx)' %(D_min, D_min/dx, D_max, D_max/dx))
+        print('   H_tree=%f H_tree/dx=%2.1f' % (H_tree, H_tree/dx)  )
         print('')
     
     print("======================================================================================")
+    
+    if useCoarseExtension != 1 or useSecurityZone != 1:
+        bcolors.err('For stability it is recommended to set useCoarseExtension=1 and useSecurityZone=1')
     
     if physics_type == 'ACM-new' and dim == 3 and Neqn != 4:
         bcolors.err("For 3D ACM, you MUST set number_equations=4 (ux,uy,uz,p)")
@@ -260,8 +294,8 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
         bcolors.warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
     
-    if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
-        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
+    if exists_ini_parameter( file, "Blocks", "adapt_tree" ):
+        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_tree ===> adapt_tree')
    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
