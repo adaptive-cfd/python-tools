@@ -52,6 +52,36 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
     if iteration == total - 1: 
         print()
 
+
+# Prune the grid, i.e. remove with constant values if not deviating by specific tolerance
+# this has to be done before merging
+def prune_grid(wobj, block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, tolerance):
+  block_id, coords_origin, coords_spacing, treecode, level, sub_tree_size, sub_tree_positions = [], [], [], [], [], [], []
+  for i_block in block_id_o:
+    id_block = i_block[0]  # assume that we did not group blocks yet
+    block_id_now = wobj.get_block_id(wobj.block_treecode_num[id_block], wobj.level[id_block])
+    block_values_now = wobj.block_read(block_id_now)
+
+    # check if values deviate less than relative tolerance from mean
+    mean_block = np.mean(block_values_now)
+    removed_blocks = 0
+    if np.all(np.abs(block_values_now - mean_block) < tolerance):
+    # if np.all(block_values_now <= 0):
+      # if so, we do not add this block to the new list
+      continue
+    else:
+      # if not, we add the block to the new list
+      block_id.append(block_id_o[id_block])
+      coords_origin.append(coords_origin_o[id_block])
+      coords_spacing.append(coords_spacing_o[id_block])
+      level.append(level_o[id_block])
+      treecode.append(treecode_o[id_block])
+      sub_tree_size.append(sub_tree_size_o[id_block])
+      sub_tree_positions.append(sub_tree_positions_o[id_block])
+    
+  return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
+
+
 def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, max_level, dim=3):
   """
   Takes a wabbit object and tries to merge all blocks, where all sister blocks are available.
@@ -180,7 +210,7 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
 
 
-def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
+def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, prune_tolerance=None, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
   """
   Create a multi block dataset from the available data
     w_obj        - Required  : Object representeing the wabbit data or List of objects
@@ -300,6 +330,16 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     minutes, seconds = divmod(time.time() - start_time, 60)
     if minutes > 0: print(f"    Init blocks :          {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
     else: print(f"    Init blocks :          {total_blocks:7d} blocks, took {seconds:.1g}s")
+
+  # pruning in case prune_tolerance is not None
+  if prune_tolerance is not None:
+    block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = prune_grid(w_main, block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, prune_tolerance)
+    total_blocks = len(block_id)
+    # print to user
+    if args.verbose and mpi_rank == 0:
+      minutes, seconds = divmod(time.time() - start_time, 60)
+      if minutes > 0: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
+      else: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {seconds:.1g}s")
 
   # this is the actual merging loop, we loop until no new blocks are merged
   jmin, jmax = w_main.get_min_max_level()
@@ -722,6 +762,9 @@ if __name__ == "__main__":
   parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input and for --vtkhdf or --htg1.", action="store_true")
   parser.add_argument("-p", "--point-data", help="Save as pointdata, elsewise celldata is saved", action="store_true")
 
+  parser.add_argument("--prune", help="Prune the grid, i.e. remove blocks with constant values with respect to the first file per timestep", action="store_true")
+  parser.add_argument("--prune-tolerance", help="Allowed maximum deviation from block mean value", default=1e-3, type=float)
+
   # parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
   # files at the same time, which have different file names. Then you'll want to
   # read the time from the filename, since paraview crashes if two files are at the
@@ -785,6 +828,9 @@ if __name__ == "__main__":
   if args.outfile == "all" and os.path.isdir(args.infile):
     args.outfile = os.path.join(args.infile, args.outfile)
 
+  # check for pruning
+  if not args.prune: args.prune_tolerance = None
+
   # for one file we simply read in this file and process it
   time_process = {}
   if os.path.isfile(args.infile) and args.infile.endswith(".h5"):
@@ -834,7 +880,7 @@ if __name__ == "__main__":
 
     # create vtkhdf
     if args.vtkhdf:
-      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
+      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, prune_tolerance=args.prune_tolerance, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
 
     # output timing
     if args.verbose and mpi_rank == 0:

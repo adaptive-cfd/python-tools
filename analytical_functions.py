@@ -29,12 +29,26 @@ def INICOND_sine_wave(xyz, domain_size=[1, 1, 1], frequency=[1, 1, 1], offset=[0
 
 # this function sets a sine wave and gaussian blobs onto the field
 def INICOND_sine_exp(xyz, domain_size=[1, 1, 1], amplitude_sine=[1,1,1], frequency=[1, 1, 1], offset_sine=[0, 0, 0], amplitude_exp=[1], sigma=[[1, 1, 1]], offset_exp=[[0, 0, 0]]):
-    out = amplitude_sine[0]*np.sin(frequency[0]*xyz[0]+offset_sine[0]) + amplitude_sine[1]*np.sin(frequency[1]*xyz[1]+offset_sine[1])
-    if len(xyz) == 3: out += amplitude_sine[2]*np.sin(frequency[2]*xyz[2]+offset_sine[2])
-    # add gaussian blob
-    for i_b in range(len(amplitude_exp)):
-        if len(xyz) == 2: out += amplitude_exp[i_b]*np.exp( -( (xyz[0]-offset_exp[i_b][0])**2/sigma[i_b][0]**2 + (xyz[1]-offset_exp[i_b][1])**2/sigma[i_b][1]**2 ) )
-        else: out += amplitude_exp[i_b]*np.exp( -( (xyz[0]-offset_exp[i_b][0])**2/sigma[i_b][0]**2 + (xyz[1]-offset_exp[i_b][1])**2/sigma[i_b][1]**2 + (xyz[2]-offset_exp[i_b][2])**2/sigma[i_b][2]**2 ) )
+    out = 0
+    for bx in [-1, 0, 1]:
+        for by in [-1, 0, 1]:
+            if len(xyz) == 3: bz = [-1, 0, 1]
+            else: bz = [0]
+
+            for bz_val in bz:
+                ixyz = np.array(xyz, dtype=float)
+                # adjust the xyz coordinates to account for periodicity
+                ixyz[0] += bx * domain_size[0]
+                ixyz[1] += by * domain_size[1]
+                if len(xyz) == 3: ixyz[2] += bz_val * domain_size[2]
+
+                # calculate the output
+                out += amplitude_sine[0]*np.sin(frequency[0]*ixyz[0]+offset_sine[0]) + amplitude_sine[1]*np.sin(frequency[1]*ixyz[1]+offset_sine[1])
+                if len(xyz) == 3: out += amplitude_sine[2]*np.sin(frequency[2]*ixyz[2]+offset_sine[2])
+                # add gaussian blob
+                for i_b in range(len(amplitude_exp)):
+                    if len(xyz) == 2: out += amplitude_exp[i_b]*np.exp( -( (ixyz[0]-offset_exp[i_b][0])**2/sigma[i_b][0]**2 + (ixyz[1]-offset_exp[i_b][1])**2/sigma[i_b][1]**2 ) )
+                    else: out += amplitude_exp[i_b]*np.exp( -( (ixyz[0]-offset_exp[i_b][0])**2/sigma[i_b][0]**2 + (ixyz[1]-offset_exp[i_b][1])**2/sigma[i_b][1]**2 + (ixyz[2]-offset_exp[i_b][2])**2/sigma[i_b][2]**2 ) )
     return out
 
 # this function gives the position at a specific dimension
