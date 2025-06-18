@@ -52,6 +52,36 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
     if iteration == total - 1: 
         print()
 
+
+# Prune the grid, i.e. remove with constant values if not deviating by specific tolerance
+# this has to be done before merging
+def prune_grid(wobj, block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, tolerance):
+  block_id, coords_origin, coords_spacing, treecode, level, sub_tree_size, sub_tree_positions = [], [], [], [], [], [], []
+  for i_block in block_id_o:
+    id_block = i_block[0]  # assume that we did not group blocks yet
+    block_id_now = wobj.get_block_id(wobj.block_treecode_num[id_block], wobj.level[id_block])
+    block_values_now = wobj.block_read(block_id_now)
+
+    # check if values deviate less than relative tolerance from mean
+    mean_block = np.mean(block_values_now)
+    removed_blocks = 0
+    if np.all(np.abs(block_values_now - mean_block) < tolerance):
+    # if np.all(block_values_now <= 0):
+      # if so, we do not add this block to the new list
+      continue
+    else:
+      # if not, we add the block to the new list
+      block_id.append(block_id_o[id_block])
+      coords_origin.append(coords_origin_o[id_block])
+      coords_spacing.append(coords_spacing_o[id_block])
+      level.append(level_o[id_block])
+      treecode.append(treecode_o[id_block])
+      sub_tree_size.append(sub_tree_size_o[id_block])
+      sub_tree_positions.append(sub_tree_positions_o[id_block])
+    
+  return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
+
+
 def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, max_level, dim=3):
   """
   Takes a wabbit object and tries to merge all blocks, where all sister blocks are available.
@@ -180,7 +210,7 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
 
 
-def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
+def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, prune_tolerance=None, grid2field=None, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
   """
   Create a multi block dataset from the available data
     w_obj        - Required  : Object representeing the wabbit data or List of objects
@@ -255,6 +285,8 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         # if pre+'y' in p_names: scalars.append(pre+'y')
         # if pre+'z' in p_names: scalars.append(pre+'z')
 
+  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''} and {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\"' if len(v_names) > 0 else ''} to vtkhdf file")
+
   ### prepare filename
   file_ending = '.vtkhdf'
   if save_file is None: save_file = w_main.orig_file.replace(".h5", file_ending)
@@ -298,6 +330,16 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     minutes, seconds = divmod(time.time() - start_time, 60)
     if minutes > 0: print(f"    Init blocks :          {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
     else: print(f"    Init blocks :          {total_blocks:7d} blocks, took {seconds:.1g}s")
+
+  # pruning in case prune_tolerance is not None
+  if prune_tolerance is not None:
+    block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position = prune_grid(w_main, block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_position, prune_tolerance)
+    total_blocks = len(block_id)
+    # print to user
+    if args.verbose and mpi_rank == 0:
+      minutes, seconds = divmod(time.time() - start_time, 60)
+      if minutes > 0: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
+      else: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {seconds:.1g}s")
 
   # this is the actual merging loop, we loop until no new blocks are merged
   jmin, jmax = w_main.get_min_max_level()
@@ -365,13 +407,18 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     bs_now = np.array(sub_tree_size[i_block]) * bs_o
     if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] == 1
-    for i_s, i_n in zip(s_names, s_ind):
-      if w_main.dim == 2: data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
-      else: data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+    for i_s, i_n in zip(s_names, s_ind): data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
+    
     # Create empty datasets for vectors
-    for i_v, i_n in zip(v_names, v_ind):
-      if w_main.dim == 2: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
-      else: data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+    for i_v, i_n in zip(v_names, v_ind): data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+
+    # Create empty datasets for grid2Field
+    if grid2field is not None:
+      for i_f in grid2field:
+        # scalar fields
+        if i_f in ["level", "treecode", "refinement_status", "procs", "lgt_ID"]: data_group[i_block].create_dataset(i_f, shape=bs_now[::-1], dtype=np.float64)
+        # vector fields
+        if i_f in ["coords_origin", "coords_spacing"]: data_group[i_block].create_dataset(i_f, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
   if args.verbose and mpi_rank == 0:
     minutes, seconds = divmod(time.time() - start_time, 60)
     if minutes > 0: print(f"    Created metadata:                      took {int(minutes)}m {seconds:04.1f}s")
@@ -401,12 +448,12 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     for i_s, i_n in zip(s_names, s_ind):  
       # block is composed of subtree
       data_append = np.zeros(bs_now[::-1])
-      for i_sister in range(len(id_now)):
+      for i_merged in range(len(id_now)):
         # translate id from main to this object as the block ids could be shuffled
-        i_b_now = w_obj_list[i_n].get_block_id(w_main.block_treecode_num[id_now[i_sister]], w_main.level[id_now[i_sister]])
+        i_b_now = w_obj_list[i_n].get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
         j_block = w_obj_list[i_n].block_read(i_b_now)
         # get block position of this sub-octree
-        b_id = sub_tree_position[i_block][i_sister].astype(int)
+        b_id = sub_tree_position[i_block][i_merged].astype(int)
         if w_main.dim == 2: b_id = np.append(b_id, 0)
         # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
         data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
@@ -418,18 +465,48 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
       # block is composed of subtree
       data_append = np.zeros(np.append(bs_now[::-1], len(i_n)))
       for i_depth, i_ndim in enumerate(i_n):
-        for i_sister in range(len(id_now)):
+        for i_merged in range(len(id_now)):
           # translate id from main to this object as the block ids could be shuffled
-          i_b_now = w_obj_list[i_ndim].get_block_id(w_main.block_treecode_num[id_now[i_sister]], w_main.level[id_now[i_sister]])
+          i_b_now = w_obj_list[i_ndim].get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
           j_block = w_obj_list[i_ndim].block_read(i_b_now)
           # get block position of this sub-octree
-          b_id = sub_tree_position[i_block][i_sister].astype(int)
+          b_id = sub_tree_position[i_block][i_merged].astype(int)
           if w_main.dim == 2: b_id = np.append(b_id, 0)
           # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
           data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
                   bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
                   bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0],i_depth] = j_block[tuple([slice(None,-1 if data_type == "CellData" and not np.all(j_block.shape == bs_o[:w_main.dim]) else None)]*w_main.dim)]
       data_group[i_block][i_v][:] = data_append
+
+    # Attach data for grid2Field
+    if grid2field is not None:
+      for i_f in grid2field:
+        for i_merged in range(len(id_now)):
+          # translate id from main to this object as the block ids could be shuffled
+          i_b_now = w_obj_list[i_ndim].get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
+          # get block position of this sub-octree
+          b_id = sub_tree_position[i_block][i_merged].astype(int)
+
+          # scalar variables
+          if i_f in ["level", "treecode", "refinement_status", "procs", "lgt_ID"]:
+            if i_f == "level": grid_value = w_main.level[i_b_now]
+            elif i_f == "treecode": grid_value = w_main.block_treecode_num[i_b_now]
+            elif i_f == "refinement_status": grid_value = w_main.refinement_status[i_b_now]
+            elif i_f == "procs": grid_value = w_main.procs[i_b_now]
+            elif i_f == "lgt_ID": grid_value = w_main.lgt_ids[i_b_now]
+            data_group[i_block][i_f][bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
+                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
+                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0]] = np.full(bs_o[:w_main.dim]+(data_type=="PointData"), grid_value, dtype=np.float64)
+
+          # vector fields
+          if i_f in ["coords_origin", "coords_spacing"]:
+            if i_f == "coords_origin": grid_values = w_main.coords_origin[i_b_now]
+            elif i_f == "coords_spacing": grid_values = w_main.coords_spacing[i_b_now]
+            data_append = np.empty(list(bs_o[:w_main.dim]+(data_type=="PointData")) + [w_main.dim], dtype=np.float64)
+            for d in range(w_main.dim): data_append[..., d] = grid_values[d]
+            data_group[i_block][i_f][bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
+                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
+                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0], :] = data_append
 
   # close file
   f.close()
@@ -462,7 +539,7 @@ def vtkhdf_time_bundle(in_folder, out_name, timestamps=[], verbose=True):
       json.dump(vtkhdf_data, json_file, indent=4)
   if verbose: print(f"Bundled data for different times: {series_filename}")
 
-def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False):
+def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False, exclude_prefixes=[], include_prefixes=[]):
   """
   Create a HTG containing all block information
   Creating a HTG for actual block data is not possible and very expensive as each point in a hypertreegrid cannot be further divided
@@ -488,6 +565,10 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
   multi_block_dataset = vtk.vtkMultiBlockDataSet()
   i_count = 0
   for i_wobj in w_obj_list:
+    # skip if this prefix is excluded or not included
+    if i_wobj.var_from_filename() in exclude_prefixes: continue  # skip excluded prefixes
+    if len(include_prefixes) > 0 and i_wobj.var_from_filename() not in include_prefixes: continue  # skip not included prefixes
+
     dim = i_wobj.dim
     l_min, l_max = w_obj.get_min_max_level()
     depth = 1 if not split_levels else l_max - l_min+1  # how many different grids are there?
@@ -572,7 +653,7 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       hours, rem = divmod(rem_time, 3600)
       minutes, seconds = divmod(rem, 60)
       if verbose and mpi_rank==0:
-        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'    Processing htg:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
+        print_progress_bar(i_block, i_wobj.total_number_blocks, prefix=f'    Processing {save_file}:', suffix=f'ETA: {int(hours):02d}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
 
       # go down the tree
       for i_level in np.arange(level)+1:
@@ -713,8 +794,13 @@ if __name__ == "__main__":
 
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
 
-  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input.", action="store_true")
+  parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input and for --vtkhdf or --htg1.", action="store_true")
   parser.add_argument("-p", "--point-data", help="Save as pointdata, elsewise celldata is saved", action="store_true")
+
+  parser.add_argument("--prune", help="Prune the grid, i.e. remove blocks with constant values with respect to the first file per timestep", action="store_true")
+  parser.add_argument("--prune-tolerance", help="Allowed maximum deviation from block mean value", default=1e-3, type=float)
+
+  parser.add_argument("--grid2field", help="List of grid variables that will be additionally saved as field variables. Attention: This can be memory intensive.", nargs='+', default=None, type=str)
 
   # parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
   # files at the same time, which have different file names. Then you'll want to
@@ -779,6 +865,19 @@ if __name__ == "__main__":
   if args.outfile == "all" and os.path.isdir(args.infile):
     args.outfile = os.path.join(args.infile, args.outfile)
 
+  # check for pruning
+  if not args.prune: args.prune_tolerance = None
+
+  # check if the inputted grid2field variables are valid
+  if args.grid2field is not None:
+    valid_variables = [
+      "level", "treecode", "refinement_status", "procs", "lgt_ID", "coords_spacing", "coords_origin"
+    ]
+    for i_grid_variable in args.grid2field:
+      if i_grid_variable not in valid_variables:
+        print(bcolors.FAIL + f"ERROR: Grid2field variable {i_grid_variable} is not valid. Valid variables are: {valid_variables}" + bcolors.ENDC)
+        exit(0)
+
   # for one file we simply read in this file and process it
   time_process = {}
   if os.path.isfile(args.infile) and args.infile.endswith(".h5"):
@@ -823,12 +922,12 @@ if __name__ == "__main__":
     if args.htg1: hdf2htg(time_process[i_time][0], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, split_levels=args.cvs_split_levels)
     elif args.htg:
       for i_wobj in time_process[i_time]:
-        save_file = f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}_{i_wobj.var_from_filename(verbose=False)}"
-        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels)
+        save_file = f"{args.outfile}-{i_wobj.var_from_filename(verbose=False)}_{wabbit_tools.time2wabbitstr(i_time)}"
+        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels, exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
 
     # create vtkhdf
     if args.vtkhdf:
-      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
+      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, prune_tolerance=args.prune_tolerance, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes, grid2field=args.grid2field)
 
     # output timing
     if args.verbose and mpi_rank == 0:
