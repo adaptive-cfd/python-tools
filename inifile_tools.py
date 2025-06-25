@@ -295,8 +295,8 @@ def check_parameters_for_stupid_errors( file ):
     if exists_ini_parameter( file, "ACM", "compute_nonlinearity" ):
         bcolors.warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
     
-    if exists_ini_parameter( file, "Blocks", "adapt_tree" ):
-        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_tree ===> adapt_tree')
+    if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
+        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
