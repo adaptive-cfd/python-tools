@@ -208,7 +208,7 @@ def check_parameters_for_stupid_errors( file ):
     
     print("======================================================================================")
     
-    if useCoarseExtension != 1 or useSecurityZone != 1:
+    if (adapt_tree and (useCoarseExtension != 1 or useSecurityZone != 1)):
         bcolors.err('For stability it is recommended to set useCoarseExtension=1 and useSecurityZone=1')
     
     if physics_type == 'ACM-new' and dim == 3 and Neqn != 4:
