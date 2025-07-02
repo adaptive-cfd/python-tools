@@ -1042,6 +1042,7 @@ def M_body(psi, beta, gamma):
     warn("Using print is deprecated, use get_M_g2b instead", DeprecationWarning, stacklevel=2)
     return get_M_g2b(psi, beta, gamma)
 
+
 def get_M_b2s(eta, side, unit_in="rad"):
     """
     Rotation matrix from body to stroke system, as defined in Engels et al. 2016 SISC
@@ -1060,14 +1061,30 @@ def get_M_b2s(eta, side, unit_in="rad"):
     if unit_in != "rad":
         eta = deg2rad(eta)
         
+    ce, se = np.cos(eta), np.sin(eta)
+        
     if side =="left":
-        M_stroke = Ry(eta)
+        # this syntax is easier for humans but slower for computers (relevant for QSM)
+        # M_stroke = Ry(eta)
+        
+        M_stroke = np.array([
+                    [ce, 0, -se],
+                    [0,  1,   0],
+                    [se, 0,  ce]  ])        
+        
     elif side == "right":
-        M_stroke = Rx(np.pi) @ Ry(eta)
+        # this syntax is easier for humans but slower for computers (relevant for QSM)
+        # M_stroke = Rx(np.pi) @ Ry(eta)
+        
+        M_stroke = np.array([
+                    [ce, 0,  -se],
+                    [0,  -1,   0],
+                    [-se, 0,  -ce]  ])     
     else:
         raise("Neither right nor left wing")
         
     return M_stroke   
+
 
 def get_M_s2w(alpha, theta, phi, side, unit_in='rad'):
     """
@@ -1094,13 +1111,34 @@ def get_M_s2w(alpha, theta, phi, side, unit_in='rad'):
         theta = deg2rad(theta)
         phi = deg2rad(phi)
     
-    if side =="left":
-        M = Ry(alpha) @ Rz(theta) @ Rx(phi)
-    elif side == "right":
-        M = Ry(-alpha) @ Rz(theta) @ Rx(-phi)
-    else:
-        raise("Neither right nor left wing")
+    # this syntax is easier for humans but slower for computers (relevant for QSM)
+    # if side =="left":
+    #     M = Ry(alpha) @ Rz(theta) @ Rx(phi)
+    # elif side == "right":
+    #     M = Ry(-alpha) @ Rz(theta) @ Rx(-phi)
+    # else:
+    #     raise("Neither right nor left wing")
+    
+    if side == 'right':
+        alpha *= -1.0
+        phi *= -1.0
+        
+    # Precompute trigonometric functions
+    ca = np.cos(alpha)
+    sa = np.sin(alpha)
+    ct = np.cos(theta)
+    st = np.sin(theta)
+    cp = np.cos(phi)
+    sp = np.sin(phi)
+
+    M = np.array([
+        [ca * ct, ca * st * cp + sa * sp, ca * st * sp - sa * cp],
+        [-st    ,                ct * cp,                ct * sp],
+        [sa * ct, sa * st * cp - ca * sp, sa * st * sp + ca * cp]    ])        
+        
     return M
+
+
 
 def get_M_g2b(psi, beta, gamma, unit_in='rad'):
     """
@@ -1126,13 +1164,140 @@ def get_M_g2b(psi, beta, gamma, unit_in='rad'):
         beta = deg2rad(beta)
         gamma = deg2rad(gamma)
     
-    M_body = Rx(psi) @ Ry(beta) @ Rz(gamma)
+    # this syntax is easier for humans but slower for computers (relevant for QSM)
+    # M_body = Rx(psi) @ Ry(beta) @ Rz(gamma)
+    
+    cg, sg = np.cos(gamma), np.sin(gamma)
+    cb, sb = np.cos(beta), np.sin(beta)
+    cp, sp = np.cos(psi), np.sin(psi)
+    
+    M_body = np.array([
+             [cg * cb               ,                    sg * cb,         -sb],
+             [cg * sb * sp - sg * cp,     sg * sb * sp + cg * cp,     cb * sp],
+             [cg * sb * cp + sg * sp,     sg * sb * cp - cg * sp,     cb * cp]    ])
+    
     return M_body
+
+
 
 
 def get_M_b2w(alpha, theta, phi, eta, side, unit_in='rad'):
     # composite matrix
     return get_M_s2w(alpha, theta, phi, side, unit_in) @ get_M_b2s(eta, side, unit_in)
+
+
+def get_many_M_b2w(alpha, theta, phi, eta, side, unit_in='rad'):
+
+    return get_many_M_s2w(alpha, theta, phi, side, unit_in) @ get_many_M_b2s(eta, side, unit_in)
+
+def get_many_M_s2w(alpha, theta, phi, side, unit_in='rad'):
+    """
+    Same as get_M_s2w, but creates a (N x 3 x 3) array with N matrices for the N 
+    entries in alpha, theta, phi.
+
+    """
+    if side == 'right':            
+        ca, sa = np.cos(-alpha), np.sin(-alpha)
+        ct, st = np.cos( theta), np.sin( theta)
+        cp, sp = np.cos(-phi), np.sin(-phi)
+    else:                            
+        ca, sa = np.cos(alpha), np.sin(alpha)
+        ct, st = np.cos(theta), np.sin(theta)
+        cp, sp = np.cos(phi), np.sin(phi)
+        
+    if alpha.shape != theta.shape != phi.shape:
+        raise ValueError("not all of the size")
+
+    M_s2w = np.zeros( (alpha.shape[0],3,3))
+    M_s2w[:,0,0] = ca * ct
+    M_s2w[:,0,1] = ca * st * cp + sa * sp
+    M_s2w[:,0,2] = ca * st * sp - sa * cp
+    
+    M_s2w[:,1,0] = -st
+    M_s2w[:,1,1] = ct * cp
+    M_s2w[:,1,2] = ct * sp
+    
+    M_s2w[:,2,0] = sa * ct
+    M_s2w[:,2,1] = sa * st * cp - ca * sp
+    M_s2w[:,2,2] = sa * st * sp + ca * cp
+    
+    return M_s2w
+
+
+def get_many_M_g2b(psi, beta, gamma, unit_in='rad'):
+    """
+    Same as get_M_g2b, but creates a (N x 3 x 3) array with N matrices for the N 
+    entries in psi, beta, gamma.
+
+    """
+    if unit_in != "rad":
+        psi = deg2rad(psi)
+        beta = deg2rad(beta)
+        gamma = deg2rad(gamma)
+        
+    if psi.shape != beta.shape != gamma.shape:
+        raise ValueError("not all of the size")
+    # this syntax is easier for humans but slower for computers (relevant for QSM)
+    # M_body = Rx(psi) @ Ry(beta) @ Rz(gamma)
+    
+    cg, sg = np.cos(gamma), np.sin(gamma)
+    cb, sb = np.cos(beta), np.sin(beta)
+    cp, sp = np.cos(psi), np.sin(psi)
+    
+    M = np.zeros( (psi.shape[0],3,3))
+    
+    M[:,0,0] = cg * cb
+    M[:,0,1] = sg * cb
+    M[:,0,2] = -sb
+    
+    M[:,1,0] = cg * sb * sp - sg * cp
+    M[:,1,1] = sg * sb * sp + cg * cp
+    M[:,1,2] = cb * sp
+    
+    M[:,2,0] = cg * sb * cp + sg * sp
+    M[:,2,1] = sg * sb * cp - cg * sp
+    M[:,2,2] = cb * cp
+    
+    return M
+
+def get_many_M_b2s(eta, side, unit_in="rad"):
+    """
+    Same as get_M_s2w, but creates a (N x 3 x 3) array with N matrices for the N 
+    entries in alpha, theta, phi.
+
+    """
+    ce, se = np.cos(eta), np.sin(eta)
+    
+    M = np.zeros( (eta.shape[0],3,3))
+    
+    if side =="left":
+        M[:,0,0] = ce
+        M[:,0,1] = 0
+        M[:,0,2] = -se
+        
+        M[:,1,0] = 0
+        M[:,1,1] = 1
+        M[:,1,2] = 0
+        
+        M[:,2,0] = se
+        M[:,2,1] = 0
+        M[:,2,2] = ce
+        
+    elif side == "right":
+        M[:,0,0] = ce
+        M[:,0,1] = 0
+        M[:,0,2] = -se
+        
+        M[:,1,0] = 0
+        M[:,1,1] = -1
+        M[:,1,2] = 0
+        
+        M[:,2,0] = -se
+        M[:,2,1] = 0
+        M[:,2,2] = -ce
+        
+    return M
+
 
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
@@ -2347,11 +2512,42 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
     if time is None:
         time = np.linspace(0.0, 1.0, endpoint=False, num=1000)
         
-    # baseline kinematics file
-    fname_baseline = '/home/engels/Documents/Research/Insects/3D/projects/musca_model/kinematics/compensation_model_new_PHImax/kinematics_baseline.ini'
+    ai = [-5.96937, -5.91301, -5.77952, -5.56493, -5.27093, -4.90575, -4.48439, -4.02806, -3.56276, -3.1172, -2.72019, -2.39778, -2.1705, -2.05098, -2.04232, 
+          -2.13731, -2.3188, -2.56108, -2.83215, -3.0968, -3.31993, -3.47001, -3.52207, -3.46009, -3.27838, -2.98191, -2.58555, -2.11235, -1.59104, -1.05315, 
+          -0.530025, -0.0501387, 0.363058, 0.692459, 0.927748, 1.06495, 1.10525, 1.05327, 0.915113, 0.696493, 0.401239, 0.0303748, -0.418047, -0.948353, 
+          -1.56597, -2.27564, -3.07944, -3.97478, -4.9528, -5.99741, -7.08508, -8.18545, -9.26293, -10.2788, -11.194, -11.972, -12.5815, -12.9987, -13.2093, 
+          -13.2092, -13.0046, -12.6108, -12.0514, -11.3555, -10.5557, -9.6858, -8.77847, -7.8637, -6.96751, -6.11136, -5.312, -4.58185, -3.92959, -3.36088, 
+          -2.87913, -2.48605, -2.18201, -1.9662, -1.8365, -1.78934, -1.81942, -1.91963, -2.08103, -2.29315, -2.54446, -2.82304, -3.11744, -3.41739, -3.71449, 
+          -4.00265, -4.27809, -4.53909, -4.78538, -5.01718, -5.23424, -5.43486, -5.6151, -5.76847, -5.88597, -5.95678]
     
-    # evaluate baseline kinematics
-    time, phi, alpha, theta = eval_angles_kinematics_file(fname_baseline, time=time)
+    bi = [2.03178, 9.3903, 17.382, 25.507, 33.1457, 39.6195, 44.2673, 46.5268, 46.0121, 42.5768, 36.3521, 27.7563, 17.4694, 6.37686, -4.51359, -14.173, 
+          -21.6587, -26.2157, -27.3597, -24.9324, -19.1211, -10.4408, 0.319376, 12.1794, 24.0718, 34.9513, 43.9008, 50.2174, 53.4725, 53.5371, 50.5714, 
+          44.9815, 37.3492, 28.3461, 18.6422, 8.82289, -0.676032, -9.60717, -17.9193, -25.7343, -33.2979, -40.9111, -48.8534, -57.3084, -66.3036, -75.6722, 
+          -85.0437, -93.8651, -101.45, -107.049, -109.936, -109.495, -105.299, -97.1696, -85.2116, -69.8176, -51.6409, -31.5412, -10.5105, 10.4139, 30.2368,
+          48.0847, 63.2685, 75.3235, 84.0231, 89.3685, 91.5558, 90.9287, 87.9223, 83.0074, 76.6416, 69.2331, 61.1194, 52.5624, 43.7574, 34.852, 25.9693, 
+          17.2307, 8.7729, 0.755196, -6.64331, -13.237, -18.8542, -23.3612, -26.6843, -28.8255, -29.8681, -29.9696, -29.3418, -28.2219, -26.8357, -25.362, 
+          -23.9012, -22.4561, -20.927, -19.1259, -16.8057, -13.7049, -9.59889, -4.3532 ]
+    
+    theta = Hserieseval(0.0, np.asarray(ai), np.asarray(bi), time)
+    
+    ai = [71.9014, 72.091, 72.0661, 71.8312, 71.3914, 70.7516, 69.917, 68.893, 67.6849, 66.298, 64.7376, 63.0089, 61.117, 59.067, 56.8639, 54.5128, 52.0187, 
+          49.3867, 46.6221, 43.7303, 40.7169, 37.588, 34.3499, 31.0095, 27.5741, 24.0517, 20.4509, 16.7809, 13.0517, 9.27419, 5.45988, 1.62113, -2.22892, 
+          -6.07636, -9.90655, -13.7042, -17.4533, -21.1374, -24.7396, -28.2427, -31.629, -34.8811, -37.9814, -40.9124, -43.6572, -46.1991, -48.5223, -50.6115, 
+          -52.4526, -54.0325, -55.3394, -56.3628, -57.0937, -57.5248, -57.6504, -57.4667, -56.9717, -56.1653, -55.0496, -53.6282, -51.9071, -49.8939, -47.5984, 
+          -45.0319, -42.2076, -39.1404, -35.8466, -32.3438, -28.6512, -24.7887, -20.7773, -16.6388, -12.3954, -8.06993, -3.68517, 0.735928, 5.17061, 9.59643, 
+          13.9915, 18.3344, 22.6048, 26.7831, 30.8509, 34.7906, 38.5864, 42.2233, 45.688, 48.9685, 52.0542, 54.9361, 57.6063, 60.0587, 62.2882, 64.2912, 66.0653,
+          67.6092, 68.9227, 70.0066, 70.8627, 71.4932 ]
+    
+    bi = [29.8242, 8.16142, -13.0625, -33.8136, -54.0663, -73.8029, -93.0125, -111.69, -129.834, -147.45, -164.541, -181.114, -197.177, -212.734, -227.789, 
+          -242.341, -256.386, -269.914, -282.91, -295.353, -307.213, -318.455, -329.038, -338.912, -348.022, -356.306, -363.697, -370.124, -375.512, -379.783,
+          -382.857, -384.656, -385.103, -384.121, -381.641, -377.596, -371.93, -364.592, -355.542, -344.752, -332.205, -317.898, -301.841, -284.06, -264.595,
+          -243.502, -220.853, -196.736, -171.253, -144.52, -116.669, -87.8447, -58.2024, -27.909, 2.85937, 33.9192, 65.081, 96.1511, 126.934, 157.232, 186.853,
+          215.603, 243.3, 269.763, 294.825, 318.326, 340.123, 360.081, 378.086, 394.036, 407.847, 419.454, 428.808, 435.88, 440.659, 443.151, 443.381, 441.389,
+          437.235, 430.99, 422.741, 412.588, 400.641, 387.022, 371.858, 355.285, 337.441, 318.469, 298.513, 277.716, 256.22, 234.161, 211.674, 188.884, 165.911,
+          142.867, 119.855, 96.9658, 74.2843, 51.8828 ]
+    
+    phi = Hserieseval(0.0, np.asarray(ai), np.asarray(bi), time)
+    
     
     # modify phi with input parameters
     phi = phi - np.mean(phi)
@@ -2371,30 +2567,29 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
     T2 = 0.5 - alpha_tau/2.0
     T3 = T2  + alpha_tau
     T4 = 1.0 - alpha_tau1/2.0
+    TT = T4
     
     pi = np.pi
     a  = (alpha_up-alpha_down)/alpha_tau     
     a1 = (alpha_up-alpha_down)/alpha_tau1   
     
     alpha = np.zeros(time.shape)
+    
+    # Masks
+    m1 = time < T1
+    m2 = (time >= T1) & (time < T2)
+    m3 = (time >= T2) & (time < T3)
+    m4 = (time >= T3) & (time < T4)
+    m5 = time >= T4
+    
+    # Vectorized assignments
+    alpha[m1] = alpha_down - a1 * (time[m1] - alpha_tau1 / 2.0 - (alpha_tau1 / (2.0 * pi)) * np.sin(2.0 * pi * (time[m1] - alpha_tau1 / 2.0) / alpha_tau1))
+    alpha[m2] = alpha_down
+    alpha[m3] = alpha_down + a * (time[m3] - T2 - (alpha_tau / (2.0 * pi)) * np.sin(2.0 * pi * (time[m3] - T2) / alpha_tau))
+    alpha[m4] = alpha_up
+    alpha[m5] = alpha_up - a1 * (time[m5] - TT - (alpha_tau1 / (2.0 * pi)) * np.sin(2.0 * pi * (time[m5] - TT) / alpha_tau1))
    
-    for it, t in enumerate(time):
-        if t < T1:
-            alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
-            
-        elif t>=T1 and t < T2:
-            alpha[it] = alpha_down
-                            
-        elif t>=T2 and t < T3:
-            alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
-            
-        elif t>=T3 and t < T4:
-            alpha[it] = alpha_up
-            
-        elif t >= T4:
-            TT = 1.0-alpha_tau1/2.0
-            alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
-       
+      
     # this now is the important part that circularily shifts the entire vector. 
     # it thus changes the "timing of pronation and supination"
     dt = time[1]-time[0]
@@ -2402,6 +2597,7 @@ def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37
     alpha = np.roll(alpha, shift)
 
     return time, alpha, phi, theta
+
 
 
 def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.0, alpha_up=-40.0, tau=0.22, theta=12.55/2, time=None):
