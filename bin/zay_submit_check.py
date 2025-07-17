@@ -36,8 +36,6 @@ if os.path.isfile( jobfile ):
                 wtimeline = line
             elif "INIFILE=" in line:
                 iniline = line
-            elif "MEMORY=" in line:
-                memline = line
             elif "AUTO_RESUB=" in line:
                 line = line.replace('"','').replace('AUTO_RESUB=','')
                 if float(line) > 0:
@@ -46,7 +44,6 @@ if os.path.isfile( jobfile ):
 
         progfile = ""
         paramsfile = iniline.replace('INIFILE=','').replace('"','').replace('\n','')
-        memory = float( memline.replace('"','').replace('GB','').replace('MEMORY=','').replace('\n',''))
 
 
     cpuline = cpuline.replace("#SBATCH --ntasks=","")
@@ -68,9 +65,6 @@ if os.path.isfile( jobfile ):
 
     print("program           = %s%s%s" % (bcolors.OKBLUE, progfile, bcolors.ENDC) )
     print("paramsfile        = %s%s%s" % (bcolors.OKBLUE, paramsfile, bcolors.ENDC) )
-    print("memory in call    = %s%2.2f%s GB (%s%2.2f%s GB/core)" % (bcolors.OKBLUE, memory, bcolors.ENDC, bcolors.OKBLUE, memory/ncpu, bcolors.ENDC) )
-    print("max memory        = %s%i%s GB" % (bcolors.OKBLUE, maxmem, bcolors.ENDC) )
-    print("max memory (safe) = %s%i%s GB" % (bcolors.OKBLUE, maxmem-5.0, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )
     print("wtime (jobfile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
     wtime_ini = inifile_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
@@ -84,19 +78,10 @@ if os.path.isfile( jobfile ):
         print('RESUBMISSION      : %sAutomatic resubmission is DEACTIVTÀTED!!%s' % (bcolors.WARNING,bcolors.ENDC) )
 
 
-    if memory > maxmem:
-        print('Memory check      : %sEXCEEDED%s' % (bcolors.FAIL,bcolors.ENDC) )
-    else:
-        print('Memory check      : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
-
-
-
     if abs(ncpu/core_per_node - float(round(ncpu/core_per_node))) > 0.0:
         print('Complete node(s)  : %sYou did not specify N*48 CPUS%s' % (bcolors.FAIL,bcolors.ENDC) )
     else:
         print('Complete node(s)  : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
-
-
 
     if wtime_ini > wtime:
         print('walltime *.SH/INI : %s Walltime in ini file greater than walltime in job file!%s' % (bcolors.FAIL,bcolors.ENDC) )
