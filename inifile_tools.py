@@ -118,6 +118,7 @@ def check_parameters_for_stupid_errors( file ):
     dx = L[0]*2**-jmax/(bs[0])
     keta = np.sqrt(ceta*nu)/dx
     
+    dxdydz = L*(2**-jmax)/bs
     
     print("======================================================================================")
     print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
@@ -135,6 +136,10 @@ def check_parameters_for_stupid_errors( file ):
         print("use_sponge=%i   type=%s   C_sponge=%2.2e   L_sponge=%2.2f %s==> Ntau  = %2.2f%s" % 
               (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
     
+    if abs(dxdydz[0]-dxdydz[1])>1.0e-10 or abs(dxdydz[0]-dxdydz[2])>1.0e-10 or abs(dxdydz[2]-dxdydz[1])>1.0e-10:
+        print('\nResolution is not isotropic. dx=%e dy=%e dz=%e' % (dxdydz[0],dxdydz[1],dxdydz[2]))
+        print('Nx=%i Ny=%i Nz=%i' % (int(L[0]/dxdydz[0]), int(L[1]/dxdydz[1]), int(L[2]/dxdydz[2]) ))
+        print('Keta_x=%f Keta_y=%f Keta_z=%f\n' % (np.sqrt(ceta*nu)/dxdydz[0], np.sqrt(ceta*nu)/dxdydz[1], np.sqrt(ceta*nu)/dxdydz[2]))
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
@@ -233,7 +238,7 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
         
     if geometry == "Insect":
-        x0_insect = get_ini_parameter( file, 'Insects', 'x0', float, vector=True, default=[L/2.0])
+        x0_insect = get_ini_parameter( file, 'Insects', 'x0', float, vector=True, default=L/2.0)
         
         if any(x0_insect>L) or any(x0_insect<0):
             print(x0_insect)
@@ -318,6 +323,8 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.warn("""You use ACM skew symmetry but still have force_maxlevel_dealiasing=1.
         As the whole point of skew symmetry is to get rid of dealiasing, this combination
         is unusual: check if that is really what you want. Code will run, though.\n""")  
+    if skew_symmetry==0 and dealias == 0:
+        bcolors.err('You use no dealiasing and no skew symmetry - that may be unstable!')
         
     if penalized and ceta <= 1.0e-15:
         bcolors.err('Penalization is used but C_eta=%e' % (ceta) )
@@ -559,7 +566,10 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     if (value_string==";" or 'UNKNOWN' in value_string or value_string=='') and default is not None:
         if verbose:
             print("Returning default!")
-        return dtype(default)
+        if not vector:
+            return dtype(default)
+        else:
+            return np.asarray(default)
 
    
 

@@ -6,7 +6,7 @@ Created on Wed Feb 24 13:29:24 2021
 @author: engels
 """
 
-
+import bcolors
 import argparse
 
 parser = argparse.ArgumentParser(description='Replace a setting in a WABBIT/FLUSI style INI file')
@@ -31,6 +31,17 @@ L    = inifile_tools.get_ini_parameter(file, 'Domain', 'domain_size', vector=Tru
 nu   = inifile_tools.get_ini_parameter(file, 'ACM-new', 'nu')
 
 dx = L[0]*(2**-Jmax)/Bs[0]
+
+dxdydz = L*(2**-Jmax)/Bs
+
+if abs(dxdydz[0]-dxdydz[1])>1.0e-10 or abs(dxdydz[0]-dxdydz[2])>1.0e-10 or abs(dxdydz[2]-dxdydz[1])>1.0e-10:
+    print('\nResolution is not isotropic. \ndx=%e dy=%e dz=%e' % (dxdydz[0],dxdydz[1],dxdydz[2]))
+    bcolors.err('SCRIPT REFUSES TO OPERATE - YOU WILL HAVE TO SET C_ETA MANUALLY\n')
+    print('C_eta_x=%e' % ((K_eta*dxdydz[0])**2 / nu))
+    print('C_eta_y=%e' % ((K_eta*dxdydz[1])**2 / nu))
+    print('C_eta_z=%e\n\n' % ((K_eta*dxdydz[2])**2 / nu))
+    
+    raise ValueError('Non-isotropic resolution')
 
 C_eta = (K_eta*dx)**2 / nu
 
