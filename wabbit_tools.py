@@ -186,9 +186,9 @@ class WabbitHDF5file:
         self.block_size = np.array(blocks.shape[1:])
         if self.dim==2: self.block_size = np.append(self.block_size, 1)
         self.domain_size = np.array(domain_size)
-        self.blocks = blocks
-        self.block_treecode_num = treecode
-        self.level = level
+        self.blocks = blocks.copy()
+        self.block_treecode_num = treecode.copy()
+        self.level = level.copy()
         self.total_number_blocks = blocks.shape[0]
         self.time = time
         self.iteration = iteration
@@ -211,6 +211,10 @@ class WabbitHDF5file:
             self.coords_origin[i_b, :] = treecode2origin(self.block_treecode_num[i_b], self.max_level, self.dim, self.domain_size)
             self.coords_spacing[i_b, :] = level2spacing(self.level[i_b], self.dim, self.block_size, self.domain_size)
     
+        # create objects which are handy to have
+        # dictionary to quickly check if a block exists
+        self.tc_dict = {(self.block_treecode_num[j], self.level[j]): True for j in range(self.total_number_blocks)}
+        self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
 
     # init values from a matrix and set them into a grid on uniform level
     def fill_from_matrix(self, block_values, bs, domain_size=[1,1,1], dim=3, max_level=21, time=0.0, iteration=0, includes_g=False):
