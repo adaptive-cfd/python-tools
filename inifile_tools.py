@@ -25,10 +25,6 @@ def check_parameters_for_stupid_errors( file ):
     
     """
     import os
-    
-    # print('~~~~~~~~~~~~~~~~~~~~~ini-file~~~~~~~~~~~')
-    # # read jobfile
-    # with open(file) as f:
     #     # loop over all lines
     #     for line in f:
     #         line = line.lstrip()
@@ -687,8 +683,9 @@ def replace_ini_value(file, section, keyword, new_value):
     with open(file, 'r') as f:
         # read a list of lines into data
         data = f.readlines()
-       
-        
+    
+    # Simple check if input is a matrix matrix (contains (/ and /))
+    is_matrix = '(/' in new_value and '/)' in new_value
 
     # loop over all lines
     for k, line in enumerate(data):
@@ -711,29 +708,55 @@ def replace_ini_value(file, section, keyword, new_value):
                 if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)) :
                     print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
                     # insert parameter
-                    data.insert(k, keyword+'='+new_value+';\n')
+                    if is_matrix:
+                        # Insert matrix lines
+                        data.insert(k, keyword + '=' + new_value.split('\n')[0] + '\n')
+                        for j in np.arange(1,new_value.count('\n') + 1): data.insert(k + j, new_value.split('\n')[j] + '\n')
+                    else:
+                        data.insert(k, keyword+'='+new_value+';\n')
                     # left section again, this is the next section already
                     break
                     
                 # do we find the keyword here?
                 if keyword+'=' in line_nocomments and found_section:
-                    # if they forgot the semicolon, add it
-                    if not ';' in line_nocomments:
-                        line_nocomments += ';'
+                    if is_matrix:
+                        # remove existing matrix'
+                        if '(/' in line_nocomments:
+                            value_old = ''
+                            if not '/)' in ''.join(data): raise ValueError("There is a matrix, but no end found. I do not want to erase the whole file so I stop here.")
+                            # Remove all lines belonging to the matrix, starting from current line
+                            while True:
+                                line_nocomments = data[k].lstrip().rstrip()
+                                value_old += line_nocomments + ' ; '
+                                # Remove the line
+                                del data[k]
+                                # If this line contains '/)', we've reached the end of the matrix
+                                if '/)' in line_nocomments: break
+                        else:
+                            # Remove single line that was previously there
+                            del data[k]
                         
-                    value_old = line_nocomments[ line_nocomments.index(keyword+"="):line_nocomments.index(";") ]
-     
-                    # use "line" to keep possible comments in the INI file
-                    if ';' in line:
-                        # The line is like "test=something;" and we replace 'test=something' by 'test=new_value'
-                        line_new = line.replace(value_old, keyword+'='+new_value)
+                        # Insert new matrix
+                        data.insert(k, keyword + '=' + new_value.split('\n')[0] + '\n')
+                        for j in np.arange(1,new_value.count('\n') + 1): data.insert(k + j, new_value.split('\n')[j] + '\n')
                     else:
-                        # if there is no ';', then there are no comments, but we should add it at the end of the line
-                        # In this case, the line is like "test=" (no ';')
-                        line_new = line.replace(value_old, keyword+'='+new_value+';')
-                        
-                    # copy modified line to array
-                    data[i] = line_new+'\n'
+                        # if they forgot the semicolon, add it
+                        if not ';' in line_nocomments:
+                            line_nocomments += ';'
+                            
+                        value_old = line_nocomments[ line_nocomments.index(keyword+"="):line_nocomments.index(";") ]
+         
+                        # use "line" to keep possible comments in the INI file
+                        if ';' in line:
+                            # The line is like "test=something;" and we replace 'test=something' by 'test=new_value'
+                            line_new = line.replace(value_old, keyword+'='+new_value)
+                        else:
+                            # if there is no ';', then there are no comments, but we should add it at the end of the line
+                            # In this case, the line is like "test=" (no ';')
+                            line_new = line.replace(value_old, keyword+'='+new_value+';')
+                            
+                        # copy modified line to array
+                        data[i] = line_new+'\n'
                     break
         i += 1
 
@@ -742,9 +765,15 @@ def replace_ini_value(file, section, keyword, new_value):
         f.writelines( data )
 
     # re-read from inifile to check if the substitution REALLY worked
-    value_new_control = get_ini_parameter(file, section, keyword, dtype=str)
+    value_new_control = get_ini_parameter(file, section, keyword, dtype=str, matrix=is_matrix)
+    # if the value is a matrix, simplify formatting for printing
+    if is_matrix: 
+        # Format matrix with custom options
+        value_new_control = np.array2string(value_new_control, formatter={'float_kind':lambda x: "%.5g" % x}, separator=' ') # wrap long lines
+        # Additional formatting to match Fortran style
+        value_new_control = value_new_control.replace(']\n [', ' ; ').replace('[[', '(/ ').replace(']]', ' /)')
     
-    print("changed: "+bcolors.FAIL+value_old+bcolors.ENDC+" to: "+bcolors.OKGREEN+keyword+'='+value_new_control+bcolors.ENDC)
+    print("changed: "+bcolors.FAIL+value_old+bcolors.ENDC+" to: "+bcolors.OKGREEN+keyword+'='+str(value_new_control)+bcolors.ENDC)
                     
 
 
