@@ -17,6 +17,51 @@ from analytical_functions import *
 import logging
 
 
+def read_wabbit_hdf5_legacy(fname_wabbit):
+    """ Read a wabbit-type HDF5 of block-structured data, without using fancy objects.
+
+    Returns:
+    =======
+    ``time, x0, dx, box, data, treecode``
+    
+    Get number of blocks and blocksize as
+
+    ``N, Bs = data.shape[0], data.shape[1]``
+    
+    A tale of two kingdoms:
+    =======================
+    Ordering:
+        
+        - The **WABBIT** kingdom stores data as [ix,iy,iz,icomponent,ib], for a scalar (and this is the usual case in python, since
+          wabbit stores each component in a separate file), this reduces to [ix,iy,iz,ib]. Last index is block index.
+    
+        - The **PYTHON** kingdom reads those arrays using HDF5, and the resulting order is [ib,iz,iy,ix]. First index is block index.
+    
+    Block size:
+    
+        - The **WABBIT** kingdom defines the block size BS as the interior nodes of a block. As of 09/2025, this is an EVEN number.
+          When storing HDF5 output, we noticed paraview has gaps between the blocks - this is tedious. Hence, WABBIT kingdom now
+          stores BS+1 point, including the first ghost node. This is an ODD number.
+    
+        - The **PYTHON** kingdom reads in the file, and it defines the block size as BS_PYTHON = BS_WABBIT + 1, which is the size of the array. This is an ODD 
+          number. Both numbers [BS_PYTHON=33 & BS_WABBIT=32] describe THE SAME GRID AND SAME BLOCK SIZE. Confused yet?
+    
+    """
+    # create wabbit file object ...
+    wabbit_obj = WabbitHDF5file()
+    # ... and read in the actual file
+    wabbit_obj.read(fname_wabbit)
+    
+    x0       = wabbit_obj.coords_origin
+    dx       = wabbit_obj.coords_spacing
+    data     = wabbit_obj.blocks
+    treecode = wabbit_obj.treecode
+    time     = wabbit_obj.time
+    box      = wabbit_obj.domain_size
+    
+    return time, x0, dx, box, data, treecode
+
+
 #------------------------------------------------------------------------------
 # compute some keyvalues to compare the files
 #------------------------------------------------------------------------------
@@ -176,6 +221,17 @@ class WabbitHDF5file:
         self.tc_dict = {(self.block_treecode_num[j], self.level[j]): True for j in range(self.total_number_blocks)}
         self.tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(self.block_treecode_num, self.level))}
         self.orig_file = file
+        
+        
+        # consistency check: does treecode and (dx,x0) match for each block?
+        for i in range(self.blocks.shape[0]):
+            # origin, as stored in the file
+            x0_this = self.coords_origin[i,:]            
+            # origin, computed from treecode (should, of course, be the same!)
+            x0_comp = treecode2origin(self.block_treecode_num[i], max_level=self.max_level, dim=self.dim, domain_size=self.domain_size)
+            
+            if np.max(np.abs(x0_this-x0_comp)) > 1.0e-13:
+                raise ValueError('Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match!')
 
     # init a wabbit state by data
     # A grid is uniquely defined by its dimension (from blocks), block size (from blocks), domain size
@@ -287,10 +343,21 @@ class WabbitHDF5file:
             So: data.shape = Nblocks, Bs[3], Bs[2], Bs[1]
         """
         if verbose:
-            print("~~~~~~~~~~~~~~~~~~~~~~~~~")
             print(f"Writing file= {file}")
         
         fid = h5py.File( file, 'w')
+        
+        
+        # consistency check: does treecode and (dx,x0) match for each block?
+        for i in range(self.blocks.shape[0]):
+            # origin as stored in the file
+            x0_this = self.coords_origin[i,:]            
+            # origin, computed from treecode (should, of course, be the same!)
+            x0_comp = treecode2origin(self.block_treecode_num[i], max_level=self.max_level, dim=self.dim, domain_size=self.domain_size)
+            
+            if np.max(np.abs(x0_this-x0_comp)) > 1.0e-13:
+                raise ValueError('Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match!')
+        
 
         # those are necessary for wabbit
         fid.create_dataset( 'blocks', data=self.blocks, dtype=np.float64)
@@ -1040,16 +1107,37 @@ def tca_2_level(tca):
         level[tca[:, i_level] != -1] += 1
     return level
 
-# extract binary treecode from treecode array, assume field
+
 def tca_2_tcb(tca, dim=3, max_level=21):
+    """
+    Convert array-treecode (TCA= treecode_array, 1D array for a single treecode) to binary treecode (=TCB, single number for a single treecode).
+    Given is an array of array-treecodes (of size [N,J]), which is converted 
+    to [N] TCB values, which is a single number for each treecode (and not an 1D array). 
+    
+    This routine possibly also works for a single treecode (in which case a single int is returned).
+    NOTE: this functionality may not work - I don't understand JBs python magic. -TE 05092025
+    
+    NOTE: This routine seems to work only correctly if max_level=21 is given.
+    """
+    # allocation
     tcb = np.zeros(tca.shape[0])
-    # increase level by one if number is not -1
-    for i_level in range(0, tca.shape[1]):
-        tc_at_level = tca[:, i_level]
-        tcb[tc_at_level != -1] += tc_at_level[tc_at_level != -1] * 2**(dim*(max_level-1 - i_level))
+    
+    # maximum level is length of TCA array
+    Jmax = tca.shape[1]
+    
+    # loop over the levels (j); in the TCA array, each level has its own int
+    for j in range(0, Jmax):
+        # extract the digit for all TCA in the array in one go (slice)
+        tc_digit = tca[:, j]
+        
+        # increase level where digit is not -1
+        tcb[tc_digit != -1] += tc_digit[tc_digit != -1] * 2**( dim*(max_level-1 - j) )
+        
     if isinstance(tcb, np.ndarray):
+        # multiple treecodes used, so return array of binary treecodes
         return tcb.astype(int)
     else:
+        # single treecode used, return just one int
         return int(tcb)
 
 # given a treecode tc, return its level
@@ -1065,6 +1153,29 @@ def treecode_level( tc ):
 
 # return coords_origin from treecode
 def treecode2origin( tc, max_level=21, dim=3, domain_size=[1,1,1] ):
+    """
+    Convert binary treecode to block origin x0=(x,y,z).
+
+    Parameters
+    ----------
+    tc : Numerical tree code (binary), a single number describing the block's treecode
+    max_level : The maximum level present in the grid (and not the maximum allowable level)
+    dim : Data dimensionality, can be 2 or 3. The default is 2.
+    domain_size : The default is [1,1,1].
+
+    Returns
+    -------
+    origin: the 2D/3D vector that describes the origin of the block in space.
+    
+    Notes
+    -----
+    
+    The defaults do not make much sense: in most cases, you'll have to pass at least
+    the max_level parameter of the grid. You need to figure out how many active levels
+    the tree has before calling this routine.
+
+    """
+    
     origin = np.zeros(dim)
     for i_l in np.arange(max_level)+1:
         spacing = domain_size / (2**i_l)
@@ -1482,13 +1593,13 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
 
     if not gridonly:
         if savepng:
-            plt.savefig( filename_png, dpi=dpi, transparent=True, bbox_inches='tight' )
+            plt.savefig( filename_png, dpi=dpi, transparent=False, bbox_inches='tight' )
 
         if savepdf:
             plt.savefig( filename_pdf, bbox_inches='tight', dpi=dpi )
     else:
         if savepng:
-            plt.savefig( filename_png.replace('.h5','-grid.png'), dpi=dpi, transparent=True, bbox_inches='tight' )
+            plt.savefig( filename_png.replace('.h5','-grid.png'), dpi=dpi, transparent=False, bbox_inches='tight' )
 
         if savepdf:
             plt.savefig( filename_pdf.replace('.h5','-grid.pdf'), bbox_inches='tight' )
@@ -1557,6 +1668,587 @@ def time2wabbitstr(time):
 
 
 
+
+
+
+
+
+
+
+def dense_matrix(  x0, dx, data, level, dim=2, verbose=True ):
+    """ Convert a WABBIT grid to a full dense grid in a single matrix.
+
+    We asssume here that interpolation has already been performed, i.e. all
+    blocks are on the same (finest) level (= an equidistant grid in block decomposition)
+
+    Returns the full matrix and the domain size. Note matrix is periodic and can
+    directly be compared to FLUSI-style results ``(x=L * 0:nx-1/nx)``.
+    
+    Parameters:
+    ======
+    
+    x0, dx : (Nb,3) 
+        Arrays with origin and spacing of each block
+        
+    level : (Nb)
+        Level of each block. Should be all the same.
+        
+    data : (Nb, Bsz, Bsy, Bsx) 
+        Array with data decomposed in blocks. 
+    
+    
+    Returns:
+    ========
+        field (nz,ny,nx), box
+    
+    
+    A tale of two kingdoms:
+    =======================
+    Ordering:
+        
+        - The **WABBIT** kingdom stores data as [ix,iy,iz,icomponent,ib], for a scalar (and this is the usual case in python, since
+          wabbit stores each component in a separate file), this reduces to [ix,iy,iz,ib]. Last index is block index.
+    
+        - The **PYTHON** kingdom reads those arrays using HDF5, and the resulting order is [ib,iz,iy,ix]. First index is block index.
+    
+    Block size:
+    
+        - The **WABBIT** kingdom defines the block size BS as the interior nodes of a block. As of 09/2025, this is an EVEN number.
+          When storing HDF5 output, we noticed paraview has gaps between the blocks - this is tedious. Hence, WABBIT kingdom now
+          stores BS+1 point, including the first ghost node. This is an ODD number.
+    
+        - The **PYTHON** kingdom reads in the file, and it defines the block size as BS_PYTHON = BS_WABBIT + 1, which is the size of the array. This is an ODD 
+          number. Both numbers [BS_PYTHON=33 & BS_WABBIT=32] describe THE SAME GRID AND SAME BLOCK SIZE. Confused yet?
+    
+    
+    """
+    
+    # number of blocks
+    Nb = data.shape[0]
+    # size of each block
+    Bs = np.asarray(data.shape[1:])
+
+    # check if all blocks are on the same level or not
+    jmin, jmax = np.min(level), np.max(level)
+    if jmin != jmax:
+        raise ValueError(bcolors.FAIL + "ERROR! not an equidistant grid yet..." + bcolors.ENDC)
+
+    
+    if dim==2:
+        # in both uniqueGrid and redundantGrid format, a redundant point is included (it is the first ghost 
+        # node in the uniqueGrid format!)
+        nx = [int( np.sqrt(Nb)*(Bs[d]-1) ) for d in range(np.size(Bs))]
+    else:
+        nx = [int( round( (Nb)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
+
+
+    # all spacings should be the same - it does not matter which one we use.    
+    # domain size. Note is is returned as (Lx,Ly,Lz). 
+    box = nx[dim+1:None:-1] * dx[0,dim+1:None:-1]
+    
+    if verbose:
+        print("Nblocks                      :", (Nb))
+        print("Bs (XYZ)                     :", Bs[::-1])
+        print("Spacing (XYZ)                :", dx[0,::-1])
+        print("Domain  (XYZ)                :", box)
+        print("Dense field resolution (XYZ) :", nx[::-1] )
+
+    if dim==2:
+        # allocate target field
+        field = np.zeros(nx)
+
+        for i in range(Nb):
+            # get starting index of block
+            ix0 = int( round(x0[i,0]/dx[i,0]) )
+            iy0 = int( round(x0[i,1]/dx[i,1]) )
+
+            # copy block content to data field. Note we skip the last points, which
+            # are the redundant nodes (or the first ghost node).
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1 ] = data[i, 0:-1 ,0:-1]
+
+    else:
+        # allocate target field
+        field = np.zeros([nx[0],nx[1],nx[2]])
+
+        for i in range(Nb):
+            # get starting index of block
+            ix0 = int( round(x0[i,0]/dx[i,0]) )
+            iy0 = int( round(x0[i,1]/dx[i,1]) )
+            iz0 = int( round(x0[i,2]/dx[i,2]) )
+
+            # copy block content to data field. Note we skip the last points, which
+            # are the redundant nodes (or the first ghost node).
+            field[ ix0:ix0+Bs[0]-1, iy0:iy0+Bs[1]-1, iz0:iz0+Bs[2]-1 ] = data[i, 0:-1, 0:-1, 0:-1]
+    
+    return(field, box)
+
+
+
+#
+def wabbit_error_vs_flusi(fname_wabbit, fname_flusi, norm=2, dim=2, verbose=True):
+    """ Compute the error (in some norm) wrt a flusi field.
+    Useful for example for the half-swirl test where no exact solution is available
+    at mid-time (the time of maximum distortion)
+
+    NOTE: We require the wabbit-field to be already full (but still in block-data) so run
+    ./wabbit-post 2D --sparse-to-dense input_00.h5 output_00.h5
+    first
+    """
+    import numpy as np
+    import insect_tools
+    import matplotlib.pyplot as plt
+
+    if dim==3:
+        print('I think due to fft2usample, this routine works only in 2D')
+        raise ValueError
+
+    # read in flusi's reference solution
+    time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi, verbose=verbose)
+    if verbose: print(data_ref.shape)
+    ny = data_ref.shape[1]
+
+    # wabbit field to be analyzed: note has to be full already
+    wabbit_obj = WabbitHDF5file()
+    wabbit_obj.read(fname_wabbit, verbose=verbose)
+    x0 = wabbit_obj.coords_origin
+    dx = wabbit_obj.coords_spacing
+    data = wabbit_obj.blocks
+    level = wabbit_obj.level
+    Bs = data.shape[1]
+    Jflusi = (np.log2(ny/(Bs-1)))
+    if verbose: print("Flusi resolution: %i %i %i so desired level is Jmax=%f" % (data_ref.shape[0], data_ref.shape[2], data_ref.shape[2], Jflusi) )
+
+    if dim==2:
+        # squeeze 3D flusi field (where dim0 == 1) to true 2d data
+        data_ref = data_ref[0,:,:].copy().transpose()
+        box_ref = box_ref[1:2].copy()
+
+    # convert wabbit to dense field
+    data_dense, box_dense = dense_matrix( x0, dx, data, level, dim, verbose=verbose)
+    
+    if data_dense.shape[0] < data_ref.shape[0]:
+        # both datasets have different size
+        s = int( data_ref.shape[0] / data_dense.shape[0] )
+        data_ref = data_ref[::s, ::s].copy()
+        raise ValueError(bcolors.FAIL + "ERROR! Both fields are not a the same resolutionn" + bcolors.ENDC)
+
+    if data_dense.shape[0] > data_ref.shape[0]:
+        bcolors.warn("WARNING! The reference solution is not fine enough for the comparison! UPSAMPLING!")
+        import fourier_tools
+        data_ref = fourier_tools.fft2_resample( data_ref, data_dense.shape[1], verbose=True)
+
+    err = np.ndarray.flatten(data_ref-data_dense)
+    exc = np.ndarray.flatten(data_ref)
+
+    err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
+    if verbose: print( "error was e=%e" % (err) )
+
+    return err
+
+
+#
+def flusi_error_vs_flusi(fname_flusi1, fname_flusi2, norm=2, dim=2):
+    """ compute error given two flusi fields
+    """
+    import numpy as np
+    import insect_tools
+
+    # read in flusi's reference solution
+    time_ref, box_ref, origin_ref, data_ref = insect_tools.read_flusi_HDF5( fname_flusi1 )
+
+    time, box, origin, data_dense = insect_tools.read_flusi_HDF5( fname_flusi2 )
+
+    if len(data_ref) is not len(data_dense):
+        raise ValueError(bcolors.FAIL + "ERROR! Both fields are not a the same resolution" + bcolors.ENDC)
+
+    err = np.ndarray.flatten(data_dense-data_ref)
+    exc = np.ndarray.flatten(data_ref)
+
+    err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
+
+    print( "error was e=%e" % (err) )
+
+    return err
+
+def wabbit_error_vs_wabbit(fname_ref_list, fname_dat_list, norm=2, dim=2):
+    """
+    Read two wabbit files, which are supposed to have all blocks at the same
+    level. Then, we re-arrange the data in a dense matrix (wabbit_tools.dense_matrix)
+    and compute the relative error:
+        
+        err = || u2 - u1 || / || u1 ||
+        
+    The dense array is flattened before computing the error (np.ndarray.flatten)
+    
+    New: if a list of files is passed instead of a single file,
+    then we compute the vector norm.
+    
+    Input:
+    ------
+    
+        fname_ref : scalar or list of string 
+            file to read u1 from
+            
+        fname_dat : scalar or list of string
+            file to read u2 from
+            
+        norm : scalar, float
+            Can be either 2, 1, or np.inf (passed to np.linalg.norm)
+    
+    Output:
+    -------
+        err
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    if  not isinstance(fname_ref_list, list):
+        fname_ref_list = [fname_ref_list]
+    
+    if  not isinstance(fname_dat_list, list):
+        fname_dat_list = [fname_dat_list]
+    
+    assert len(fname_dat_list) == len(fname_ref_list) 
+        
+    for k, (fname_ref, fname_dat) in enumerate (zip(fname_ref_list,fname_dat_list)):
+        wabbit_ref = WabbitHDF5file()
+        wabbit_ref.read(fname_ref)
+        wabbit_dat = WabbitHDF5file()
+        wabbit_dat.read(fname_dat)
+        time1, time2 = wabbit_ref.time, wabbit_dat.time
+        x01, x02 = wabbit_ref.coords_origin, wabbit_dat.coords_origin
+        dx1, dx2 = wabbit_ref.coords_spacing, wabbit_dat.coords_spacing
+        box1, box2 = wabbit_ref.domain_size, wabbit_dat.domain_size
+        data1, data2 = wabbit_ref.blocks, wabbit_dat.blocks
+        treecode_num1, treecodenum2 = wabbit_ref.block_treecode_num, wabbit_dat.block_treecode_num
+        level1, level2 = wabbit_ref.level, wabbit_dat.level
+    
+        data1, box1 = dense_matrix( x01, dx1, data1, level1, dim )
+        data2, box2 = dense_matrix( x02, dx2, data2, level2, dim )
+        
+        if (len(data1) != len(data2)) or (np.linalg.norm(box1-box2)>1e-15):
+           raise ValueError(bcolors.FAIL + "ERROR! Both fields are not a the same resolution" + bcolors.ENDC)
+
+        if k==0:
+            err = np.ndarray.flatten(data1-data2)
+            exc = np.ndarray.flatten(data1)
+        else:
+            err = np.concatenate((err,np.ndarray.flatten(data1-data2)))
+            exc = np.concatenate((exc,np.ndarray.flatten(data1)))
+        
+
+    err = np.linalg.norm(err, ord=norm) / np.linalg.norm(exc, ord=norm)
+
+    print( "error was e=%e" % (err) )
+
+    return err
+
+
+#
+def to_dense_grid( fname_in, fname_out = None, dim=2 ):
+    """ Convert a WABBIT grid to a full dense grid in a single matrix.
+
+    We asssume here that interpolation has already been performed, i.e. all
+    blocks are on the same (finest) level.
+    """
+    import numpy as np
+    import insect_tools
+    import matplotlib.pyplot as plt
+
+    # read data
+    wabbit_obj = WabbitHDF5file()
+    wabbit_obj.read(fname_in)
+    time = wabbit_obj.time
+    x0 = wabbit_obj.coords_origin
+    dx = wabbit_obj.coords_spacing
+    box = wabbit_obj.domain_size
+    data = wabbit_obj.blocks
+    treecode_num = wabbit_obj.block_treecode_num
+    level = wabbit_obj.level
+
+    # convert blocks to complete matrix
+    field, box = dense_matrix(  x0, dx, data, level, dim=dim )
+
+    # write data to FLUSI-type hdf file
+    if fname_out:
+        insect_tools.write_flusi_HDF5( fname_out, time, box, field)
+    else:        
+        dx = [b/(np.size(field,k)) for k,b in enumerate(box)]
+        X = [np.arange(0,np.size(field,k))*dx[k] for k,b in enumerate(box)]
+        return field, box, dx, X
+    
+
+#
+def flusi_to_wabbit_dir(dir_flusi, dir_wabbit , *args, **kwargs ):
+    """
+    Convert directory with flusi *h5 files to wabbit *h5 files
+    """
+    import re
+    import os
+    import glob
+
+    if not os.path.exists(dir_wabbit):
+        os.makedirs(dir_wabbit)
+    if not os.path.exists(dir_flusi):
+        bcolors.err("The given directory does not exist!")
+
+    files = glob.glob(dir_flusi+'/*.h5')
+    files.sort()
+    for file in files:
+
+        fname_wabbit = dir_wabbit + "/" + re.split("_\\d+.h5",os.path.basename(file))[0]
+
+        flusi_to_wabbit(file, fname_wabbit ,  *args, **kwargs )
+
+#
+def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 ):
+
+    """
+    Convert flusi data file to wabbit data file.
+    """
+    import numpy as np
+    import insect_tools
+    import matplotlib.pyplot as plt
+
+
+    # read in flusi's reference solution
+    time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
+    # box = box[1:]
+    
+    data_flusi = np.squeeze(data_flusi).T
+    Bs = field_shape_to_bs(data_flusi.shape,level)
+    
+    dense_to_wabbit_hdf5(data_flusi, fname_wabbit, Bs, box, time, dtype=dtype)
+
+
+#
+def dense_to_wabbit_hdf5(ddata, fname, Bs, box_size = None, time = 0, iteration = 0, dtype=np.float64):
+
+    """
+    Given a dense matrix and a block size Bs, this code cuts the dense data into blocks and stores them to a WABBIT compatible
+    file. No manipulation of data is done; it's exactly the same data just organized differently, on an equidistant block-based grid.
+
+    Input:
+    ======
+    ddata : (Nz, Ny, Nx)
+        Dense 2D/3D array of the data you want to write to a file. This array is assumed to hold unique values, i.e. only points with x=[0,L) (excluding L), as
+        would be the default in any periodic code. This subroutine periodizes the data itself, do not pass data with redundant first/last line.
+     
+    fname : string
+        filename for output WABBIT h5 file
+    
+    Bs : [Bsx, Bsy, Bsz]
+        number of grid points per block is a 2D/3D dimensional array with Bs[0] being the number of grid points in x 
+        direction etc. The data size in each dimension has to be dividable by Bs.
+                    
+    Optional Input:
+    =============
+        - box_size... 2D/3D array of the size of your box [Lx, Ly, Lz]
+        - time    ... time of the data
+        - iteration ... iteration of the time snappshot
+        
+        
+    
+    A tale of two kingdoms:
+    =======================
+    Ordering:
+        
+        - The **WABBIT** kingdom stores data as [ix,iy,iz,icomponent,ib], for a scalar (and this is the usual case in python, since
+          wabbit stores each component in a separate file), this reduces to [ix,iy,iz,ib]. Last index is block index.
+    
+        - The **PYTHON** kingdom reads those arrays using HDF5, and the resulting order is [ib,iz,iy,ix]. First index is block index.
+    
+    Block size:
+    
+        - The **WABBIT** kingdom defines the block size BS as the interior nodes of a block. As of 09/2025, this is an EVEN number.
+          When storing HDF5 output, we noticed paraview has gaps between the blocks - this is tedious. Hence, WABBIT kingdom now
+          stores BS+1 point, including the first ghost node. This is an ODD number.
+    
+        - The **PYTHON** kingdom reads in the file, and it defines the block size as BS_PYTHON = BS_WABBIT + 1, which is the size of the array. This is an ODD 
+          number. Both numbers [BS_PYTHON=33 & BS_WABBIT=32] describe THE SAME GRID AND SAME BLOCK SIZE. Confused yet?
+
+    """
+    dim   = ddata.ndim
+    Nsize = np.asarray(ddata.shape)
+    level = 0
+    Bs    = np.asarray(Bs)# make sure Bs is a numpy array
+    # See tale of two kingdoms
+    Bs    = Bs[::-1] # flip Bs such that Bs=[BsY, BsX] the order is the same as for Nsize=[Ny,Nx]
+        
+    
+    #########################################################
+    # do some initial checks on the input data
+    # 1) check if the size of the domain is given
+    if box_size is None:
+        box = np.ones(dim)
+    else:
+        box = np.asarray(box_size)
+
+    # If a single bs (a single integer) is given, we use that value isotropically
+    # (in all directions):
+    if (type(Bs) is int):
+        Bs = [Bs]*dim
+        
+    # 2) check if number of lattice points is block decomposable
+    # loop over all dimensions
+    for d in range(dim):
+        # check if Block is devidable by Bs
+        if (np.remainder(Nsize[d], Bs[d]-1) == 0):
+            if(is_power2(Nsize[d]//(Bs[d]-1))):
+                level = int(max(level, np.log2(Nsize[d]/(Bs[d]-1))))
+            else:
+                bcolors.err("Number of Intervals must be a power of 2!")
+        else:
+            bcolors.err("datasize must be multiple of Bs!")
+            
+    # 3) check dimension of array:
+    if dim < 2 or dim > 3:
+        bcolors.err("dimensions are wrong")
+    #########################################################
+
+    # Periodize input data (by adding one more row/column to it which repeats the
+    # first row/column)
+    data = np.zeros(Nsize+1, dtype=dtype)
+    if dim == 2:
+        data[:-1, :-1] = ddata
+        # copy first row and column for periodicity
+        data[-1, :] = data[0, :]
+        data[:, -1] = data[:, 0]
+    else:
+        data[:-1, :-1, :-1] = ddata
+        # copy for periodicity
+        data[-1, :, :] = data[0, :, :]
+        data[:, -1, :] = data[:, 0, :]
+        data[:, :, -1] = data[:, :, 0]
+
+  
+    print('~~~~~~~~~~~~~~~~~~~~dense_to_wabbit_hdf5~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    print('  ')
+    print('Input data shape:  (ZYX)  ', ddata.shape)
+    print('Input data dim:           ', dim)
+    print('Target block size: (ZYX)  ', Bs, "(PYTHON notation)")
+    print('Resulting level:          ', level)
+    
+
+    # number of intervals in each dimension
+    Nintervals = [ int(2**level) ]*dim  # note [val]*3 means [val, val , val]
+    Lintervals = box[:dim]/np.asarray(Nintervals)
+    # See A tale of two kingdoms
+    Lintervals = Lintervals[::-1]
+
+    x0, dx, treecode, block_data = [], [], [], []
+    
+    if dim == 3:
+        for ibx in range(Nintervals[0]):
+            for iby in range(Nintervals[1]):
+                for ibz in range(Nintervals[2]):
+                    x0.append([ibx, iby, ibz]*Lintervals)
+                    dx.append(Lintervals/(Bs-1))
+
+                    # extract this blocks data from the full (dense) matrix
+                    lower = [ibx, iby, ibz]* (Bs - 1)
+                    lower = np.asarray(lower, dtype=int)
+                    upper = lower + Bs
+
+                    block_data.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
+                    
+                    # Compute this blocks treecode (TCA - array treecode)
+                    #
+                    # IT IS COMPLETELY UNCLEAR WHY THE HELL THIS IS THE CORRECT ORDERING: YZX it makes no sense but it works
+                    treecode.append(blockindex2treecode([iby, ibz, ibx], 3, level)) # YZX
+                    
+    else:
+        for ibx in range(Nintervals[0]):
+            for iby in range(Nintervals[1]):
+                x0.append([ibx, iby]*Lintervals)
+                dx.append(Lintervals/(Bs-1))
+                
+                lower = [ibx, iby]* (Bs - 1)
+                lower = np.asarray(lower, dtype=int)
+                upper = lower + Bs
+                
+                treecode.append(blockindex2treecode([ibx, iby], 2, level))
+                block_data.append(data[lower[0]:upper[0], lower[1]:upper[1]])
+                
+                raise ValueError("THis code part is untested. See strange ordering in 3D case")
+
+    x0, dx     = np.asarray(x0, dtype=dtype), np.asarray(dx, dtype=dtype)
+    treecode   = np.asarray(treecode, dtype=int)
+    block_data = np.asarray(block_data, dtype=dtype)
+
+    # convert array treecode to binary treecode
+    treecode_num = tca_2_tcb(treecode, dim=dim, max_level=21)
+    # blocks are dense so level is the same everywhere
+    level = tca_2_level(treecode)
+
+    w_obj = WabbitHDF5file()
+    w_obj.fill_vars(box, block_data, treecode_num, level, time, iteration)
+    w_obj.coords_origin = x0
+    w_obj.coords_spacing = dx
+    w_obj.write(fname)
+    
+    print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    
+    return fname
+
+
+def is_power2(num):
+    'states if a number is a power of two'
+    return num != 0 and ((num & (num - 1)) == 0)
+
+###
+def field_shape_to_bs(Nshape, level):
+    """
+     For a given shape of a dense field and maxtreelevel return the
+     number of points per block wabbit uses
+    """
+
+    n = np.asarray(Nshape)
+    
+    for d in range(n.ndim):
+        # check if Block is devidable by Bs
+        if (np.remainder(n[d], 2**level) != 0):
+            bcolors.err("Number of Grid points has to be a power of 2!")
+            
+    # Note we have to flip  n here because Bs = [BsX, BsY]
+    # The order of Bs is choosen like it is in WABBIT.
+    # NB: while this definition is the one from a redundant grid,
+    # it is used the same in the uniqueGrid ! The funny thing is that in the latter
+    # case, we store the 1st ghost node to the H5 file - this is required for visualization.
+    return n[::-1]//2**level + 1
+
+#
+# calculates treecode array from the index of the block
+# Note: other then in fortran we start counting from 0
+def blockindex2treecode(ix, dim, treeN):
+
+    treecode = np.zeros(treeN)
+    for d in range(dim):
+        # convert block index to binary
+        binary = list(format(ix[d],"b"))
+        # flip array and convert to numpy
+        binary = np.asarray(binary[::-1],dtype=int)
+        # sum up treecodes
+        lt = np.size(binary)
+        treecode[:lt] = treecode[:lt] + binary *2**d
+
+    # flip again before returning array
+    return treecode[::-1]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # debugging tests
 if __name__ == "__main__":
     # state1 = WabbitHDF5file()
@@ -1578,3 +2270,25 @@ if __name__ == "__main__":
 
 
     pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
