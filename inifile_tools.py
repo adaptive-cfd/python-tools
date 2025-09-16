@@ -91,6 +91,7 @@ def check_parameters_for_stupid_errors( file ):
     g_rhs           = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes_rhs', int, default=g)
     dealias         = get_ini_parameter(file, 'Blocks', 'force_maxlevel_dealiasing', int)
     Neqn            = get_ini_parameter(file, 'Blocks', 'number_equations', int)
+    refinement_indicator = get_ini_parameter(file, 'Blocks', 'refinement_indicator', str, default='everywhere')
     dim             = get_ini_parameter(file, 'Domain', 'dim', int)
     L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
     discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
@@ -141,16 +142,16 @@ def check_parameters_for_stupid_errors( file ):
               (sponged, sponge_type, csponge, L_sponge, bcolors.OKBLUE, L_sponge/(c0*csponge), bcolors.ENDC))
     
     if abs(dxdydz[0]-dxdydz[1])>1.0e-10 or abs(dxdydz[0]-dxdydz[2])>1.0e-10 or abs(dxdydz[2]-dxdydz[1])>1.0e-10:
-        print('\nResolution is not isotropic. dx=%e dy=%e dz=%e' % (dxdydz[0],dxdydz[1],dxdydz[2]))
-        print('Nx=%i Ny=%i Nz=%i' % (int(L[0]/dxdydz[0]), int(L[1]/dxdydz[1]), int(L[2]/dxdydz[2]) ))
-        print('Keta_x=%f Keta_y=%f Keta_z=%f\n' % (np.sqrt(ceta*nu)/dxdydz[0], np.sqrt(ceta*nu)/dxdydz[1], np.sqrt(ceta*nu)/dxdydz[2]))
+        print('\nResolution is not isotropic. dx=(/ %e , %e , %e /)' % (dxdydz[0],dxdydz[1],dxdydz[2]))
+        print('N_equi = (/ %i , %i , %i /)' % (int(L[0]/dxdydz[0]), int(L[1]/dxdydz[1]), int(L[2]/dxdydz[2]) ))
+        print('K_eta = (/ %f , %f , %f /)\n' % (np.sqrt(ceta*nu)/dxdydz[0], np.sqrt(ceta*nu)/dxdydz[1], np.sqrt(ceta*nu)/dxdydz[2]))
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
     
     print('\n-- wavelet')
     print("   C_eps = %2.2e   wavelet = %s  dealias = %i  adapt_tree = %i" % (ceps, wavelet, dealias, adapt_tree))
-    print("   useCoarseExtension = %i useSecurityZone = %i" % (useCoarseExtension, useSecurityZone))
+    print("   useCoarseExtension = %i useSecurityZone = %i  refinement_indicator = %s" % (useCoarseExtension, useSecurityZone, refinement_indicator))
     
     print('\n-- penalization')
     if penalized == 1:

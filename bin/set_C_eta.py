@@ -36,14 +36,26 @@ dxdydz = L*(2**-Jmax)/Bs
 
 if abs(dxdydz[0]-dxdydz[1])>1.0e-10 or abs(dxdydz[0]-dxdydz[2])>1.0e-10 or abs(dxdydz[2]-dxdydz[1])>1.0e-10:
     print('\nResolution is not isotropic. \ndx=%e dy=%e dz=%e' % (dxdydz[0],dxdydz[1],dxdydz[2]))
-    bcolors.err('SCRIPT REFUSES TO OPERATE - YOU WILL HAVE TO SET C_ETA MANUALLY\n')
-    print('C_eta_x=%e' % ((K_eta*dxdydz[0])**2 / nu))
-    print('C_eta_y=%e' % ((K_eta*dxdydz[1])**2 / nu))
-    print('C_eta_z=%e\n\n' % ((K_eta*dxdydz[2])**2 / nu))
+    bcolors.err('SCRIPT REFUSES TO OPERATE - YOU WILL HAVE TO CHOOSE C_ETA MANUALLY\n')
     
-    raise ValueError('Non-isotropic resolution')
-
-C_eta = (K_eta*dx)**2 / nu
+    print('C_eta_x = %e' % ((K_eta*dxdydz[0])**2 / nu))
+    print('C_eta_y = %e' % ((K_eta*dxdydz[1])**2 / nu))
+    print('C_eta_z = %e\n\n' % ((K_eta*dxdydz[2])**2 / nu))
+    
+    dir_choice = input("Which direction to use? [x,y,z]\n")
+    
+    if dir_choice == "x":
+        C_eta = (K_eta*dxdydz[0])**2 / nu
+    elif dir_choice == "y":
+        C_eta = (K_eta*dxdydz[1])**2 / nu
+    elif dir_choice == "z":
+        C_eta = (K_eta*dxdydz[2])**2 / nu
+    else:
+        raise ValueError("Invalid choice....")
+        
+else:
+    # isotropic case
+    C_eta = (K_eta*dx)**2 / nu
 
 import os
 command = "replace_ini_value.py "+file+" VPM C_eta %e" % (C_eta)
