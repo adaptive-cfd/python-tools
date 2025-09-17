@@ -43,9 +43,9 @@ def dense_matrix(  x0, dx, data, level, dim=2, verbose=True, new_format=False ):
     if dim==2:
         # in both uniqueGrid and redundantGrid format, a redundant point is included (it is the first ghost 
         # node in the uniqueGrid format!)
-        nx = [int( np.sqrt(N)*(Bs[d]-1) ) for d in range(np.size(Bs))]
+        nx = [2**jmax*(Bs[d]-1) for d in range(np.size(Bs))]
     else:
-        nx = [int( round( (N)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
+        nx = [2**jmax*(Bs[d]-1) for d in range(np.size(Bs))]
 
 
     # all spacings should be the same - it does not matter which one we use.
@@ -325,8 +325,8 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
 
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
-    box = box[1:]
-    
+    if data_flusi.ndim == 2: box = box[1:]  # this makes no sense? maybe it only applies for dim=2 but for dim=3 it doesn't work
+
     data_flusi = np.squeeze(data_flusi).T
     Bs = field_shape_to_bs(data_flusi.shape,level)
     dense_to_wabbit_hdf5(data_flusi, fname_wabbit , Bs, box, time, dtype=dtype)
@@ -380,7 +380,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
     if (type(Bs) is int):
         Bs = [Bs]*Ndim
-        
+            
     # 2) check if number of lattice points is block decomposable
     # loop over all dimensions
     for d in range(Ndim):
@@ -432,6 +432,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
                     lower = [ibx, iby, ibz]* (Bs - 1)
                     lower = np.asarray(lower, dtype=int)
                     upper = lower + Bs
+                    upper = np.asarray(upper, dtype=int)
 
                     treecode.append(blockindex2treecode([ibx, iby, ibz], 3, level))
                     bdata.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
@@ -467,7 +468,7 @@ def dense_to_wabbit_hdf5(ddata, name , Bs, box_size = None, time = 0, iteration 
 
 def is_power2(num):
     'states if a number is a power of two'
-    return num != 0 and ((num & (num - 1)) == 0)
+    return num != 0 and ((int(num) & (int(num) - 1)) == 0) and abs(num - int(num)) < 1e-8
 
 ###
 def field_shape_to_bs(Nshape, level):

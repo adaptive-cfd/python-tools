@@ -190,7 +190,8 @@ class WabbitHDF5file:
         self.block_treecode_num = treecode.copy()
         self.level = level.copy()
         self.total_number_blocks = blocks.shape[0]
-        self.time = time
+        if isinstance(time, (list, np.ndarray)): self.time = time[0]
+        else: self.time = time
         self.iteration = iteration
         self.blocks_order = np.arange(self.total_number_blocks)  # default order is the order in the file
 
@@ -250,9 +251,9 @@ class WabbitHDF5file:
         treecode = np.zeros(number_blocks)
         level = np.ones(number_blocks)*level_num
         if dim == 2:
-            blocks = np.zeros([number_blocks, bs[0]+1, bs[1]+1])
+            blocks = np.zeros([number_blocks, bs[1]+1, bs[0]+1])
         else:
-            blocks = np.zeros([number_blocks, bs[0]+1, bs[1]+1, bs[2]+1])
+            blocks = np.zeros([number_blocks, bs[2]+1, bs[1]+1, bs[0]+1])
 
         # prepare treecode
         for i_b in range(number_blocks):
