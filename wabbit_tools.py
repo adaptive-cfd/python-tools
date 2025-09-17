@@ -2049,7 +2049,7 @@ def flusi_to_wabbit(fname_flusi, fname_wabbit , level, dim=2, dtype=np.float64 )
 
     # read in flusi's reference solution
     time, box, origin, data_flusi = insect_tools.read_flusi_HDF5( fname_flusi, dtype=dtype )
-    # box = box[1:]
+    # box = box[1:] # this makes no sense? maybe it only applies for dim=2 but for dim=3 it doesn't work
     
     data_flusi = np.squeeze(data_flusi).T
     Bs = field_shape_to_bs(data_flusi.shape,level)
