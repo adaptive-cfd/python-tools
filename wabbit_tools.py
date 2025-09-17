@@ -1737,9 +1737,9 @@ def dense_matrix(  x0, dx, data, level, dim=2, verbose=True ):
     if dim==2:
         # in both uniqueGrid and redundantGrid format, a redundant point is included (it is the first ghost 
         # node in the uniqueGrid format!)
-        nx = [int( np.sqrt(Nb)*(Bs[d]-1) ) for d in range(np.size(Bs))]
+        nx = [2**jmax*(Bs[d]-1) for d in range(np.size(Bs))]
     else:
-        nx = [int( round( (Nb)**(1.0/3.0)*(Bs[d]-1) ) ) for d in range(np.size(Bs))]
+        nx = [2**jmax*(Bs[d]-1) for d in range(np.size(Bs))]
 
 
     # all spacings should be the same - it does not matter which one we use.    
@@ -2149,6 +2149,7 @@ def dense_to_wabbit_hdf5(ddata, fname, Bs, box_size = None, time = 0, iteration 
                     lower = [ibx, iby, ibz]* (Bs - 1)
                     lower = np.asarray(lower, dtype=int)
                     upper = lower + Bs
+                    upper = np.asarray(upper, dtype=int)
 
                     block_data.append(data[lower[0]:upper[0], lower[1]:upper[1], lower[2]:upper[2]])
                     
@@ -2166,6 +2167,7 @@ def dense_to_wabbit_hdf5(ddata, fname, Bs, box_size = None, time = 0, iteration 
                 lower = [ibx, iby]* (Bs - 1)
                 lower = np.asarray(lower, dtype=int)
                 upper = lower + Bs
+                upper = np.asarray(upper, dtype=int)
                 
                 treecode.append(blockindex2treecode([ibx, iby], 2, level))
                 block_data.append(data[lower[0]:upper[0], lower[1]:upper[1]])
@@ -2194,7 +2196,7 @@ def dense_to_wabbit_hdf5(ddata, fname, Bs, box_size = None, time = 0, iteration 
 
 def is_power2(num):
     'states if a number is a power of two'
-    return num != 0 and ((num & (num - 1)) == 0)
+    return num != 0 and ((int(num) & (int(num) - 1)) == 0) and abs(num - int(num)) < 1e-8
 
 ###
 def field_shape_to_bs(Nshape, level):
