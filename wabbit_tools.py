@@ -12,7 +12,6 @@ import h5py
 import bcolors
 import copy
 from inifile_tools import *
-from wabbit_dense_error_tools import *
 from analytical_functions import *
 import logging
 
@@ -1743,7 +1742,7 @@ def dense_matrix(  x0, dx, data, level, dim=2, verbose=True ):
 
     # all spacings should be the same - it does not matter which one we use.    
     # domain size. Note is is returned as (Lx,Ly,Lz). 
-    box = nx[dim+1:None:-1] * dx[0,dim+1:None:-1]
+    box = nx[dim+1:None:-1] * dx[0, dim+1:None:-1] # note odd nomenclature in python: https://stackoverflow.com/questions/17610096/reverse-indexing-in-python 
     
     if verbose:
         print("Nblocks                      :", (Nb))
@@ -2176,12 +2175,12 @@ def dense_to_wabbit_hdf5(ddata, fname, Bs, box_size = None, time = 0, iteration 
     block_data = np.asarray(block_data, dtype=dtype)
 
     # convert array treecode to binary treecode
-    treecode_num = tca_2_tcb(treecode, dim=dim, max_level=21)
+    treecode_num = tca_2_tcb(treecode, dim=dim, max_level=level)
     # blocks are dense so level is the same everywhere
     level = tca_2_level(treecode)
 
     w_obj = WabbitHDF5file()
-    w_obj.fill_vars(box, block_data, treecode_num, level, time, iteration)
+    w_obj.fill_vars(box, block_data, treecode_num, level, time, iteration, max_level=level[0])
     w_obj.coords_origin = x0
     w_obj.coords_spacing = dx
     w_obj.write(fname)

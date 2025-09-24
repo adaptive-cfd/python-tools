@@ -3050,7 +3050,8 @@ def get_wing_pointcloud_from_inifile(fname):
 
 
 def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristled=False, 
-                        R_bristle=0.01, bristle_color='#000080', debug_plot=True ):
+                        R_bristle=0.01, bristle_color='#000080', debug_plot=True,
+                        additional_markers=False, marker_line_color='#008080'):
     """
     Create WABBIT compatible wing shape file from an SVG file. 
     
@@ -3110,10 +3111,17 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
             contour = path
         if "stroke:"+axis_color in c:
             axis = path
+        if additional_markers:
+            if  "stroke:"+marker_line_color in c:
+                marker_line = path
 
     
     if not len(contour._segments) > 1:
         raise ValueError("This may be the wrong item for the contour!")
+        
+    if len(contour._segments) < 50:
+        # because we need quite a lot of points for our "linear" approach to work
+        print('Warning\n\nYour wing contour has only few points - consider creating more points in inskape (nodes tool->select all->plus button in tool bar')
         
     # extract contour points
     xb, yb = [], []
@@ -3136,7 +3144,24 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     
     print('wing contour #points=%i' % (len(xb)))
     xb, yb = np.asarray(xb), np.asarray(yb)
+    
+    # extract additional markers if desired
+    if additional_markers:
+        x_markers, y_markers = [], []
+        for line in marker_line._segments:
+            Z1, Z2 = line.start, line.end            
+            x1, y1 = np.real(Z1), -np.imag(Z1)
+            x2, y2 = np.real(Z2), -np.imag(Z2)
+            x_markers.append(x1)
+            y_markers.append(y1)
             
+        # the last one:
+        x_markers.append(x2)
+        y_markers.append(y2)
+            
+        if debug_plot:
+            plt.plot( x_markers, y_markers, 'c*', label='additional marker'  )
+        
     # extract bristles
     if bristled:        
         all_bristles = np.zeros( [len(bristles), 5])    
@@ -3185,7 +3210,9 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     x1, y1 = x1/R, y1/R
     x2, y2 = x2/R, y2/R    
     xc, yc = xc/R, yc/R    
-    xb, yb = xb/R, yb/R    
+    xb, yb = xb/R, yb/R
+    if additional_markers:
+        x_markers, y_markers = x_markers/R, y_markers/R
     
     if bristled:
         # do not scale last entry by R as is supposed to be scaled already
@@ -3212,12 +3239,17 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     xb, yb = xb-x1, yb-y1
     x2, y2 = x2-x1, y2-y1
     xc, yc = xc-x1, yc-y1
+    if additional_markers:
+        x_markers, y_markers = x_markers-x1, y_markers -y1
     x1, y1 = 0.0, 0.0
     
     # projection on unit vectors
     xbn, ybn = xb*e_chord[0] + yb*e_chord[1], xb*e_span[0] + yb*e_span[1]
     x2n, y2n = x2*e_chord[0] + y2*e_chord[1], x2*e_span[0] + y2*e_span[1]
     xcn, ycn = xc*e_chord[0] + yc*e_chord[1], xc*e_span[0] + yc*e_span[1]
+    if additional_markers:
+        xmn, ymn = x_markers*e_chord[0] + y_markers*e_chord[1], x_markers*e_span[0] + y_markers*e_span[1]
+        x_markers, y_markers = xmn, ymn
     # annoying but necessary (classical mistake)
     xb, yb, x2, y2, xc, yc = xbn, ybn, x2n, y2n, xcn, ycn
         
@@ -3233,10 +3265,16 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
         if bristled:
             for i in range(all_bristles.shape[0]):
                 plt.plot([all_bristles[i,0], all_bristles[i,2]], [all_bristles[i,1], all_bristles[i,3]], 'k-')
-        
+        if additional_markers:
+            plt.plot( x_markers, y_markers, 'c*', label='additional marker'  )
         plt.axis('equal')
         plt.title('Wing model, scaled, translated and rotated (as used in wabbit thus)')
         plt.show()
+        
+    if additional_markers:
+        print('additional markers in wing system (scaled!)')
+        for i in range(x_markers.shape[0]):
+            print( "%f,%f" % (x_markers[i], y_markers[i]) )
         
     #%% contour in polar descripion
     # compute radius
