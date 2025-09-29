@@ -12,7 +12,6 @@ import h5py
 import bcolors
 import copy
 from inifile_tools import *
-from wabbit_dense_error_tools import *
 from analytical_functions import *
 import logging
 
@@ -81,11 +80,16 @@ def keyvalues(domain_size, dx, data):
         
     return(max1, min1, mean1, squares1 )
 
-
-# this object contains all important details about a read in wabbit-file
-# everything is neat and at one position and simplifies things
-# A grid is uniquely defined by its dimension, block size, domain size
-# The individual grid partition is uniquely defined by the number of blocks, treecode and level arrays
+"""
+this object contains all important details about a read in wabbit-file
+everything is neat and at one position and simplifies things
+A grid is uniquely defined by its dimension, block size, domain size
+The individual grid partition / adaptive grid is uniquely defined by the number of blocks, treecode and level arrays
+However, we have some redundant information in here as well, several things practically contain the same information:
+    - treecode + level
+    - coords_origin + coords_spacing
+    - treecode array (with the depth giving the level information)
+"""
 class WabbitHDF5file:
     # lets define all objects it can possess
     # first all attributes, those will always be set
@@ -94,24 +98,25 @@ class WabbitHDF5file:
     iteration = total_number_blocks = max_level = dim = domain_size = []
 
     # lets define all fields
-    blocks = np.array([])
+    blocks = np.array([])              # array of blocks, shape Nblocks, Bs[3], Bs[2], Bs[1]
     blocks_order = np.array([])  # in case we are reordering, this is used for reading back the blocks in the original order
-    coords_origin = np.array([])
-    coords_spacing = np.array([])
-    block_treecode_num = np.array([])
-    block_treecode = np.array([])
-    procs = np.array([])
-    refinement_status = np.array([])
-    level = np.array([])
-    lgt_ids = np.array([])
+    coords_origin = np.array([])       # origin of each block, being a vector of x0, y0, [z0] for each block [POSSIBLY STARTING FROM Z, CHECK]
+    coords_spacing = np.array([])      # spacing between grid points, being a vector of dx, dy, [dz] for each block [POSSIBLY STARTING FROM Z, CHECK]
+    block_treecode_num = np.array([])  # numerical treecode
+    block_treecode = np.array([])      # treecode array, kept for portability reasons
+    level = np.array([])               # level of each block
 
-    # some helping constructs
-    tc_dict = []
-    tc_find = []
-    orig_file = ""
+    procs = np.array([])               # which processor had this block, meta grid-information used for visualization
+    refinement_status = np.array([])   # refinement status of a block, meta grid-information used for visualization
+    lgt_ids = np.array([])             # light id of each block, meta grid-information used for visualization
+
+    # we are also defining some handy objects with which we operate
+    tc_dict = {}   # dictionary, key is (treecode, level), value is True if block exists
+    tc_find = {}   # dictionary, key is (treecode, level), value is block index
+    orig_file = "" # remember the original file we read in, so we can access single blocks if needed
 
     """
-        python has no init overloading so I keep this empty. Always make sure to call read or set vars afterwards!
+        python has no init overloading so I keep this empty. Always make sure to call read, set vars or similar afterwards!
     """
     def __init__(self):
         pass
@@ -196,7 +201,7 @@ class WabbitHDF5file:
                 block_treecode = np.array(fid['block_treecode'])
                 self.max_level = self.block_treecode.shape[1]
                 self.level = tca_2_level(block_treecode).astype(int)
-        # new version - reconstruct block_treecode for compatibility
+        # new version - reconstruct block_treecode / treecode array for compatibility
         else:
             if read_var in ["block_treecode", "all", "meta"]:
                 block_treecode_num = np.array(fid['block_treecode_num'])
@@ -223,15 +228,29 @@ class WabbitHDF5file:
         self.orig_file = file
         
         
-        # consistency check: does treecode and (dx,x0) match for each block?
-        for i in range(self.blocks.shape[0]):
+        # consistency check: does (treecode,level) and (x0,dx) and treecode_array match for each block?
+        for i in range(self.total_number_blocks):
             # origin, as stored in the file
             x0_this = self.coords_origin[i,:]            
             # origin, computed from treecode (should, of course, be the same!)
             x0_comp = treecode2origin(self.block_treecode_num[i], max_level=self.max_level, dim=self.dim, domain_size=self.domain_size)
-            
+
+            # spacing, as stored in the file
+            dx_this = self.coords_spacing[i,:]
+            # spacing, computed from level (should, of course, be the same!)
+            dx_comp = level2spacing(self.level[i], dim=self.dim, block_size=self.block_size, domain_size=self.domain_size)
+
+            # treecode array, as stored in the file
+            block_treecode_this = self.block_treecode[i,:]
+            # treecode array, computed from (treecode, level) (should, of course, be the same!)
+            block_treecode_comp = tcb_level_2_tcarray(self.block_treecode_num[i], self.level[i], self.max_level, self.dim)
+
             if np.max(np.abs(x0_this-x0_comp)) > 1.0e-13:
-                raise ValueError('Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match!')
+                raise ValueError(f'Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match! B{i} - {x0_this} vs {x0_comp}')
+            if np.max(np.abs(dx_this-dx_comp)) > 1.0e-13:
+                raise ValueError(f'Inconsistency found: block spacing stored in coords_spacing and the one computed from level do not match! B{i} - {dx_this} vs {dx_comp}')
+            if np.max(np.abs(block_treecode_this-block_treecode_comp)) > 0:
+                raise ValueError(f'Inconsistency found: block treecode array stored in block_treecode and the one computed from (treecode,level) do not match! B{i} - {block_treecode_this} vs {block_treecode_comp}')
 
     # init a wabbit state by data
     # A grid is uniquely defined by its dimension (from blocks), block size (from blocks), domain size
@@ -348,16 +367,29 @@ class WabbitHDF5file:
         fid = h5py.File( file, 'w')
         
         
-        # consistency check: does treecode and (dx,x0) match for each block?
-        for i in range(self.blocks.shape[0]):
-            # origin as stored in the file
+        # consistency check: does (treecode,level) and (x0,dx) and treecode_array match for each block?
+        for i in range(self.total_number_blocks):
+            # origin, as stored in the file
             x0_this = self.coords_origin[i,:]            
             # origin, computed from treecode (should, of course, be the same!)
             x0_comp = treecode2origin(self.block_treecode_num[i], max_level=self.max_level, dim=self.dim, domain_size=self.domain_size)
-            
+
+            # spacing, as stored in the file
+            dx_this = self.coords_spacing[i,:]
+            # spacing, computed from level (should, of course, be the same!)
+            dx_comp = level2spacing(self.level[i], dim=self.dim, block_size=self.block_size, domain_size=self.domain_size)
+
+            # treecode array, as stored in the file
+            block_treecode_this = self.block_treecode[i,:]
+            # treecode array, computed from (treecode, level) (should, of course, be the same!)
+            block_treecode_comp = tcb_level_2_tcarray(self.block_treecode_num[i], self.level[i], self.max_level, self.dim)
+
             if np.max(np.abs(x0_this-x0_comp)) > 1.0e-13:
-                raise ValueError('Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match!')
-        
+                raise ValueError(f'Inconsistency found: block spacing stored in coords_spacing and the one computed from block treecode do not match! B{i} - {x0_this} vs {x0_comp}')
+            if np.max(np.abs(dx_this-dx_comp)) > 1.0e-13:
+                raise ValueError(f'Inconsistency found: block spacing stored in coords_spacing and the one computed from level do not match! B{i} - {dx_this} vs {dx_comp}')
+            if np.max(np.abs(block_treecode_this-block_treecode_comp)) > 0:
+                raise ValueError(f'Inconsistency found: block treecode array stored in block_treecode and the one computed from (treecode,level) do not match! B{i} - {block_treecode_this} vs {block_treecode_comp}')
 
         # those are necessary for wabbit
         fid.create_dataset( 'blocks', data=self.blocks, dtype=np.float64)
@@ -1092,7 +1124,8 @@ def tc_to_str(tc_b, level, max_level=21, dim=3):
 
 # take level and numerical treecode and convert to treecode array
 def tcb_level_2_tcarray(tc_b, level, max_level=21, dim=3):
-    tc_array = np.zeros((tc_b.shape[0], max_level))
+    if isinstance(tc_b, np.ndarray): tc_array = np.zeros((tc_b.shape[0], max_level))
+    else: tc_array = np.zeros((1, max_level))
     # extract number of each level
     # level <= i_level ensures -1 values are inserted for unset levels
     for i_level in np.arange(max_level)+1:
@@ -1101,7 +1134,8 @@ def tcb_level_2_tcarray(tc_b, level, max_level=21, dim=3):
 
 # extract level from treecode array, assume field
 def tca_2_level(tca):
-    level = np.zeros(tca.shape[0]).astype(int)
+    if len(tca.shape) != 2: level = np.zeros(1).astype(int)
+    else: level = np.zeros(tca.shape[0]).astype(int)
     # increase level by one if number is not -1
     for i_level in range(0, tca.shape[1]):
         level[tca[:, i_level] != -1] += 1
@@ -1154,12 +1188,12 @@ def treecode_level( tc ):
 # return coords_origin from treecode
 def treecode2origin( tc, max_level=21, dim=3, domain_size=[1,1,1] ):
     """
-    Convert binary treecode to block origin x0=(x,y,z).
+    Convert binary treecode to block origin x0=(z,y,x).
 
     Parameters
     ----------
     tc : Numerical tree code (binary), a single number describing the block's treecode
-    max_level : The maximum level present in the grid (and not the maximum allowable level)
+    max_level : The maximum level representable in the grid, from wabbit is set as Jmax, just has to be consistent
     dim : Data dimensionality, can be 2 or 3. The default is 2.
     domain_size : The default is [1,1,1].
 
@@ -1181,17 +1215,19 @@ def treecode2origin( tc, max_level=21, dim=3, domain_size=[1,1,1] ):
         spacing = domain_size / (2**i_l)
 
         digit = tc_get_digit_at_level(tc, i_l, max_level, dim)
+        # treecode has ordering Y, X, Z and this is visible here, as we want the spacing facs in X, Y, Z order
         spacing_fac = np.array([(digit//2)%2, digit%2, (digit//4)%2])
         origin += spacing[:dim] * spacing_fac[:dim]
-    return origin[::-1]
+    return origin[::-1]  # we are reversing to get Z,Y,X order, in which coords_origin is currently stored
 
 # return treecode from coords_origin
 def origin2treecode( origin, max_level=21, dim=3, domain_size=[1,1,1] ):
     treecode=0
-    origin_n = np.copy(origin[::-1])
+    origin_n = np.copy(origin[::-1])  # coords_origin is in Z,Y,X order and we are reversing to get X,Y,Z order, in which tc_encoding and tc_decoding work
     for i_l in np.arange(max_level)+1:
         spacing = domain_size / (2**i_l)
 
+        # Treecode is in Y,X,Z order, that is why we have this weird indexing here
         digit = (origin_n[0]>=spacing[0])*2 + (origin_n[1]>=spacing[1])*1
         if dim==3: digit +=(origin_n[2]>=spacing[2])*4
         treecode = tc_set_digit_at_level(treecode, digit, level=i_l, max_level=max_level, dim=dim)
@@ -1203,11 +1239,11 @@ def origin2treecode( origin, max_level=21, dim=3, domain_size=[1,1,1] ):
         print(f"Invalid treecode created: {treecode}")
     return treecode
 
-# return coords_spacing from level
+# return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def level2spacing( level, dim=3, block_size=[21,21,21], domain_size=[1,1,1] ):
     return np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
 
-# return coords_spacing from level
+# return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def spacing2level( spacing, block_size=[21,21,21], domain_size=[1,1,1] ):
     if np.any(spacing[:] == 0): return np.infty
     level = np.log2(domain_size[0]/((block_size[0]-1)*spacing[0]))
@@ -1271,6 +1307,7 @@ def adjacent_neighbor(treecode, direction, level=None, dim=3, max_level=32):
             break
     return treecode_neighbor
 
+
 # this is some hackery, we take a block, walk in x-direction for highest level (smallest block) and check if there is a block
 # if that is the case then our block has to be of that level for leaf-grids, we increase the level to check until we find the first block
 def level_from_treecode(tc, tc_array, max_level=21, dim=3):
@@ -1281,8 +1318,8 @@ def level_from_treecode(tc, tc_array, max_level=21, dim=3):
         if tc_n in tc_array: return i_l
 
         
-        
-# for a treecode list, return max and min level found
+# for a treecode array list, return max and min level found
+# with numerical treecode and level array this is trivial, but here we do not have that
 def get_min_max_level( treecode ):
 
     min_level = 99
@@ -1294,7 +1331,6 @@ def get_min_max_level( treecode ):
 
         min_level = min([min_level,level])
         max_level = max([max_level,level])
-
     return min_level, max_level
 
 #

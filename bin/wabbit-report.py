@@ -253,8 +253,8 @@ if plot_conservational[2]:
     plt.xlim(t_values['helicity'][0,0], t_values['helicity'][-1,0])
 if plot_conservational[3]:
     plt.subplot(sum(plot_conservational),1,1+plot_conservational[0]+plot_conservational[1]+plot_conservational[2])
-    plt.plot(t_values['div'][:,0], t_values['div'][:,1], label='Max Div')
-    plt.plot(t_values['div'][:,0], t_values['div'][:,2], label='Min Div')
+    plt.semilogy(t_values['div'][:,0], t_values['div'][:,1], label='Max Div')
+    plt.semilogy(t_values['div'][:,0], -t_values['div'][:,2], label='-Min Div')
     plt.ylabel("Divergence")
     plt.xlabel(time_label)
     plt.grid(True); plt.legend()
