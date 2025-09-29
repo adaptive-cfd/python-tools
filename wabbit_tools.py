@@ -234,7 +234,7 @@ class WabbitHDF5file:
             x0_this = self.coords_origin[i,:]            
             # origin, computed from treecode (should, of course, be the same!)
             x0_comp = treecode2origin(self.block_treecode_num[i], max_level=self.max_level, dim=self.dim, domain_size=self.domain_size)
-
+            
             # spacing, as stored in the file
             dx_this = self.coords_spacing[i,:]
             # spacing, computed from level (should, of course, be the same!)
@@ -366,7 +366,7 @@ class WabbitHDF5file:
         
         fid = h5py.File( file, 'w')
         
-        
+  
         # consistency check: does (treecode,level) and (x0,dx) and treecode_array match for each block?
         for i in range(self.total_number_blocks):
             # origin, as stored in the file
