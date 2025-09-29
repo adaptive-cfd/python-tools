@@ -31,6 +31,7 @@ import bcolors
 
 
 # Progress bar function
+
 def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
     """
     Call in a loop to create terminal progress bar
@@ -53,8 +54,12 @@ def print_progress_bar (iteration, total, prefix = '', suffix = '', decimals = 1
         print()
 
 
-# Prune the grid, i.e. remove with constant values if not deviating by specific tolerance
-# this has to be done before merging
+'''
+Prune the grid, i.e. remove Blocks with constant values if the values are not deviating up to a given tolerance
+this has to be done before merging
+
+This function takes in lists for all blocks and returns new lists where only the desired blocks are added
+'''
 def prune_grid(wobj, block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, tolerance):
   block_id, coords_origin, coords_spacing, treecode, level, sub_tree_size, sub_tree_positions = [], [], [], [], [], [], []
   for i_block in block_id_o:
@@ -82,11 +87,16 @@ def prune_grid(wobj, block_id_o, coords_origin_o, coords_spacing_o, level_o, tre
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
 
 
+"""
+Takes a wabbit object and tries to merge all blocks, where all sister blocks are available.
+
+This function takes in lists for all blocks and returns new lists where only the desired blocks are added
+
+The function loops over all blocks, finds all sisters and checks if they have the same sub-tree structure (in case a previous merge happened)
+In case all of them are fitting, they are merged to one block with double the blocksize in each direction
+We do this for all blocks, if blocks can be merged twice, this function needs to be called again (and again, until the grid is converged)
+"""
 def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_size_o, sub_tree_positions_o, max_level, dim=3):
-  """
-  Takes a wabbit object and tries to merge all blocks, where all sister blocks are available.
-  Returns blocks, coords_origin, coords_spacing, level, sub_tree as arrays with one entry per block
-  """
   # dictionary used for lookup of blocks
   tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(treecode_o, level_o))}
 
@@ -112,13 +122,13 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
       if np.any(sub_tree_size_o[id_find] != sub_tree_size_o[i_b]):  # blocks do not have the same subtree structure so are not on the same level - we do not merge
         all_sisters = False
         break
-      id_sisters = np.append(id_sisters, block_id_o[id_find]).astype(int)  # append treecodes
-      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.array(sub_tree_size_o[i_b])).astype(int)  # shift position according to position on highest level
-      position_sisters = np.append(position_sisters, sub_tree_positions_o[id_find] + position_shift, axis=0)  # append positions of the sisters
+      id_sisters = np.append(id_sisters, block_id_o[id_find]).astype(int)  # append ids of the sister to the list of the merged block, as we read in the data later
+      position_shift = (np.array(wabbit_tools.tc_decoding(i_sister,level=1, max_level=1,dim=3))-1)*(np.array(sub_tree_size_o[i_b])).astype(int)  # shift position according to position on highest level, so that we get the relative position in the merged block
+      position_sisters = np.append(position_sisters, sub_tree_positions_o[id_find] + position_shift, axis=0)  # append relative positions of the sister to the list of the merged block
       if id_find_0 in id_merged: break
     # we have found all sisters and proceed with merging
     if all_sisters and id_find_0 not in id_merged:
-      # search for meta-data from block with entry zero
+      # search for meta-data from block with entry zero, these are appended as the data of the new block
       coords_origin.append(coords_origin_o[id_find_0])
       coords_spacing.append(coords_spacing_o[id_find_0])
       level.append(i_level)
@@ -132,7 +142,7 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
       # append id of block 0 to an array of finished blocks, so that we do not merge some several times
       id_merged.append(id_find_0)
     elif not all_sisters:
-      # we did not find all sisters or they do not share the same blocksize and just append the old block
+      # we did not find all sisters or they do not share the same blocksize and just append the current
       coords_origin.append(coords_origin_o[i_b])
       coords_spacing.append(coords_spacing_o[i_b])
       level.append(i_level)
@@ -143,11 +153,16 @@ def merge_sisters(block_id_o, coords_origin_o, coords_spacing_o, level_o, treeco
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
 
 
+"""
+Takes a wabbit object and tries to merge all blocks, where all sister blocks are available.
+
+This function takes in lists for all blocks and returns new lists where only the desired blocks are added
+
+The function loops over all blocks, finds the neighbor in one direction and checks if they have the same sub-tree structure (in case a previous merge happened)
+In case the other dimensions of the blocks are fitting, the neighbour is appended in that direction and the blocksize is increased
+We do this for one direction only, so for the others we have to call the function again
+"""
 def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, treecode_o, sub_tree_o, sub_tree_positions_o, max_level, dim=3, direction=0):
-  """
-  Takes a wabbit object and tries to merge blocks in a given direction.
-  Returns blocks, coords_origin, coords_spacing, level, sub_tree as arrays with one entry per block
-  """
   # dictionary used for lookup of blocks
   tc_find = {(tc, lvl): idx for idx, (tc, lvl) in enumerate(zip(treecode_o, level_o))}
 
@@ -202,7 +217,7 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
     coords_spacing.append(coords_spacing_o[i_b])
     level.append(i_level)
     treecode.append(i_treecode)
-    sub_tree_size.append(i_sub_tree_size)  # double the blocksize!
+    sub_tree_size.append(i_sub_tree_size)
     sub_tree_positions.append(position_n)
     block_id.append(id_n)
     
@@ -285,7 +300,8 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         # if pre+'y' in p_names: scalars.append(pre+'y')
         # if pre+'z' in p_names: scalars.append(pre+'z')
 
-  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''}, {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\"' if len(v_names) > 0 else ''} and {len(grid2field)} grid field{'s' if len(grid2field) != 1 else ''} {'\"' + ', '.join(grid2field) + '\"' if len(grid2field) > 0 else ''} to vtkhdf file")
+  if grid2field == None: grid2field = []
+  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''}, {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\" ' if len(v_names) > 0 else ''}and {len(grid2field)} grid field{'s' if len(grid2field) != 1 else ''} {'\"' + ', '.join(grid2field) + '\" ' if len(grid2field) > 0 else ''}to vtkhdf file")
 
   ### prepare filename
   file_ending = '.vtkhdf'
@@ -306,8 +322,16 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   vtkhdf_group.attrs.create('Version', np.array([2, 3], dtype='i8'))
   assembly_group = vtkhdf_group.create_group('Assembly')
 
-  ### merging - tries to merge blocks where all sisters exist, so that paraview needs to load less blocks
+  ### merging - tries to merge blocks, so that paraview needs to load less blocks
   # this is a high-level optimization, but neatly reduces the time to load for paraview
+  # we do not merge inside the wabbit_obj, but rather represent it with lists, that we modify:
+  #    coords_origin     - origin of the block (as before)
+  #    coords_spacing    - spacing of the block (as before)
+  #    level             - level of the block (as before)
+  #    treecode          - treecode of the block (as before)
+  #    sub_tree_size     - block_size of the block, as we merge blocks this can be larger than original block_size
+  #    sub_tree_position - relative position of the sub-blocks in the merged block
+  #    block_id          - list of lists of block ids that are contained in the merged block, so that we can read in the data
   
   # prepare all arrays, as we merge by looping over them and reducing them
   start_time = time.time()
@@ -341,7 +365,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
       if minutes > 0: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
       else: print(f"    Prune blocks :         {total_blocks:7d} blocks, took {seconds:.1g}s")
 
-  # this is the actual merging loop, we loop until no new blocks are merged
+  # this is the actual sister merging loop, we loop until no new blocks are merged
   jmin, jmax = w_main.get_min_max_level()
   if merge: merge_blocks_it = jmax
   else: merge_blocks_it = 0
@@ -432,8 +456,6 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     hours, rem = divmod(rem_time, 3600)
     minutes, seconds = divmod(rem, 60)
     if verbose and mpi_rank==0 and i_block < int(total_blocks/mpi_size):
-        hours, rem = divmod(time.time() - start_time, 3600)
-        minutes, seconds = divmod(rem, 60)
         print_progress_bar(i_block, int(total_blocks/mpi_size), prefix=f'    Processing data:', suffix=f'ETA: {int(hours)}h {int(minutes):02d}m { seconds:02.1f}s', length=20)
 
     # get celldatagroup
@@ -798,7 +820,7 @@ if __name__ == "__main__":
   parser.add_argument("-p", "--point-data", help="Save as pointdata, elsewise celldata is saved", action="store_true")
 
   parser.add_argument("--prune", help="Prune the grid, i.e. remove blocks with constant values with respect to the first file per timestep", action="store_true")
-  parser.add_argument("--prune-tolerance", help="Allowed maximum deviation from block mean value", default=1e-3, type=float)
+  parser.add_argument("--prune-tolerance", help="Allowed maximum deviation from block mean value (defaults to 1e-3)", default=1e-3, type=float)
 
   parser.add_argument("--grid2field", help="List of grid variables that will be additionally saved as field variables. Attention: This can be memory intensive.", nargs='+', default=None, type=str)
 
