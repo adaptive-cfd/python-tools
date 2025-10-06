@@ -1241,7 +1241,9 @@ def origin2treecode( origin, max_level=21, dim=3, domain_size=[1,1,1] ):
 
 # return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def level2spacing( level, dim=3, block_size=[21,21,21], domain_size=[1,1,1] ):
-    return np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
+    spacing=np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
+
+    return spacing[::-1]  # we are reversing to get Z,Y,X order, in which coords_spacing is currently stored
 
 # return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def spacing2level( spacing, block_size=[21,21,21], domain_size=[1,1,1] ):

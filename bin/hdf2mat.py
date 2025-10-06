@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 from scipy.io import savemat
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
-import wabbit_tools, wabbit_dense_error_tools
+import wabbit_tools
 import shutil
 import bcolors
 
@@ -118,7 +118,7 @@ def write_mat_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
             x0 = w_obj.coords_origin
             dx = w_obj.coords_spacing
             data = w_obj.blocks
-            data_dense, box_dense = wabbit_dense_error_tools.dense_matrix( x0, dx, data, w_obj.level, dim )
+            data_dense, box_dense = wabbit_tools.dense_matrix( x0, dx, data, w_obj.level, dim )
             data_tmp.append(data_dense)
         data_list["domain_size"] = box_dense
         data_list["dx"] = dx
