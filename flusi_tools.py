@@ -95,7 +95,8 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
         # i dont really know why, but there is a messup in fortran vs c ordering, so here we have to swap
         # axis
         # data = np.swapaxes(data, 0, 2)
-        nxyz = np.array([nz,nx,ny])
+        # nxyz = np.array([nz,nx,ny])
+        nxyz = np.array([nx, ny, nz])
     else:
         #2d data
         nx, ny = data.shape
