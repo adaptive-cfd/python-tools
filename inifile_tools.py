@@ -98,6 +98,7 @@ def check_parameters_for_stupid_errors( file ):
     CFL_nu           = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2))
     c0           = get_ini_parameter( file, 'ACM-new', 'c_0', float)
     nu           = get_ini_parameter( file, 'ACM-new', 'nu', float)
+    uinfty       = get_ini_parameter( file, 'ACM-new', 'u_mean_set', float, vector=True, default=[0.0,0.0,0.0])
     skew_symmetry= get_ini_parameter( file, 'ACM-new', 'skew_symmetry', int, default=0)
     ceta         = get_ini_parameter( file, 'VPM', 'C_eta', float, default=0.0)
     penalized    = get_ini_parameter( file, 'VPM', 'penalization', bool, default=False)
@@ -116,6 +117,10 @@ def check_parameters_for_stupid_errors( file ):
     useCoarseExtension = get_ini_parameter(file, 'Blocks', 'useCoarseExtension', int, default=0)
     useSecurityZone    = get_ini_parameter(file, 'Blocks', 'useSecurityZone', int, default=0)
     
+    # user gave just a number for bs, which is used in all directions:
+    if bs.shape[0] == 1:
+        bs = np.asarray( 3*[bs[0]] )
+    
     dx = L[0]*2**-jmax/(bs[0])
     keta = np.sqrt(ceta*nu)/dx
     
@@ -124,9 +129,8 @@ def check_parameters_for_stupid_errors( file ):
     print("======================================================================================")
     print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
           (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
-    print("C_0   = %2.2f   delta_shock= %2.2f dx     nu=%e" % (c0, c0*ceta/dx, nu))
     print("T_max = %2.2f   CFL        = %2.2f CFL_eta = %2.2f  CFL_nu     = %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
-    print("equidistant grids: Jmin=%i^%i, Jmax=%i^%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
+    
     
     if ('CDF4' in wavelet and "4th" in discretization) or ('CDF2'in wavelet and '2nd' in discretization) or ('CDF6' in wavelet and '6th' in discretization):
         print("discretization=%s %s~~>matches wavelet %s%s" % (discretization, bcolors.OKBLUE, wavelet, bcolors.ENDC))
@@ -145,10 +149,24 @@ def check_parameters_for_stupid_errors( file ):
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
     
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    print('\n-- grid')
+    print("   Bs = (%i %i %i)  L=(%2.1f, %2.1f, %2.1f)   Jmin = %i   Jmax = %i   N = %i per unit length" % 
+          ( bs[0], bs[1], bs[2], L[0], L[1], L[2], jmin, jmax, int(1.0/dx)))
+    print("   Nequi = %i**%i up to %i**%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    uinfty_mag = np.linalg.norm(np.asarray(uinfty))
+    print('\n-- ACM')
+    print("   nu = %2.2e   Re0=1/nu = %2.1f   C_0 = %2.2f   u_infty = %2.2f   Mach = %2.2f" % (nu, 1.0/nu, c0, uinfty_mag, uinfty_mag/c0))
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- wavelet')
     print("   C_eps = %2.2e   wavelet = %s  dealias = %i  adapt_tree = %i" % (ceps, wavelet, dealias, adapt_tree))
     print("   useCoarseExtension = %i useSecurityZone = %i  refinement_indicator = %s" % (useCoarseExtension, useSecurityZone, refinement_indicator))
     
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- penalization')
     if penalized == 1:
         print("   use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
@@ -158,10 +176,18 @@ def check_parameters_for_stupid_errors( file ):
         print("   use_penalization= %i %s~~~> no penalization used! %s" % 
               (penalized, bcolors.OKBLUE, bcolors.ENDC))
     
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if geometry == "Insect":
         h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
         print('\n-- insect')
-        print('   h_wing/dx = %2.2f' % (h_wing/dx))
+        if h_wing/dx > 4.5:
+            color = bcolors.OKGREEN
+        elif h_wing/dx <= 4.5 and h_wing/dx >= 3.49:
+            color = bcolors.WARNING
+        else:
+            color = bcolors.FAIL
+            
+        print('   h_wing/dx = %s%2.2f%s' % (color, h_wing/dx, bcolors.ENDC))
         print('')
         
         coff = bcolors.ENDC        
@@ -192,7 +218,7 @@ def check_parameters_for_stupid_errors( file ):
 
     
     
-    if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool ):
+    if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
         # we use a fractal tree
         file_tree = get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str)
         if not os.path.isfile(file_tree):
@@ -971,7 +997,10 @@ def find_WABBIT_main_inifile(run_directory='./', verbose=False):
     import glob
     
     found_main_inifile = False
+    
     inifile_return = ""
+    
+
     for inifile in glob.glob( run_directory+"/*.ini" ):
         # if we find both sections, we likely found the INI file
         if exists_ini_section(inifile, 'Blocks') and exists_ini_section(inifile, 'Domain') and exists_ini_section(inifile, 'Time'):
@@ -988,6 +1017,9 @@ def find_WABBIT_main_inifile(run_directory='./', verbose=False):
             
         
     if not found_main_inifile:
+        print(run_directory)
+        print(glob.glob( run_directory+"/*.ini" ))
+    
         raise ValueError("Did not find simulations main INI file - unable to proceed")
 
     return inifile_return
