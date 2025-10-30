@@ -446,7 +446,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             # no striding, read the entire HDF5 file
             fid.write('\n')
             fid.write('    <!--Scalar-->\n')
-            fid.write('    <Attribute Name="%s" AttributeType="Scalar" Center="Cell">\n' % p)
+            fid.write('    <Attribute Name="%s" AttributeType="Scalar" Center="Node">\n' % p)
             fid.write('    <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
             fid.write('    %s%s_%s.h5:/%s\n' % (directory, p, timestamps[k], p) )
             fid.write('    </DataItem>\n')
@@ -457,7 +457,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             if len(res) == 3:
                 fid.write('\n')
                 fid.write('    <!--Vector-->\n')
-                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Cell">\n' % p)
+                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Node">\n' % p)
                 fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1, $2)" Dimensions="&nxnynz; 3" NumberType="Float">\n')
                 fid.write('        <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
                 fid.write('        %s%s_%s.h5:/%s\n' % (directory, p+'x', timestamps[k], p+'x') )
@@ -475,7 +475,7 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
             else:
                 fid.write('\n')
                 fid.write('    <!--Vector-->\n')
-                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Cell">\n' % p)
+                fid.write('    <Attribute Name="%s" AttributeType="Vector" Center="Node">\n' % p)
                 fid.write('    <DataItem ItemType="Function" Function="JOIN($0, $1)" Dimensions="&nxnynz; 2" NumberType="Float">\n')
                 fid.write('        <DataItem Dimensions="&nxnynz;" NumberType="Float" Format="HDF">\n')
                 fid.write('        %s%s_%s.h5:/%s\n' % (directory, p+'x', timestamps[k], p+'x') )
