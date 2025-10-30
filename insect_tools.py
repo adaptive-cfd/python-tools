@@ -1317,7 +1317,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     
     As the body angles may be time dependent, you can pass them (still in deg) as vectors with the same size as time. 
     In fact, this is important only for the Lollipop diagram with forces, because we read in the *.t file, which is in the
-    global coordinate system. You can obivously only plot force vectors after the simulation is completed.    
+    global coordinate system. You can obviously only plot force vectors after the simulation is completed.    
 
     Parameters
     ----------
@@ -1564,15 +1564,19 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
 
     if mark_pivot:
-        ax.plot(x_pivot_b[0], x_pivot_b[2], 'kp')
+        color = 'k'
+        if ax.get_facecolor() == (0.0, 0.0, 0.0, 1.0):
+            color = 'w'
+        ax.plot(x_pivot_b[0], x_pivot_b[2], 'p', color=color)
     
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), ax )
 
     if meanflow is not None:
-        x0, y0 = 0.0, 0.0
-        plt.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
-        plt.text(x0+meanflow[0]*1.4, y0+meanflow[2]*1.4, '$u_\\infty$' )
+        if max(abs(np.asarray(meanflow))) > 0.0:
+            x0, y0 = 0.0, 0.0
+            plt.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
+            plt.text(x0+meanflow[0]*1.1, y0+meanflow[2]*1.1, '$u_\\infty$' )
 
     if reverse_x_axis:
         ax.invert_xaxis()
@@ -1596,6 +1600,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         plt.savefig( fname.replace('.ini','_path.pdf'), format='pdf' )
     if savePNG:
         plt.savefig( fname.replace('.ini','_path.png'), format='png', dpi=300 )
+
 
 
 def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0],
@@ -2033,13 +2038,14 @@ def tiff2hdf( dir, outfile, dx=1, origin=np.array([0,0,0]) ):
 
 
 
-def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header goes here']):
+def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header goes here'], 
+                              unit_in='deg'):
     """
      given the angles alpha, phi and theta and a vector of numbers, perform
-     Fourier series approximation and save result to INI file.
+     Fourier series approximation and save result to INI file. 
 
      Input:
-         - fname: filename
+         - fname: filename (ini-file)
          - alpha, phi, theta: angles for kinematics approximation
          - nfft=[n1,n2,n3]: number of fourier coefficients for each angle
     """
@@ -2063,7 +2069,11 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header go
     f.write('format=2015-10-09; currently unused\n')
     f.write('convention=flusi;\n')
     f.write('; what units, radiant or degree?\n')
-    f.write('units=degree;\n')
+    if unit_in == 'deg':
+        f.write('units=degree;\n')
+    else:
+        f.write('units=rad;\n')
+        
     f.write('; is this hermite or Fourier coefficients?\n')
     f.write('type=fourier;\n')
 
@@ -2252,6 +2262,13 @@ def wing_contour_from_file(fname, N=1024):
         # Python does imply [-pi:+pi] but WABBIT uses 0:2*pi
         # Therefore, we subtract pi here (because data are in WABBIT convention)
         theta_i = theta_i - np.pi
+        
+        # down- or upsampling
+        theta_i_new = np.linspace( start=theta_i[0], stop=theta_i[-1], num=N, endpoint=True)
+        R_i_new = np.interp(theta_i_new, theta_i, R_i)
+        
+        R_i = R_i_new.copy()
+        theta_i = theta_i_new.copy()
     
         xc = x0 + np.cos(theta_i)*R_i
         yc = y0 + np.sin(theta_i)*R_i        
@@ -2398,6 +2415,8 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     import os
     import inifile_tools
     import matplotlib.pyplot as plt
+    from shapely.geometry.polygon import Polygon
+    from shapely.geometry import Point
     
     
     plt.rcParams["text.usetex"] = False
@@ -2431,11 +2450,24 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         X, Y = np.meshgrid(x2, x1)
         
         plt.contourf(Y.T, X.T, mask, levels=[0.5, 1.0], colors=[color_fill_mask])
-        # plt.contour(Y.T, X.T, mask, levels=[0.5], colors='k', linewidth=0.01)
         
         dx, dy = x1[1]-x1[0], x2[1]-x2[0]
-        area_damaged = np.sum(mask)*dx*dy
         
+        
+        # evaluate wing shape file.
+        xc, yc, area = wing_contour_from_file(fname)         
+        # create a polygon with the wing contour
+        polygon = Polygon( zip(xc,yc) )        
+        
+        # compute area of damaged wing (=intersection of damage mask and contour)
+        # loop over all grid points (2D grid and check if the point is inside the polygon)
+        area_damaged = 0.0
+        for i in range(mask.shape[0]):
+            for j in range(mask.shape[1]):
+                if polygon.contains( Point(Y.T[i,j], X.T[i,j]) ) and (mask[i,j]>0.0):
+                    # yes, the point is inside the contour and its damage mask is >0
+                    area_damaged += dx*dy 
+                            
     # -------------------------------------------------------------------------  
     # contour
     # -------------------------------------------------------------------------    
@@ -2450,7 +2482,7 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     
     ax.axis('equal')
     
-    title = "wing shape visualization: \n%s\nA=%f" % (fname, area)
+    title = "wing shape visualization: \n%s\nA=%2.2f AR=%2.2f" % (fname, area, 1.0/area)
     
     if damaged:
         title += ' A_damaged=%f (%2.2f%%)' % (area_damaged, 100*area_damaged/area)
@@ -2482,6 +2514,22 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
     if savePDF:
         plt.savefig( fname.replace('.ini','')+'_shape.pdf', dpi=300 )
+        
+        
+def piecewise_linear_function(x, xi, fi, periodize=True ):
+    """
+    Piecewise linear function defined by fi(xi), evaluated at x 
+
+    Returns
+    -------
+    x - the function evaluated at x
+    """
+    
+    if periodize:
+        xi = np.hstack( (np.asarray(xi)-1.0, np.asarray(xi), np.asarray(xi)+1.0) )
+        fi = np.hstack( (np.asarray(fi), np.asarray(fi), np.asarray(fi)) )
+    
+    return np.interp(x, xi, fi)
     
 def musca_kinematics_model( PHI, phi_m, dTau=0.03, alpha_down=61.0, alpha_up=-37.0, time=None ):
     """
@@ -2966,7 +3014,7 @@ def get_wing_membrane_grid(fname, dx=1e-3, dy=1e-3):
                 
     return np.asarray(x), np.asarray(y)
 
-def get_wing_pointcloud_from_inifile(fname):
+def get_wing_pointcloud_from_inifile(fname, N=1000, N_contour=128):
     """
     Returns a list of points (x,y) that are on the wing. The coordinates are 
     understood in the wing frame of reference (w), where 
@@ -3002,7 +3050,7 @@ def get_wing_pointcloud_from_inifile(fname):
     x, y = [], []
     
     # membrane contour
-    x_membrane, y_membrane, area_membrane = wing_contour_from_file(fname)
+    x_membrane, y_membrane, area_membrane = wing_contour_from_file(fname, N=N_contour)
     
     # find points on membrane
     poly_list = []
@@ -3016,14 +3064,18 @@ def get_wing_pointcloud_from_inifile(fname):
     polygon = Polygon(poly_list)
     # shapely.plotting.plot_polygon(polygon)
         
-    N = 50000
-    x_rand, y_rand = np.random.uniform(-1.0, 1.0, size=N), np.random.uniform(-1.0, 1.0, size=N)
-    
-    
-    for i in range(N):
-        if polygon.contains( Point(x_rand[i], y_rand[i]) ):
-            x.append(x_rand[i])
-            y.append(y_rand[i])
+    # N = 50000
+    # x_rand, y_rand = np.random.uniform(-1.0, 1.0, size=N), np.random.uniform(-1.0, 1.0, size=N)
+        
+    for i in range(N-N_contour):
+        x_rand, y_rand = np.random.uniform(-1.0, 1.0, size=1)[0], np.random.uniform(-1.0, 1.0, size=1)[0]
+        
+        while not polygon.contains( Point(x_rand, y_rand) ):
+            x_rand, y_rand = np.random.uniform(-1.0, 1.0, size=1)[0], np.random.uniform(-1.0, 1.0, size=1)[0]
+            
+        # if polygon.contains( Point(x_rand[i], y_rand[i]) ):
+        x.append(x_rand)
+        y.append(y_rand)
        
     
     # if present, add bristles    
@@ -3051,7 +3103,7 @@ def get_wing_pointcloud_from_inifile(fname):
 
 def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristled=False, 
                         R_bristle=0.01, bristle_color='#000080', debug_plot=True,
-                        additional_markers=False, marker_line_color='#008080'):
+                        additional_markers=False, marker_line_color='#008080', interactively_select_centre=False):
     """
     Create WABBIT compatible wing shape file from an SVG file. 
     
@@ -3187,6 +3239,12 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
     # xc, yc = 98, -128
     xc, yc = np.sum(xb)/xb.shape[0], np.sum(yb)/yb.shape[0]
     
+    if interactively_select_centre:
+        tmp = plt.ginput()
+        tmp = tmp[0]
+        print(tmp)
+        xc, yc = tmp[0], tmp[1]
+    
     if debug_plot:
         plt.plot(x1, y1, 'o', label='root')
         plt.plot(x2, y2, 'o', label='tip')
@@ -3267,6 +3325,8 @@ def wing_shape_from_SVG( svg_file, fname_out, contour_color, axis_color, bristle
                 plt.plot([all_bristles[i,0], all_bristles[i,2]], [all_bristles[i,1], all_bristles[i,3]], 'k-')
         if additional_markers:
             plt.plot( x_markers, y_markers, 'c*', label='additional marker'  )
+            for i in range(x_markers.shape[0]):
+                plt.text(x_markers[i], y_markers[i], "%i" % (i+1))
         plt.axis('equal')
         plt.title('Wing model, scaled, translated and rotated (as used in wabbit thus)')
         plt.show()
@@ -3487,3 +3547,66 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         print('no collision at t=%2.2f detected' % (time[it]) )   
         
         
+def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40):
+    """
+    A wrapper for visualize_wingpath_chord that extracts all required parameters
+    from a WABBIT/FLUSI type Parameter file (PARAMS.ini), including body angles etc.
+    
+    Work in progress (09/2025, TE)
+    """
+    import inifile_tools
+    import wabbit_tools
+    
+    # find the INI file of the run
+    PARAMS = wabbit_tools.find_WABBIT_main_inifile(run_directory)
+    
+    # extract the kienmatics file name from the main ini file
+    fname_kine = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'FlappingMotion_'+wing, dtype=str)
+    if fname_kine == 'from_file':
+        fname_kine = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'infile', dtype=str)
+        
+    elif 'from_file::' in fname_kine:
+        fname_kine = fname_kine.replace('from_file::','')
+        
+    else:
+        raise ValueError("Unfortunately, the Lollipop diagram cannot be created for this run because it uses pre-defined kinematics that are not read from a separate INI file.")
+
+    # required...
+    fname_kine = run_directory + '/' + fname_kine
+        
+    # get stroke plane angle
+    eta = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'eta0', dtype=float)
+    
+    # get the wing hinge (shoulder)
+    if wing == 'left':
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_l', dtype=float, vector=True)
+    elif wing == 'right':
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_r', dtype=float, vector=True)
+    elif wing == 'left2':
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_l2', dtype=float, vector=True)
+    elif wing == 'right2':
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_r2', dtype=float, vector=True)
+            
+    
+    
+    motion = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'BodyMotion', dtype=str)
+        
+    if motion == "tethered":
+        yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+    elif motion == "yawpitchroll_param":
+        # used for the EM simulations, here the pitch angle oscillates sinusoidally. we just pass the mean pitch angle
+        # to the lollipop diagram.
+        # This is the zero-mode of the body angles:
+        yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+    else:
+        raise ValueError("Unfortunately, the Lollipop diagram cannot be created for this run because it is not tethered flight.")
+        
+    u_infty = inifile_tools.get_ini_parameter(PARAMS, 'ACM-new', 'u_mean_set', dtype=float, vector=True)
+    
+    
+    visualize_wingpath_chord(fname_kine, psi=yawpitchroll_0[2], gamma=yawpitchroll_0[0], 
+                             beta=yawpitchroll_0[1], eta_stroke=eta, ax=ax, 
+                             meanflow=u_infty, savePDF=savePDF, savePNG=savePNG,
+                             x_pivot_b=x_pivot_b,
+                             time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False))
+    

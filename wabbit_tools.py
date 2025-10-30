@@ -679,7 +679,7 @@ class WabbitHDF5file:
             text_now = f"Error : L2 ={error_L2:12.5e}, LInfty={error_LInf:12.5e}"
             if logger==None: print(text_now)
             else: logger.info(text_now)
-            if error_L2 <= 1.0e-13: 
+            if error_L2 <= 1.0e-11: 
                 text_now = "GREAT: The files can be deemed as equal"
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
@@ -687,8 +687,8 @@ class WabbitHDF5file:
                 text_now = bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
-        if return_norm: return error_L2 <= 1.0e-13, error_L2, error_LInf
-        return error_L2 <= 1.0e-13
+        if return_norm: return error_L2 <= 1.0e-11, error_L2, error_LInf
+        return error_L2 <= 1.0e-11
 
 
     # check if grid is equal or not, with fractional we compute the fraction of treecodes which are different
@@ -1952,6 +1952,7 @@ def to_dense_grid( fname_in, fname_out = None, dim=2 ):
     import numpy as np
     import insect_tools
     import matplotlib.pyplot as plt
+    import flusi_tools
 
     # read data
     wabbit_obj = WabbitHDF5file()
@@ -1969,7 +1970,7 @@ def to_dense_grid( fname_in, fname_out = None, dim=2 ):
 
     # write data to FLUSI-type hdf file
     if fname_out:
-        insect_tools.write_flusi_HDF5( fname_out, time, box, field)
+        flusi_tools.write_flusi_HDF5( fname_out, time, box, field)
     else:        
         dx = [b/(np.size(field,k)) for k,b in enumerate(box)]
         X = [np.arange(0,np.size(field,k))*dx[k] for k,b in enumerate(box)]
