@@ -508,7 +508,11 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
                     # some vectors are separated by commas ',', remove them.
                     line = line.replace(',', ' ')                    
                     # next couple of line is all matrix elements
-                    found = True
+                    if not '/)' in line:
+                        found = True
+                    else:
+                        line = line.replace('/)', '')
+                        line = line.replace(';', '')
                     # this is the first row
                     rows.append( [float(i) for i in line.split()] )
         fid.close()

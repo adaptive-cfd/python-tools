@@ -435,9 +435,9 @@ def write_xmf_file_flusi(args, outfile, times, timestamps, prefixes, scalars, ve
         fid.write('    <DataItem Dimensions="%i" NumberType="Float" Format="XML">\n' % len(res))
         # NB: indices output in z,y,x order. (C vs Fortran ordering?)
         if len(res) == 3:
-            fid.write('    %e %e %e\n' % (lz/nz, ly/ny, lx/nx) )
+            fid.write('    %e %e %e\n' % (lz/(nz), ly/(ny), lx/(nx)) )
         else:
-            fid.write('    %e %e\n' % (ly/ny, lx/nx) )
+            fid.write('    %e %e\n' % (ly/(ny), lx/(nx)) )
         fid.write('    </DataItem>\n')
         fid.write('    </Geometry>\n')
 
