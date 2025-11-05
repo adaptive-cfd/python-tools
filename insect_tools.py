@@ -932,7 +932,8 @@ def visualize_kinematics_file(fname, ax=None, savePDF=True, savePNG=False):
 
 
 def csv_kinematics_file(fname):
-    """ Read an INI file with wingbeat kinematics and store the 3 angles over the period in a *.csv file
+    """ 
+    Read an INI file with wingbeat kinematics and store the 3 angles over the period in a *.csv file
     """
     
     t, phi, alpha, theta = eval_angles_kinematics_file(fname, time=np.linspace(0,1,100, endpoint=False) )
@@ -948,6 +949,11 @@ def csv_kinematics_file(fname):
 
 def eval_angles_kinematics_file(fname, time=None, unit_out='deg'):
     """
+    
+    Read a *.ini file that contains the description of a periodic wing beat. The kinematics
+    are described by the three angles phi, alpha, theta and evaluated as Fourier or Hermite
+    series depending on what is stored in the *.ini file. 
+    
     Parameters
     ----------
     fname : string
@@ -3549,8 +3555,14 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
         
 def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40):
     """
-    A wrapper for visualize_wingpath_chord that extracts all required parameters
+    A wrapper for visualize_wingpath_chord() that extracts all required parameters
     from a WABBIT/FLUSI type Parameter file (PARAMS.ini), including body angles etc.
+    
+    Give a simulation folder (run_directory) that contains the main PARAMS.ini file as well 
+    as the individual INI files for wing shape and wing kinematics.
+    
+    This script figures out the body orientation, the stroke plane angle, hinge points etc
+    and calls visualize_wingpath_chord() to draw the Lollipop diagram.
     
     Work in progress (09/2025, TE)
     """
