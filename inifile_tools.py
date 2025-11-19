@@ -45,7 +45,10 @@ def check_parameters_for_stupid_errors( file ):
     if not os.path.isfile(file):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
-    wavelet         = get_ini_parameter(file, 'Wavelet', 'wavelet', str, default="CDF40")        
+    wavelet         = get_ini_parameter(file, 'Wavelet', 'wavelet', str, default="CDF40")       
+    root_folder = os.path.dirname(file)+'/'
+    if root_folder == '/':
+        root_folder = './'
         
     # since 05 Jul 2023, g is set automatically, unless we do something stupid.
     if wavelet == 'CDF20':
@@ -177,6 +180,10 @@ def check_parameters_for_stupid_errors( file ):
               (penalized, bcolors.OKBLUE, bcolors.ENDC))
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #                                     INSECTS
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if geometry == "Insect":
         h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
         print('\n-- insect')
@@ -216,6 +223,52 @@ def check_parameters_for_stupid_errors( file ):
         print("  %s  \\O `::/ %s    %s  \\::' O/%s" % (cl2,coff, cr2, coff))
         print("  %s   ''--'  %s     %s  `--''%s" % (cl2,coff, cr2, coff))
 
+        
+        # when using insects, we may read various extra files. check if they are present.
+        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, 'none')[0]
+        wing_motion_L = get_ini_parameter( file, 'Insects', 'FlappingMotion_left', str, 'none')[0]
+        wing_motion_R = get_ini_parameter( file, 'Insects', 'FlappingMotion_left', str, 'none')[0]
+        
+        print("")
+        print("")
+        print("   BodyMotion           = %s" % (body_motion))
+        print("   FlappingMotion_left  = %s" % (wing_motion_L))
+        print("   FlappingMotion_right = %s" % (wing_motion_R))
+        
+        if body_motion == 'kinematics_loader' or wing_motion_L=='kinematics_loader' or wing_motion_R=='kinematics_loader':
+            print( "   kineloader is used !")
+            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
+            
+            if kineloader_file == '':
+                bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
+            
+            if not os.path.isfile(root_folder+kineloader_file):
+                bcolors.err('Kineloader used file not found ! body_motion=%s wing_motion=(%s  %s)\n infile=%s' % (body_motion, wing_motion_L, wing_motion_R, kineloader_file) )
+                
+        WingShape = get_ini_parameter( file, 'Insects', 'WingShape', str, 'none')[0]
+        print("   WingShape            = %s" % (WingShape))
+        
+        if "from_file::" in WingShape:
+            WingShape = root_folder + WingShape.replace("from_file::","")
+            
+            if not os.path.isfile(WingShape):
+                bcolors.err('WingShape file %s not found !' % (WingShape) )
+            else:
+                print('WingShape file found !')
+                
+                
+        if "from_file::" in wing_motion_L:
+            fname = root_folder + wing_motion_L.replace("from_file::","")
+            
+            if not os.path.isfile(fname):
+                bcolors.err('WingKinematics file %s not found !' % (fname) )
+            else:
+                print('WingKinematics file found !')
+                
+            # the option to compute the mean wingtip velocity and hence the true reynolds number
+            # is only available for kinematics read from file.
+            
+            # utip_mean = np.mean( insect_tools. )
     
     
     if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
