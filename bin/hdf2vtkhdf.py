@@ -912,11 +912,23 @@ if __name__ == "__main__":
     if args.outfile == "all" and os.path.isfile(args.infile):
       args.outfile = os.path.join(os.path.split(args.infile)[0], state_1.var_from_filename())
   elif os.path.isdir(args.infile):
+      # get the list of files
     filelist = sorted( glob.glob(os.path.join(args.infile,"*.h5")) )
+    
+    # remove all files from the list that are not on the include list, if an include list is given
+    if args.include_prefixes:
+        filelist = [ f for f in filelist if os.path.basename(f).split("_", 1)[0] in args.include_prefixes ]
+    
+    # remove all files from the list that are on the exclude list, if an exclude list is given
+    if args.exclude_prefixes:
+        filelist = [ f for f in filelist if not os.path.basename(f).split("_", 1)[0] in args.exclude_prefixes ]
+      
+    
     for i_file in filelist:
       state_1 = wabbit_tools.WabbitHDF5file()
       state_1.read(i_file, read_var='meta', verbose=args.verbose and mpi_rank == 0)
       time_1 = np.round(state_1.time, 12)  # round to 12 digits to avoid floating points diffrences
+      
       if not time_1 in time_process:
         time_process[time_1] = []
       time_process[time_1].append(state_1)
