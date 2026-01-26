@@ -776,10 +776,16 @@ def fseries(y, n):
 
 def Fserieseval(a0, ai, bi, time):
     """
-    evaluate the Fourier series given by a0, ai, bi at the time instant time
-    note we divide amplitude of constant by 2 (which is compatible with "fseries")
+    Evaluate the Fourier series given by a0, ai, bi at the time instant time.
+    Function is vectorized; pass a vector of time instants for evaluation.
+    
+    Note:
+    -----    
+       We divide amplitude of a0 (constant, 0th mode) by 2 (which is compatible with "fseries"), that means
+       a0 = 2.0*mean(signal). This is an historic oddity in WABBIT/FLUSI and its too late
+       to correct that.
      
-    function is vectorized; pass a vector of time instants for evaluation.
+    
     
     Input:
     ------
@@ -1866,7 +1872,7 @@ def indicate_strokes( force_fullstrokes=True, tstart=None, ifig=None, tstroke=1.
     ax.add_collection(pc)
 
 
-def add_shaded_background( t0, t1, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
+def add_shaded_background( T0, T1, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
     from matplotlib.collections import PatchCollection
     from matplotlib.patches import Rectangle
     import matplotlib.pyplot as plt
@@ -1880,9 +1886,12 @@ def add_shaded_background( t0, t1, ax=None, color=[0.85, 0.85, 0.85, 1.0] ):
     # current axes extends
     y1, y2 = ax.get_ybound()
     
-    # create actual rectangle
-    r = Rectangle( [t0,y1], t1-t0, y2-y1, fill=True)
-    rects.append(r)
+    for i in range(T0.shape[0]):        
+        t0, t1 = T0[i], T1[i]
+        
+        # create actual rectangle
+        r = Rectangle( [t0,y1], t1-t0, y2-y1, fill=True)
+        rects.append(r)
     
     # Create patch collection with specified colour/alpha
     pc = PatchCollection(rects, facecolor=color, edgecolor=color, zorder=-2)
@@ -3648,7 +3657,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
     return collision
         
         
-def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40):
+def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40, DrawPath=False):
     """
     A wrapper for visualize_wingpath_chord() that extracts all required parameters
     from a WABBIT/FLUSI type Parameter file (PARAMS.ini), including body angles etc.
@@ -3715,5 +3724,135 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
                              beta=yawpitchroll_0[1], eta_stroke=eta, ax=ax, 
                              meanflow=u_infty, savePDF=savePDF, savePNG=savePNG,
                              x_pivot_b=x_pivot_b,
-                             time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False))
+                             time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False),
+                             DrawPath=DrawPath)
+    
+
+
+def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, alpha_R=None, theta_R=None, theta_L=None,
+                          psi=None, gamma=None, beta=None, xc_body_g_x=None, xc_body_g_y=None, xc_body_g_z=None):
+    """
+    Write a KINELOADER text file, which is read by WABBIT to employ NON-PERIODIC kinematics.
+    You need to provide a time vector, and this must be EQUIDISTANTLY sampled (with constant dt).
+    If you do not pass a certain quantity, for example if you deal only with one wing, the 
+    parameters are set to zero.
+    
+    The kineloader file contains the function values and their time derivatives at sample points - the HPC
+    code uses then a hermite interpolation.    
+    
+    The time vector is appropriately nornalized (as you use it in the simulations), we also check that here.
+    """
+    
+        
+    if phi_L is None:
+        phi_L = np.zeros_like(time) 
+    if phi_R is None:
+        phi_R = np.zeros_like(time) 
+    if alpha_L is None:
+        alpha_L = np.zeros_like(time) 
+    if alpha_R is None:
+        alpha_R = np.zeros_like(time) 
+    if theta_R is None:
+        theta_R = np.zeros_like(time) 
+    if theta_L is None:
+        theta_L = np.zeros_like(time)
+    if psi is None:
+        psi = np.zeros_like(time) 
+    if gamma is None:
+        gamma = np.zeros_like(time) 
+    if beta is None:
+        beta = np.zeros_like(time) 
+    if xc_body_g_x is None:
+        xc_body_g_x = np.zeros_like(time) 
+    if xc_body_g_y is None:
+        xc_body_g_y = np.zeros_like(time) 
+    if xc_body_g_z is None:
+        xc_body_g_z = np.zeros_like(time) 
+        
+    import finite_differences
+    
+    
+    dts = time[1:] - time[0:-1]
+    if np.max(dts) - np.min(dts) > 1.0e-10:
+        raise ValueError("The time vector must be equidistant (otherwise derivatives are wrong!)")
+    
+    nt = time.shape[0]
+    
+    # The *.kineloader file does contain for each quantity the pair [value, value_dt]
+    # so we need to compute time derivatives of all relevant qtys. This is done using 
+    # 2nd order centered (non-periodic) finite differences.
+    dt = time[1]-time[0]
+    D = finite_differences.D12(nt, dt)
+    
+    phi_R_dt   = D @ phi_R
+    alpha_R_dt = D @ alpha_R
+    theta_R_dt = D @ theta_R
+    
+    phi_L_dt   = D @ phi_L
+    alpha_L_dt = D @ alpha_L
+    theta_L_dt = D @ theta_L
+    
+    psi_dt   = D @ psi
+    gamma_dt = D @ gamma
+    beta_dt  = D @ beta
+    
+    x_dt = D @ xc_body_g_x
+    y_dt = D @ xc_body_g_y
+    z_dt = D @ xc_body_g_z
+    
+    # kineloader data file
+    # open file, erase existing
+    f = open( fname, 'w', encoding='utf-8' )
+    
+    f.write('; header\n')
+        
+    for it in range(nt):        
+        f.write( '%+.9e ' % (time[it])) #0
+
+        f.write( '%+.9e ' % (xc_body_g_x[it]) )
+        f.write( '%+.9e ' % (x_dt[it]))
+        f.write( '%+.9e ' % (xc_body_g_y[it]) )
+        f.write( '%+.9e ' % (y_dt[it]))
+        f.write( '%+.9e ' % (xc_body_g_z[it]) )
+        f.write( '%+.9e ' % (z_dt[it]))
+        
+        for k in range(6):    
+            f.write( '%+.9e ' % (0.0)) # unused, was planned for velocity
+        
+        f.write( '%+.9e ' % (psi[it])) # psi
+        f.write( '%+.9e ' % (psi_dt[it])) # psi
+                       
+        f.write( '%+.9e ' % (beta[it])) # beta
+        f.write( '%+.9e ' % (beta_dt[it])) # beta
+        
+        f.write( '%+.9e ' % (gamma[it])) # gamma
+        f.write( '%+.9e ' % (gamma_dt[it])) # gamma
+        
+        f.write( '%+.9e ' % (alpha_L[it]))
+        f.write( '%+.9e ' % (alpha_L_dt[it]))
+                
+        f.write( '%+.9e ' % (phi_L[it])) # newcode: radians!
+        f.write( '%+.9e ' % (phi_L_dt[it]))
+        
+        f.write( '%+.9e ' % (theta_L[it]))
+        f.write( '%+.9e ' % (theta_L_dt[it]))                 
+
+        f.write( '%+.9e ' % (alpha_R[it]))
+        f.write( '%+.9e ' % (alpha_R_dt[it]))
+                
+        f.write( '%+.9e ' % (phi_R[it])) # newcode: radians!
+        f.write( '%+.9e ' % (phi_R_dt[it]))
+        
+        f.write( '%+.9e ' % (theta_R[it]))
+        f.write( '%+.9e ' % (theta_R_dt[it]))
+                
+        # unused, slots reserved for hindwings
+        for k in range(11):    
+            f.write( '%+.9e ' % (0.0))
+        f.write( '%+.9e' % (0.0)) # no space in lastline !
+        
+        # new line
+        if it != nt-1:
+            f.write('\n')                
+    f.close()
     
