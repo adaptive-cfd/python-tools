@@ -265,10 +265,9 @@ def check_parameters_for_stupid_errors( file ):
             else:
                 print('WingKinematics file found !')
                 
-            # the option to compute the mean wingtip velocity and hence the true reynolds number
-            # is only available for kinematics read from file.
-            
-            # utip_mean = np.mean( insect_tools. )
+        if time_step_method == 'RungeKuttaChebychev' and refinement_indicator == 'significant':
+            bcolors.warn(""" 11/2025: We have encountered problems when combining refinement_indicator=significant and time_step_method=RungeKuttaChebychev.
+            Combining those is no longer recommended - we now recommend you use RungeKuttaGeneric or even consider using refine_everywhere strategy.""")
     
     
     if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
