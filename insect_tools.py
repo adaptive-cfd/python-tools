@@ -3730,12 +3730,15 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
 
 
 def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, alpha_R=None, theta_R=None, theta_L=None,
+                          phi_L2=None, phi_R2=None, alpha_L2=None, alpha_R2=None, theta_R2=None, theta_L2=None,
                           psi=None, gamma=None, beta=None, xc_body_g_x=None, xc_body_g_y=None, xc_body_g_z=None):
     """
     Write a KINELOADER text file, which is read by WABBIT to employ NON-PERIODIC kinematics.
     You need to provide a time vector, and this must be EQUIDISTANTLY sampled (with constant dt).
     If you do not pass a certain quantity, for example if you deal only with one wing, the 
     parameters are set to zero.
+    
+    Input angles MUST BE in radians.
     
     The kineloader file contains the function values and their time derivatives at sample points - the HPC
     code uses then a hermite interpolation.    
@@ -3756,6 +3759,18 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
         theta_R = np.zeros_like(time) 
     if theta_L is None:
         theta_L = np.zeros_like(time)
+    if phi_L2 is None:
+        phi_L2 = np.zeros_like(time) 
+    if phi_R2 is None:
+        phi_R2 = np.zeros_like(time) 
+    if alpha_L2 is None:
+        alpha_L2 = np.zeros_like(time) 
+    if alpha_R2 is None:
+        alpha_R2 = np.zeros_like(time) 
+    if theta_R2 is None:
+        theta_R2 = np.zeros_like(time) 
+    if theta_L2 is None:
+        theta_L2 = np.zeros_like(time)
     if psi is None:
         psi = np.zeros_like(time) 
     if gamma is None:
@@ -3792,6 +3807,14 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
     alpha_L_dt = D @ alpha_L
     theta_L_dt = D @ theta_L
     
+    phi_R2_dt   = D @ phi_R2
+    alpha_R2_dt = D @ alpha_R2
+    theta_R2_dt = D @ theta_R2
+    
+    phi_L2_dt   = D @ phi_L2
+    alpha_L2_dt = D @ alpha_L2
+    theta_L2_dt = D @ theta_L2
+    
     psi_dt   = D @ psi
     gamma_dt = D @ gamma
     beta_dt  = D @ beta
@@ -3809,6 +3832,8 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
     for it in range(nt):        
         f.write( '%+.9e ' % (time[it])) #0
 
+        #-----------------------------------------------------
+        # body centre
         f.write( '%+.9e ' % (xc_body_g_x[it]) )
         f.write( '%+.9e ' % (x_dt[it]))
         f.write( '%+.9e ' % (xc_body_g_y[it]) )
@@ -3818,7 +3843,9 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
         
         for k in range(6):    
             f.write( '%+.9e ' % (0.0)) # unused, was planned for velocity
-        
+            
+        #-----------------------------------------------------
+        # body angles (roll, pitch, yaw; in that order)
         f.write( '%+.9e ' % (psi[it])) # psi
         f.write( '%+.9e ' % (psi_dt[it])) # psi
                        
@@ -3828,6 +3855,8 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
         f.write( '%+.9e ' % (gamma[it])) # gamma
         f.write( '%+.9e ' % (gamma_dt[it])) # gamma
         
+        #-----------------------------------------------------
+        # forewings (first wing pair, often the only one used)
         f.write( '%+.9e ' % (alpha_L[it]))
         f.write( '%+.9e ' % (alpha_L_dt[it]))
                 
@@ -3845,11 +3874,27 @@ def write_kineloader_file( fname, time, phi_L=None, phi_R=None, alpha_L=None, al
         
         f.write( '%+.9e ' % (theta_R[it]))
         f.write( '%+.9e ' % (theta_R_dt[it]))
+        
+        #-----------------------------------------------------        
+        # hindwings (second wing pair)        
+        f.write( '%+.9e ' % (alpha_L2[it]))
+        f.write( '%+.9e ' % (alpha_L2_dt[it]))
                 
-        # unused, slots reserved for hindwings
-        for k in range(11):    
-            f.write( '%+.9e ' % (0.0))
-        f.write( '%+.9e' % (0.0)) # no space in lastline !
+        f.write( '%+.9e ' % (phi_L2[it])) # newcode: radians!
+        f.write( '%+.9e ' % (phi_L2_dt[it]))
+        
+        f.write( '%+.9e ' % (theta_L2[it]))
+        f.write( '%+.9e ' % (theta_L2_dt[it]))                 
+
+        f.write( '%+.9e ' % (alpha_R2[it]))
+        f.write( '%+.9e ' % (alpha_R2_dt[it]))
+                
+        f.write( '%+.9e ' % (phi_R2[it])) # newcode: radians!
+        f.write( '%+.9e ' % (phi_R2_dt[it]))
+        
+        f.write( '%+.9e ' % (theta_R2[it]))
+        f.write( '%+.9e' % (theta_R2_dt[it])) # no space in lastline !
+        
         
         # new line
         if it != nt-1:
