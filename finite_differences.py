@@ -421,7 +421,7 @@ def RKC_stability_map( s=4, eps=10.0, color='k', ax=None ):
     ax.contour(RE, IM, Pj, levels=[1.0], colors=color)
 
 
-def RK4_stability_map( ax=plt.gca()  ):
+def RK4_stability_map( ax=None  ):
     """
     plot the stability map for a conventional RK4 scheme
     """
@@ -435,6 +435,8 @@ def RK4_stability_map( ax=plt.gca()  ):
     # this if the growth rate (<1 means stable)
     Pj = np.abs(  1 + z + 0.5*z**2 +(1/6)*z**3 + (1/24)*z**4 )
 
+    if ax is None:
+        ax = plt.gca()
     ax.contour(RE, IM, Pj, levels=[1.0])
 
 def EE1_stability_map( fig=None, **kwargs ):
@@ -544,7 +546,7 @@ def select_RKC_dt( eigenvalues, s=20, eps=10.0, RK4=False ):
 
     return dt
 
-def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca(), eps_min=2.0 ):
+def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=None, eps_min=2.0 ):
     """
     Given operator eigenvalues, select best stable RKC scheme.
 
@@ -654,6 +656,9 @@ def select_RKC_scheme( eigenvalues, dt, plot=True, safety=False, ax=plt.gca(), e
         print('%e;' % (a[-1]))
 
     if plot:
+        if ax is None:
+            ax = plt.gca()
+        
         RKC_stability_map(s_best, eps_best, ax=ax)
         RK4_stability_map( ax=ax )
         ax.plot( np.real(eigenvalues), np.imag(eigenvalues), 'o', mfc='none' )
