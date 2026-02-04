@@ -1382,6 +1382,35 @@ def get_many_M_b2s(eta, side, unit_in="rad"):
     return M
 
 
+def apply_rotations_to_vectors(M, x):
+    """
+    Mass-rotate an array of vectors in one go (without loop).
+
+    Parameters
+    ----------
+    M : arrax, size(N,3,3)
+        Rotation matrices, where 1st index is time
+    x : array, size(N,3)
+        Vector to be rotated
+
+    Returns
+    -------
+    y : array, size(N,3)
+        Resulting array of rotated vectors
+
+    """
+    y = np.zeros(x.shape)
+    
+    # Loop version
+    # for it in np.arange(M.shape[0]):
+    #     y[it, :] = np.matmul(M[it, :], x[it, :])
+    
+    # loop-free optimized version
+    y = np.einsum("nij,nj->ni", M, x, optimize=True)
+        
+    return y
+
+
 
 def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
                              x_pivot_b=[0,0,0], wing='left', chord_length=0.1,
@@ -2937,25 +2966,17 @@ def compute_aero_power_individual_wings(run_directory, file_output='aero_power_i
     
     
 
-def compute_inertial_power(file_kinematics='kinematics.t', Jxx=0.0, Jyy=0.0, Jzz=0.0, Jxy=0.0):
+def compute_wing_inertial_moment(run_directory, file_output='wing_inertial_moment_w.csv', Jxx=0.0, Jyy=0.0, Jzz=0.0, Jxy=0.0):
     """
     Post-processing: Compute the insects inertial power. 
     
     The routine reads the kinematics.t file (for angular velocity and acceleration
     of the wings). The inertia tensor can be passed to this routine
     The background is that often, during the simulation, we do not bother to compute the
-    inertia tensor, and it is thus not contained in the PARAMS.ini files
+    inertia tensor, and it is thus not contained in the PARAMS.ini files.
     
-    Input:
-    ------
+    NOTE: at the moment, we use the same inertia tensor for all wings in the run (TODO 02/2026 -TE)
     
-        fname: string
-            ini file name describing the wing shape. It must contan the [Wing] section
-            and describe a Fourier wing. The wing may have bristles, no problem.
-            
-    Output:
-    -------
-        written to inertial_power_postprocessing.t
     """
     
     # indices [zero-based] in kinematics.t:
@@ -3002,47 +3023,64 @@ def compute_inertial_power(file_kinematics='kinematics.t', Jxx=0.0, Jyy=0.0, Jzz
     # d[:,40] rot_dt_l2_w_z
     # d[:,41] rot_dt_r2_w_x
     # d[:,42] rot_dt_r2_w_y
-    # d[:,43] rot_dt_r2_w_z
-   
-    # k = load_t_file( file_kinematics )
+    # d[:,43] rot_dt_r2_w_z   
     
-    # for it in range(k.shape[0]):
+    d = load_t_file(run_directory+'/kinematics.t')
+    
+    if d.shape[1] > 25:
+        # four wings
+        wings = ['leftwing', 'rightwing', 'leftwing2', 'rightwing2']
+    else:
+        # two wings
+        wings = ['leftwing', 'rightwing']
         
-    #     rot_dt_wing_l_w1, rot_dt_wing_l_w2, rot_dt_wing_l_w3 = k[it,20], k[it,21], k[it,22]
-    #     rot_dt_wing_r_w1, rot_dt_wing_r_w2, rot_dt_wing_r_w3 = k[it,23], k[it,24], k[it,25]
+    nt = d.shape[0]
+    all_data = np.zeros( (nt, 4*3+1) )
         
-    #     rot_rel_wing_l_w1, rot_rel_wing_l_w2, rot_rel_wing_l_w3 = k[it,14], k[it,15], k[it,16]
-    #     rot_rel_wing_r_w1, rot_rel_wing_r_w2, rot_rel_wing_r_w3 = k[it,17], k[it,18], k[it,19]
+            
+    for it in range(nt):
+        # copy time
+        all_data[it,0] = d[it, 0] 
         
-    #     #-- LEFT WING
-    #     a1 = Jxx * rot_dt_wing_l_w1 + Jxy * rot_dt_wing_l_w2
-    #     a2 = Jxy * rot_dt_wing_l_w1 + Jyy * rot_dt_wing_l_w2
-    #     a3 = Jzz * rot_dt_wing_l_w3
-        
-    #     b1 = Jxx * rot_rel_wing_l_w1 + Jxy * rot_rel_wing_l_w2
-    #     b2 = Jxy * rot_rel_wing_l_w1 + Jyy * rot_rel_wing_l_w2
-    #     b3 = Jzz * rot_rel_wing_l_w3
-        
-    #     iwmoment1 = (a1 + rot_rel_wing_l_w2*b3 - rot_rel_wing_l_w3*b2)
-    #     iwmoment2 = (a2 + rot_rel_wing_l_w3*b1 - rot_rel_wing_l_w1*b3)
-    #     iwmoment3 = (a3 + rot_rel_wing_l_w1*b2 - rot_rel_wing_l_w2*b1)
-        
-    #     inertial_power_left = rot_rel_wing_l_w1 * iwmoment1 + rot_rel_wing_l_w2 * iwmoment2 + rot_rel_wing_l_w3 * iwmoment3
-        
-    #     #-- RIGHT WING
-    #     a1 = Jxx * rot_dt_wing_r_w1 + Jxy * rot_dt_wing_r_w2
-    #     a2 = Jxy * rot_dt_wing_r_w1 + Jyy * rot_dt_wing_r_w2
-    #     a3 = Jzz * rot_dt_wing_r_w3
-        
-    #     b1 = Jxx * rot_rel_wing_r_w1 + Jxy * rot_rel_wing_r_w2
-    #     b2 = Jxy * rot_rel_wing_r_w1 + Jyy * rot_rel_wing_r_w2
-    #     b3 = Jzz * rot_rel_wing_r_w3
-        
-    #     iwmoment1 = (a1 + rot_rel_wing_r_w2*b3 - rot_rel_wing_r_w3*b2)
-    #     iwmoment2 = (a2 + rot_rel_wing_r_w3*b1 - rot_rel_wing_r_w1*b3)
-    #     iwmoment3 = (a3 + rot_rel_wing_r_w1*b2 - rot_rel_wing_r_w2*b1)
-        
-    #     inertial_power_right = rot_rel_wing_r_w1 * iwmoment1 + rot_rel_wing_r_w2 * iwmoment2 + rot_rel_wing_r_w3 * iwmoment3
+        for ID, wing in enumerate(wings):            
+            if wing == 'leftwing':
+                i1_rot_dt, i1_rot, side= 20, 14, 'left'
+            elif wing == 'rightwing':
+                i1_rot_dt, i1_rot, side= 23, 17, 'right'
+            elif wing == 'leftwing2':
+                i1_rot_dt, i1_rot, side= 38, 32, 'left'
+            elif wing == 'rightwing2':
+                i1_rot_dt, i1_rot, side= 41, 35, 'right'
+                
+            # extract angular accel and angular velocity from kinematics file
+            rot_dt_wing_w1, rot_dt_wing_w2, rot_dt_wing_w3 = d[it,i1_rot_dt+0], d[it,i1_rot_dt+1], d[it,i1_rot_dt+2]
+            rot_rel_wing_w1, rot_rel_wing_w2, rot_rel_wing_w3 = d[it,i1_rot+0], d[it,i1_rot+1], d[it,i1_rot+2]
+            
+            # and compute the inertial moment
+            # angular acceleration term
+            a1 = Jxx * rot_dt_wing_w1 + Jxy * rot_dt_wing_w2
+            a2 = Jxy * rot_dt_wing_w1 + Jyy * rot_dt_wing_w2
+            a3 = Jzz * rot_dt_wing_w3
+            # cross product term (b is the vector) coming from the rotating reference frame
+            b1 = Jxx * rot_rel_wing_w1 + Jxy * rot_rel_wing_w2
+            b2 = Jxy * rot_rel_wing_w1 + Jyy * rot_rel_wing_w2
+            b3 = Jzz * rot_rel_wing_w3
+            # sum up acceleration and cross product - gives the inertial moment components
+            inert_moment_w_x = (a1 + rot_rel_wing_w2*b3 - rot_rel_wing_w3*b2)
+            inert_moment_w_y = (a2 + rot_rel_wing_w3*b1 - rot_rel_wing_w1*b3)
+            inert_moment_w_z = (a3 + rot_rel_wing_w1*b2 - rot_rel_wing_w2*b1)
+            
+            all_data[it, 3*ID+1:3*ID+1+3] = [inert_moment_w_x, inert_moment_w_y, inert_moment_w_z]
+    
+    
+    
+    write_csv_file(run_directory+'/'+file_output, all_data, header=['time','inert_moment_w_x (leftwing)','inert_moment_w_y (leftwing)','inert_moment_w_z (leftwing)',
+                                                                    'inert_moment_w_x (rightwing)','inert_moment_w_y (rightwing)','inert_moment_w_z (rightwing)',
+                                                                    'inert_moment_w_x (leftwing2)','inert_moment_w_y (leftwing2)','inert_moment_w_z (leftwing2)',
+                                                                    'inert_moment_w_x (rightwing2)','inert_moment_w_y (rightwing2)','inert_moment_w_z (rightwing2)',])
+    
+    
+    
 
 def get_wing_membrane_grid(fname, dx=1e-3, dy=1e-3, return_1D_list=True):
     """
