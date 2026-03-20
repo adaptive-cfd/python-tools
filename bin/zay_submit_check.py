@@ -90,44 +90,6 @@ if os.path.isfile( jobfile ):
 
     print("----------------------------------------")
 
-    eps  = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'eps',float )
-
-    Jmax = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'max_treelevel', int)
-    L = inifile_tools.get_ini_parameter( paramsfile, 'Domain', 'domain_size', float, vector=True)
-    Bs = inifile_tools.get_ini_parameter( paramsfile, 'Blocks', 'number_block_nodes', int, vector=True)
-    CFL = inifile_tools.get_ini_parameter( paramsfile, 'Time', 'CFL', float)
-
-    c0 =  inifile_tools.get_ini_parameter( paramsfile, 'ACM-new', 'c_0', float)
-    nu =  inifile_tools.get_ini_parameter( paramsfile, 'ACM-new', 'nu', float)
-    ceta =  inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'C_eta', float, default=0.0)
-    penalized = inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'penalization', bool)
-    csponge =  inifile_tools.get_ini_parameter( paramsfile, 'Sponge', 'C_sponge', float, default=0.0)
-    sponged =  inifile_tools.get_ini_parameter( paramsfile, 'Sponge', 'use_sponge', bool)
-
-    geometry =  inifile_tools.get_ini_parameter( paramsfile, 'VPM', 'geometry', str, default='none')
-
-    if len(Bs)==1:
-        dx = L[0]*(2**-Jmax)/(Bs[0]-1)
-    else:
-        dx = min(L*(2**-Jmax)/(Bs-1))
-
-    keta = np.sqrt(ceta*nu)/dx
-
-    print( "dx               = %2.2e" % (dx))
-    print( "Jmax             = %i" % (Jmax))
-    print( "eps              = %2.2e" % (eps))
-    print( "c0               = %2.2f" % (c0))
-    print( "C_eta            = %2.2e" % (ceta))
-    print( "K_eta            = %s%2.2f%s" % (bcolors.OKGREEN,keta,bcolors.ENDC))
-    print( "C_sponge         = %2.2e" % (csponge))
-
-    if geometry == "Insect":
-        t =  inifile_tools.get_ini_parameter( paramsfile, 'Insects', 'WingThickness', float, default=0.0)
-        print( "wing thickness   = %2.2f (%2.2f dx)" % (t, t/dx))
-
-    print("----------------------------------------")
-    print('Launching wabbit_tools ini file check now:')
-    print("----------------------------------------")
     inifile_tools.check_parameters_for_stupid_errors( paramsfile )
 
 
