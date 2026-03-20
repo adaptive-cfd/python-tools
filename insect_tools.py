@@ -1715,6 +1715,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
 
 
+
+
+
 def wingtip_path( fname, time=None, wing='left', eta_stroke=0.0, psi=0.0, beta=0.0, gamma=0.0, x_pivot_b = [0.0, 0.0, 0.0],
                  alpha=None, theta=None, phi=None):
    
@@ -2342,6 +2345,7 @@ def wing_contour_from_file(fname, N=1024):
                          "so maybe it is not a wing-shape file after all?")
 
     wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
+    equiv_membrane = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_simplex", bool, default=False)
     
     if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier' and wtype != 'fourierY':
         print(wtype)
@@ -2354,68 +2358,90 @@ def wing_contour_from_file(fname, N=1024):
     #--------------------------------------------------------------------------
     # planform (contour)
     #--------------------------------------------------------------------------
-    if wtype == "fourier":
-        # description with fourier series
-        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+    if not equiv_membrane:
+        if wtype == "fourier":
+            # description with fourier series
+            a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+            ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+            bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+            
+            # compute outer wing shape (membraneous part)
+            theta2 = np.linspace(-np.pi, np.pi, num=N, endpoint=False)
+            r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+            
+            xc = x0 + np.cos(theta2)*r_fft
+            yc = y0 + np.sin(theta2)*r_fft
+            
+            area = Polygon( zip(xc,yc) ).area      
+            
+        elif wtype == "linear":
+            # description with points (not a radius)
+            R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
+            theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
+            # A word on theta:
+            # Python does imply [-pi:+pi] but WABBIT uses 0:2*pi
+            # Therefore, we subtract pi here (because data are in WABBIT convention)
+            theta_i = theta_i - np.pi
+            
+            # down- or upsampling
+            theta_i_new = np.linspace( start=theta_i[0], stop=theta_i[-1], num=N, endpoint=True)
+            R_i_new = np.interp(theta_i_new, theta_i, R_i)
+            
+            R_i = R_i_new.copy()
+            theta_i = theta_i_new.copy()
         
-        # compute outer wing shape (membraneous part)
-        theta2 = np.linspace(-np.pi, np.pi, num=N, endpoint=False)
-        r_fft = Fserieseval(a0, ai, bi, (theta2 + np.pi) / (2.0*np.pi) )
+            xc = x0 + np.cos(theta_i)*R_i
+            yc = y0 + np.sin(theta_i)*R_i        
+            
+            # there was a bug in here somewhere but i am too lazy to find it ... now I just
+            # use polygon.area and am less unhappy. TE 12/feb/2025
+            area = Polygon( zip(xc,yc) ).area
+            
+        elif wtype == 'fourierY':
+            # used for the 2021 Nature Paper (Paratuposa)
+            a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
+            ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
+            bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
+                    
+            Rblade = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
+            
+            y = np.linspace(0, Rblade, 100)
+            theta = np.arccos(1.0 - 2.0*y/Rblade)
+            
+            xle = Fserieseval(a0, ai, bi, (theta + np.pi) / (2.0*np.pi) )
+            xte = Fserieseval(a0, ai, bi, 1-(theta + np.pi) / (2.0*np.pi) )
+                    
+            xc = np.hstack([xle,xte[::-1]])
+            yc = np.hstack([y[::-1],y])
+            area = Polygon( zip(xc,yc) ).area
+            
+        elif wtype == "kleemeier":
+            B, H = 8.6/130, 100/130
+            xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
+            yc = [0.0, H, H, 0.0, 0.0]
+            area = B*H
+    else:
+        # bristles equivalent membrane wing
+        # contour is just the endpoints of the bristles
+        if not inifile_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False):
+            raise ValueError("Equivalent membranous wing used without bristles??")
         
-        xc = x0 + np.cos(theta2)*r_fft
-        yc = y0 + np.sin(theta2)*r_fft
+        bristles_coords = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
+        xc, yc = [], []
+        for j in range( bristles_coords.shape[0]):
+            # add bristle endpoint to contour
+            xc.append(bristles_coords[j,2])
+            yc.append(bristles_coords[j,3])
+            
+        # periodization
+        xc.append(bristles_coords[0,2])
+        yc.append(bristles_coords[0,3])
+            
+        xc = np.asarray(xc)
+        yc = np.asarray(yc)
         
-        area = Polygon( zip(xc,yc) ).area      
-        
-    elif wtype == "linear":
-        # description with points (not a radius)
-        R_i = inifile_tools.get_ini_parameter(fname, "Wing", "R_i", float, vector=True)
-        theta_i = inifile_tools.get_ini_parameter(fname, "Wing", "theta_i", float, vector=True) 
-        # A word on theta:
-        # Python does imply [-pi:+pi] but WABBIT uses 0:2*pi
-        # Therefore, we subtract pi here (because data are in WABBIT convention)
-        theta_i = theta_i - np.pi
-        
-        # down- or upsampling
-        theta_i_new = np.linspace( start=theta_i[0], stop=theta_i[-1], num=N, endpoint=True)
-        R_i_new = np.interp(theta_i_new, theta_i, R_i)
-        
-        R_i = R_i_new.copy()
-        theta_i = theta_i_new.copy()
-    
-        xc = x0 + np.cos(theta_i)*R_i
-        yc = y0 + np.sin(theta_i)*R_i        
-        
-        # there was a bug in here somewhere but i am too lazy to find it ... now I just
-        # use polygon.area and am less unhappy. TE 12/feb/2025
         area = Polygon( zip(xc,yc) ).area
         
-    elif wtype == 'fourierY':
-        # used for the 2021 Nature Paper (Paratuposa)
-        a0 = inifile_tools.get_ini_parameter(fname, "Wing", "a0_wings", float)
-        ai = inifile_tools.get_ini_parameter(fname, "Wing", "ai_wings", float, vector=True)
-        bi = inifile_tools.get_ini_parameter(fname, "Wing", "bi_wings", float, vector=True)
-                
-        Rblade = inifile_tools.get_ini_parameter(fname, "Wing", "y0w", float)
-        
-        y = np.linspace(0, Rblade, 100)
-        theta = np.arccos(1.0 - 2.0*y/Rblade)
-        
-        xle = Fserieseval(a0, ai, bi, (theta + np.pi) / (2.0*np.pi) )
-        xte = Fserieseval(a0, ai, bi, 1-(theta + np.pi) / (2.0*np.pi) )
-                
-        xc = np.hstack([xle,xte[::-1]])
-        yc = np.hstack([y[::-1],y])
-        area = Polygon( zip(xc,yc) ).area
-        
-    elif wtype == "kleemeier":
-        B, H = 8.6/130, 100/130
-        xc = [-B/2, -B/2, +B/2, +B/2, +B/2]
-        yc = [0.0, H, H, 0.0, 0.0]
-        area = B*H
-  
     return xc, yc, area
 
 def compute_wing_inertia_tensor(fname, density_membrane=1.0, density_bristles=0.0, dx=1e-3):
@@ -2819,24 +2845,53 @@ def bumblebee_kinematics_model( PHI=115.0, phi_m=24.0, dTau=0.00, alpha_down=70.
     a  = (alpha_up-alpha_down)/alpha_tau     
     a1 = (alpha_up-alpha_down)/alpha_tau1   
     
+    # --- vectorized alpha construction ---    
     alpha = np.zeros_like(time)
+    
+    # masks for the different time intervals
+    m1 = time < T1
+    m2 = (time >= T1) & (time < T2)
+    m3 = (time >= T2) & (time < T3)
+    m4 = (time >= T3) & (time < T4)
+    m5 = time >= T4
+    
+    # region 1
+    t = time[m1]
+    alpha[m1] = alpha_down -a1*(t - alpha_tau1/2.0 - (alpha_tau1 / (2.0*pi)) * np.sin(2.0*pi * (t - alpha_tau1/2.0) / alpha_tau1))
+    
+    # region 2
+    alpha[m2] = alpha_down
+    
+    # region 3
+    t = time[m3]
+    alpha[m3] = alpha_down +a*(t - T2 - (alpha_tau / (2.0*pi)) * np.sin(2.0*pi*(t - T2) / alpha_tau))    
+    
+    # region 4
+    alpha[m4] = alpha_up
+    
+    # region 5
+    TT = 1.0 - alpha_tau1 / 2.0
+    t = time[m5]
+    alpha[m5] = alpha_up -a1*(t -TT -(alpha_tau1 / (2.0*pi)) * np.sin(2.0*pi*(t - TT) / alpha_tau1))
+    
+    # alpha = np.zeros_like(time)
    
-    for it, t in enumerate(time):
-        if t < T1:
-            alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
+    # for it, t in enumerate(time):
+    #     if t < T1:
+    #         alpha[it] = alpha_down - a1*(  t-alpha_tau1/2.0 - (alpha_tau1/2.0/pi) * np.sin(2.0*pi*(t-alpha_tau1/2.0)/alpha_tau1)    )
             
-        elif t>=T1 and t < T2:
-            alpha[it] = alpha_down
+    #     elif t>=T1 and t < T2:
+    #         alpha[it] = alpha_down
                             
-        elif t>=T2 and t < T3:
-            alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
+    #     elif t>=T2 and t < T3:
+    #         alpha[it] = alpha_down + a*(  t-T2 - (alpha_tau/2/pi)*np.sin(2*pi*(t-T2)/alpha_tau)    )
             
-        elif t>=T3 and t < T4:
-            alpha[it] = alpha_up
+    #     elif t>=T3 and t < T4:
+    #         alpha[it] = alpha_up
             
-        elif t >= T4:
-            TT = 1.0-alpha_tau1/2.0
-            alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
+    #     elif t >= T4:
+    #         TT = 1.0-alpha_tau1/2.0
+    #         alpha[it] = alpha_up - a1*(  t-TT - (alpha_tau1/2/pi) * np.sin(2*pi*( (t-TT)/alpha_tau1)    ) )
        
     # this now is the important part that circularily shifts the entire vector. 
     # it thus changes the "timing of pronation and supination"
@@ -2966,7 +3021,7 @@ def compute_aero_power_individual_wings(run_directory, file_output='aero_power_i
     
     
 
-def compute_wing_inertial_moment(run_directory, file_output='wing_inertial_moment_w.csv', Jxx=0.0, Jyy=0.0, Jzz=0.0, Jxy=0.0):
+def compute_wing_inertial_moment(run_directory, file_output='wing_inertial_moment_w.csv', Jxx=0.0, Jyy=0.0, Jzz=0.0, Jxy=0.0, time=None):
     """
     Post-processing: Compute the insects inertial power. 
     
@@ -3025,9 +3080,12 @@ def compute_wing_inertial_moment(run_directory, file_output='wing_inertial_momen
     # d[:,42] rot_dt_r2_w_y
     # d[:,43] rot_dt_r2_w_z   
     
-    d = load_t_file(run_directory+'/kinematics.t')
+    if time is None:
+        d = load_t_file(run_directory+'/kinematics.t')
+    else:
+        d = load_t_file(run_directory+'/kinematics.t', interp=True, time_out=time)
     
-    if d.shape[1] > 25:
+    if d.shape[1] > 26:
         # four wings
         wings = ['leftwing', 'rightwing', 'leftwing2', 'rightwing2']
     else:
