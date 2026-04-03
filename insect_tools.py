@@ -3652,18 +3652,16 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
     # useful only for visualization
     eta = deg2rad(180)
 
-    def closest_distance_pointclouds( p1, p2 ):
-        # implementation with meshgrid allows at least vectorization (two nested
-        # loops are geologically slow, even for just 5k points)
-        x1, x2 = np.meshgrid(p1[:,0], p2[:,0])
-        y1, y2 = np.meshgrid(p1[:,1], p2[:,1])
-        z1, z2 = np.meshgrid(p1[:,2], p2[:,2])
-            
-        d = np.power( np.power(x1-x2, 2) + np.power(y1-y2, 2) + np.power(z1-z2, 2), 0.5 )
-        dist = np.min(d)
-                           
-        return dist    
 
+
+    def closest_distance_pointclouds(p1, p2):
+        """
+        Same minimum distance as brute-force meshgrid,
+        much faster in practice.
+        """
+        tree = cKDTree(p2)
+        dist, _ = tree.query(p1, k=1)
+        return np.min(dist)
     
     if plot_animation:
         fig1 = plt.figure()
