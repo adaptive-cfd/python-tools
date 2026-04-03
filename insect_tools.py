@@ -3647,6 +3647,7 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
 
     """
     import matplotlib.pyplot as plt
+    from scipy.spatial import cKDTree
     
     # the collisions do not depend on the body- or stroke plane axis. 
     # useful only for visualization
