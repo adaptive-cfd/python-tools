@@ -23,7 +23,7 @@ from scipy.interpolate import interp1d
 import scipy
 from scipy.signal import savgol_filter
 
-
+plt.ion()
 rad2deg = 180.0/np.pi
 
 
@@ -45,71 +45,13 @@ rad2deg = 180.0/np.pi
 
 #%%
 
-def best_rotation(A, B):
+
+def best_rotation_only(A, B):
     """
-    Compute best-fit transform that maps A -> B in least squares.
-    A, B : (N,3) arrays of corresponding points (N >= 1).
-    allow_scaling : if True, also estimate uniform scale c.
-    Returns: R (3x3), t (3,), and c (scalar, 1.0 if not used)
+    Best rotation only mapping A -> B in least squares, without translation.
+    Returns R such that:
+        B ~ A @ R.T
     """
-    A = np.asarray(A, dtype=np.float64)
-    B = np.asarray(B, dtype=np.float64)
-    assert A.shape == B.shape and A.shape[1] == 3
-
-    N = A.shape[0]
-    if N == 0:
-        raise ValueError("Need at least one correspondence")
-
-    # covariance
-    H = A.T @ B
-    U, S, Vt = np.linalg.svd(H)
-    R = Vt.T @ U.T
-
-    # reflection correction
-    if np.linalg.det(R) < 0:
-        # fix reflection: flip sign of last column of Vt (or U)
-        Vt[-1, :] *= -1
-        R = Vt.T @ U.T
-
-    return R
-
-
-def rotation_align(V, ii, bc):
-    """
-    1) Compute rigid transform mapping V[b] -> bc
-    2) Apply transform to entire mesh V -> V_aligned
-    3) Return V_aligned, and the transform (R, t, c)
-    """
-    src = V[ii]            # source marker positions in rest pose
-    tgt = np.asarray(bc)  # target measured positions
-    R = best_rotation(src, tgt)
-    # apply rotation to all vertices
-    V_aligned = (V @ R.T)   # note: V @ R.T == (R @ V.T).T
-    
-    return V_aligned, (R)
-
-
-
-"""
-def best_rotation(A, B):
-    """
-"""
-    Compute best-fit rigid transform mapping A -> B in least-squares sense.
-
-    Parameters
-    ----------
-    A, B : array-like, shape (N, 3)
-        Corresponding 3D points.
-
-    Returns
-    -------
-    R : ndarray, shape (3, 3)
-        Best-fit rotation matrix
-    t : ndarray, shape (3,)
-        Translation vector such that:
-            B ~= A @ R.T + t
-    """
-"""
     A = np.asarray(A, dtype=np.float64)
     B = np.asarray(B, dtype=np.float64)
 
@@ -118,66 +60,75 @@ def best_rotation(A, B):
     if A.shape[0] < 1:
         raise ValueError("Need at least one correspondence")
 
-    # centroids
-    cA = A.mean(axis=0)
-    cB = B.mean(axis=0)
-
-    # centered coordinates
-    Ac = A - cA
-    Bc = B - cB
-
-    # covariance
-    H = Ac.T @ Bc
+    H = A.T @ B
     U, S, Vt = np.linalg.svd(H)
     R = Vt.T @ U.T
 
-    # reflection correction
     if np.linalg.det(R) < 0:
         Vt[-1, :] *= -1
         R = Vt.T @ U.T
 
-    # translation
-    t = cB - cA @ R.T
+    return R
 
+
+def rotation_align_no_translation(V, ii, bc):
+    """
+    Align full mesh V to measured markers bc using rotation only.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    src = V[ii]
+    tgt = np.asarray(bc, dtype=np.float64)
+
+    R = best_rotation_only(src, tgt)
+    V_aligned = V @ R.T
+    return V_aligned, R
+
+def best_rotation_translation(A, B):
+    """
+    Best rigid transform mapping A -> B in least squares.
+    Returns R, t such that:
+        B ~ A @ R.T + t
+    """
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+
+    if A.shape != B.shape or A.ndim != 2 or A.shape[1] != 3:
+        raise ValueError("A and B must have shape (N,3)")
+    if A.shape[0] < 1:
+        raise ValueError("Need at least one correspondence")
+
+    cA = A.mean(axis=0)
+    cB = B.mean(axis=0)
+
+    Ac = A - cA
+    Bc = B - cB
+
+    H = Ac.T @ Bc
+    U, S, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+
+    if np.linalg.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+
+    t = cB - cA @ R.T
     return R, t
 
 
 def rotation_align(V, ii, bc):
     """
-"""
-    1) Compute rigid transform mapping V[ii] -> bc
-    2) Apply transform to entire mesh V -> V_aligned
-    3) Return V_aligned, and the transform (R, t)
-
-    Parameters
-    ----------
-    V : ndarray, shape (Nv, 3)
-        Full mesh / point cloud in reference pose
-    ii : array-like
-        Indices of marker vertices in V
-    bc : ndarray, shape (Nm, 3)
-        Target marker positions
-
-    Returns
-    -------
-    V_aligned : ndarray, shape (Nv, 3)
-        Entire mesh after rigid alignment
-    (R, t) : tuple
-        Rotation and translation such that:
-            V_aligned = V @ R.T + t
+    Align full mesh V to measured markers bc using rigid transform.
     """
-"""
     V = np.asarray(V, dtype=np.float64)
     src = V[ii]
     tgt = np.asarray(bc, dtype=np.float64)
 
-    R, t = best_rotation(src, tgt)
-
-    # apply rigid transform to all vertices
+    R, t = best_rotation_translation(src, tgt)
     V_aligned = V @ R.T + t
 
     return V_aligned, (R, t)
-"""
+
+
 
 def euler_angles_from_body_basis(ex_body, ey_body, ez_body):
     """
@@ -852,7 +803,7 @@ for DATA in ['0g']:
     # (=normalization done by forewing)
     R_wing = 4.01*10 # mm take the right R_wing (I rescaled with factor s = R_ref/R_true) with R_ref = 3.76 cm
     
-    file_kineloader = root+file+'_corrected.kineloader'
+    file_kineloader = root+file+'_corrected_translation.kineloader'
     
     gray = 3*[0.8]
     norm = np.linalg.norm
@@ -940,6 +891,21 @@ for DATA in ['0g']:
     alpha_R, theta_R, phi_R = np.zeros(nt), np.zeros(nt), np.zeros(nt)
     err_L, err_R = np.zeros(nt), np.zeros(nt)
     opening_angle_L, opening_angle_R = np.zeros(nt), np.zeros(nt)
+
+    alpha_L_not, theta_L_not, phi_L_not = np.zeros(nt), np.zeros(nt), np.zeros(nt)
+    alpha_R_not, theta_R_not, phi_R_not = np.zeros(nt), np.zeros(nt), np.zeros(nt)
+
+    err_L_not, err_R_not = np.zeros(nt), np.zeros(nt)
+
+    hinge_L_b = np.full((nt, 3), np.nan)
+    hinge_R_b = np.full((nt, 3), np.nan)
+
+    hinge_L_g = np.full((nt, 3), np.nan)
+    hinge_R_g = np.full((nt, 3), np.nan)
+
+    x_wing_b_store_L = []
+    x_wing_b_store_R = []
+    frames_store = []
     
         
     # performace tuning (attention needs to be done for fore- and hind wing 
@@ -1023,12 +989,22 @@ for DATA in ['0g']:
             marker_measured_b[8, 0:2+1] = np.array( [df_body[side+'Line4Bottom.x'][it], df_body[side+'Line4Bottom.y'][it], df_body[side+'Line4Bottom.z'][it]] )
             marker_measured_b[9, 0:2+1] = np.array( [df_body[side+'Line5Close.x'][it] , df_body[side+'Line5Close.y'][it] , df_body[side+'Line5Close.z'][it]] )
         
-            x_wing_b, (R) = rotation_align(x_wing_w, ii, marker_measured_b)
+            x_wing_b, (R, t) = rotation_align(x_wing_w, ii, marker_measured_b)
+            x_wing_b_not, R_not = rotation_align_no_translation(x_wing_w, ii, marker_measured_b)
+            hinge_b = t.copy()   # because model hinge is at [0,0,0] in wing coordinates
+            if it % 100 == 0:
+                frames_store.append(it)
+                if side == 'Right':
+                    x_wing_b_store_R.append(x_wing_b.copy())
+                else:
+                    x_wing_b_store_L.append(x_wing_b.copy())
+
             #x_wing_b, (R, t) = rotation_align(x_wing_w, ii, marker_measured_b)
             # pointwise residuals between rigidly aligned model markers and measured markers
             residuals_pts = np.linalg.norm(x_wing_b[ii] - marker_measured_b, axis=1)   # shape (10,)
             residuals_pts_rel = residuals_pts / R_wing
             
+            residuals_pts_not = np.linalg.norm(x_wing_b_not[ii] - marker_measured_b, axis=1)
             
             
             # determine angles assuming fore-and hindwing coupled in reference configuration
@@ -1037,6 +1013,10 @@ for DATA in ['0g']:
                 residuals_R[it, :] = residuals_pts
                 residuals_R_rel[it, :] = residuals_pts_rel
                 err_R[it] = np.mean( np.linalg.norm(x_wing_b[ii]-marker_measured_b, axis=1) ) / R_wing
+
+                alpha_R_not[it], theta_R_not[it], phi_R_not[it] = euler_from_wing_basis(R_not[:,0], R_not[:,1], R_not[:,2], 'right')
+
+                err_R_not[it] = np.mean(np.linalg.norm(x_wing_b_not[ii] - marker_measured_b, axis=1)) / R_wing
                 
                 marker_HW_b = x_HW_w[ij].copy()
                 marker_HW_b[0, 0:2+1] = np.array( [df_body[side+'Line5Far.x'][it]   , df_body[side+'Line5Far.y'][it]   , df_body[side+'Line5Far.z'][it]] )
@@ -1057,6 +1037,17 @@ for DATA in ['0g']:
                     distance[t] = norm(x_HW_b[ij[0]] - marker_HW_b[0]) + norm(x_HW_b[ij[1]] - marker_HW_b[1]) + norm(x_HW_b[ij[2]] - marker_HW_b[2]) 
 
                 opening_angle_R[it] = thetas[np.argmin(distance)] # deg
+
+                hinge_R_b[it, :] = hinge_b
+
+                # body -> global
+                torso_g = np.array([
+                    df_org['Torso.x'][it],
+                    df_org['Torso.y'][it],
+                    df_org['Torso.z'][it]
+                ])
+                hinge_R_g[it, :] = M_b2g.T @ hinge_b + torso_g
+
                 
             else:
                 alpha_L[it], theta_L[it], phi_L[it] = euler_from_wing_basis(R[:,0], R[:,1], R[:,2], 'left')
@@ -1064,6 +1055,9 @@ for DATA in ['0g']:
                 residuals_L_rel[it, :] = residuals_pts_rel
                 err_L[it] = np.mean( np.linalg.norm(x_wing_b[ii]-marker_measured_b, axis=1) ) / R_wing
                 
+                alpha_L_not[it], theta_L_not[it], phi_L_not[it] = euler_from_wing_basis(R_not[:,0], R_not[:,1], R_not[:,2], 'left')
+
+                err_L_not[it] = np.mean(np.linalg.norm(x_wing_b_not[ii] - marker_measured_b, axis=1)) / R_wing
                 # # if it == 500:
                     
                 # fig = plt.figure()
@@ -1104,6 +1098,15 @@ for DATA in ['0g']:
                 
                 theta_final = thetas[np.argmin(distance)]
                 opening_angle_L[it] = theta_final # deg
+
+                hinge_L_b[it, :] = hinge_b
+
+                torso_g = np.array([
+                    df_org['Torso.x'][it],
+                    df_org['Torso.y'][it],
+                    df_org['Torso.z'][it]
+                ])
+                hinge_L_g[it, :] = M_b2g.T @ hinge_b + torso_g
                 # x_HW_b = ( (insect_tools.Rz(theta_final/rad2deg) @ M_b2w_L.T) @ x_HW_w.T).T
                 
                 # fig = plt.figure()
@@ -1129,6 +1132,8 @@ for DATA in ['0g']:
     phi_L, alpha_L, theta_L = np.unwrap(phi_L_1), np.unwrap(alpha_L_1), np.unwrap(theta_L_1)
     phi_R, alpha_R, theta_R = np.unwrap(phi_R_1), np.unwrap(alpha_R_1), np.unwrap(theta_R_1)
     
+    phi_L_not, alpha_L_not, theta_L_not = np.unwrap(phi_L_not), np.unwrap(alpha_L_not), np.unwrap(theta_L_not)
+    phi_R_not, alpha_R_not, theta_R_not = np.unwrap(phi_R_not), np.unwrap(alpha_R_not), np.unwrap(theta_R_not)
     
     windowsize = 151
     
@@ -1140,7 +1145,13 @@ for DATA in ['0g']:
     alpha_R_s = smooth_angle_series(alpha_R, window=windowsize, poly=3)
     theta_R_s = smooth_angle_series(theta_R, window=windowsize, poly=3)
 
-    
+    phi_L_not_s   = smooth_angle_series(phi_L_not,   window=windowsize, poly=3)
+    alpha_L_not_s = smooth_angle_series(alpha_L_not, window=windowsize, poly=3)
+    theta_L_not_s = smooth_angle_series(theta_L_not, window=windowsize, poly=3)
+
+    phi_R_not_s   = smooth_angle_series(phi_R_not,   window=windowsize, poly=3)
+    alpha_R_not_s = smooth_angle_series(alpha_R_not, window=windowsize, poly=3)
+    theta_R_not_s = smooth_angle_series(theta_R_not, window=windowsize, poly=3)
     # all vectors same length
     nk = nt
       
@@ -1338,7 +1349,7 @@ for DATA in ['0g']:
         out_df[f"res_R_{name}_rel"] = residuals_R_rel[:, j]
 
     #out_path = csv_path + ".angles.csv"
-    out_path = csv_path.with_suffix(csv_path.suffix + "_corrected.angles.csv")
+    out_path = csv_path.with_suffix(csv_path.suffix + "_corrected_translation.angles.csv")
     out_df.to_csv(out_path, index=False)
     print("Wrote:", out_path)
     
@@ -1392,6 +1403,11 @@ for DATA in ['0g']:
     
     plt.plot( df_org["Torso.x"]/R_wing, df_org["Torso.y"]/R_wing, df_org["Torso.z"]/R_wing, label='thorax trajectory')
     # plt.plot( d[:,2-1], d[:,4-1], d[:,6-1], label='thorax trajectory')
+    plt.plot(hinge_L_g[:,0]/R_wing, hinge_L_g[:,1]/R_wing, hinge_L_g[:,2]/R_wing,
+         label='left hinge trajectory')
+
+    plt.plot(hinge_R_g[:,0]/R_wing, hinge_R_g[:,1]/R_wing, hinge_R_g[:,2]/R_wing,
+            label='right hinge trajectory')
     ax.set_xlabel('x/R')
     ax.set_ylabel('y/R')
     ax.set_zlabel('z/R')
@@ -1411,7 +1427,7 @@ for DATA in ['0g']:
         V[:,0] = xc # mm 
         V[:,1] = yc # mm 
     
-        collision = insect_tools.collision_test(time, V, alpha_L_s, theta_L_s, phi_L_s, np.asarray([0,+0.075,0]), V, alpha_R_s, theta_R_s, phi_R_s, np.asarray([0,-0.075,0]), hold_on_collision=False, verbose=False)
+        collision = insect_tools.collision_test(time, V, alpha_L_s, theta_L_s, phi_L_s, np.asarray([0,+0.075,0]), V, alpha_R_s, theta_R_s, phi_R_s, np.asarray([0,-0.075,0]), hold_on_collision=False, verbose=True)
         
         plt.subplot(2,3,4)
         plt.plot( time, collision, 'o')
@@ -1420,10 +1436,411 @@ for DATA in ['0g']:
 
 
     fig1.set_size_inches((20,15))
-    fig1.savefig( root+file+'_corrected.pdf')
+    fig1.savefig( root+file+'_corrected_translation_2.pdf')
     plt.show()
+
+    #%% Plot hinges in body frame 
+
+    def smooth_series_nan_safe(y, window=151, poly=3):
+        y = np.asarray(y, dtype=float).copy()
+        mask = np.isfinite(y)
+        if np.sum(mask) < max(poly + 2, 5):
+            return y
+
+        x = np.arange(len(y))
+        if not np.all(mask):
+            y[~mask] = np.interp(x[~mask], x[mask], y[mask])
+
+        if window % 2 == 0:
+            window += 1
+        if window >= len(y):
+            window = len(y) - 1
+            if window % 2 == 0:
+                window -= 1
+        if window < poly + 2:
+            return y
+
+        return savgol_filter(y, window_length=window, polyorder=poly, mode="interp")
+
+
+    def amplitude_pp(y):
+        y = np.asarray(y, dtype=float)
+        if np.sum(np.isfinite(y)) < 2:
+            return np.nan
+        return np.nanmax(y) - np.nanmin(y)
+
+
+    def centered_rms(y):
+        y = np.asarray(y, dtype=float)
+        mu = np.nanmean(y)
+        return np.sqrt(np.nanmean((y - mu)**2))
+
+
+    def dominant_freq_hz_from_signal(t_sec, y, fmin_hz=5.0, fmax_hz=40.0):
+        t_sec = np.asarray(t_sec, dtype=float)
+        y = np.asarray(y, dtype=float)
+
+        mask = np.isfinite(t_sec) & np.isfinite(y)
+        if mask.sum() < 50:
+            return np.nan, None, None
+
+        t = t_sec[mask]
+        s = y[mask]
+        idx = np.argsort(t)
+        t = t[idx]
+        s = s[idx]
+
+        dt = np.median(np.diff(t))
+        if not np.isfinite(dt) or dt <= 0:
+            return np.nan, None, None
+
+        tu = np.arange(t.min(), t.max(), dt)
+        fu = interp1d(t, s, kind='linear', fill_value='extrapolate', bounds_error=False)
+        su = fu(tu)
+
+        su = su - np.mean(su)
+
+        k, ek = fourier_tools.spectrum1(su)
+        N = len(su)
+        f_cyc_per_sample = (k * 2.0 * np.pi / N) / (2.0 * np.pi)
+        f_hz = f_cyc_per_sample / dt
+
+        band = (f_hz >= fmin_hz) & (f_hz <= fmax_hz)
+        if not np.any(band):
+            return np.nan, f_hz, ek
+
+        f_band = f_hz[band]
+        ek_band = ek[band]
+        f0 = f_band[np.argmax(ek_band)]
+        return f0, f_hz, ek
+
+
+    # ---------- filtered hinges ----------
+    hinge_window = 151   
+    hinge_poly = 3
+
+    hinge_L_b_f = np.full_like(hinge_L_b, np.nan)
+    hinge_R_b_f = np.full_like(hinge_R_b, np.nan)
+
+    for j in range(3):
+        hinge_L_b_f[:, j] = smooth_series_nan_safe(hinge_L_b[:, j], window=hinge_window, poly=hinge_poly)
+        hinge_R_b_f[:, j] = smooth_series_nan_safe(hinge_R_b[:, j], window=hinge_window, poly=hinge_poly)
+
+    hinge_L_b_mean = np.nanmean(hinge_L_b, axis=0)
+    hinge_R_b_mean = np.nanmean(hinge_R_b, axis=0)
+
+    hinge_L_b_const = np.tile(hinge_L_b_mean, (nt, 1))
+    hinge_R_b_const = np.tile(hinge_R_b_mean, (nt, 1))
+
+
+    # ---------- print quantitative summary ----------
+    comp_names = ['x', 'y', 'z']
+    print("\n================ HINGE DIAGNOSTIC (BODY FRAME, mm) ================\n")
+
+    for side_name, H in [('Left', hinge_L_b), ('Right', hinge_R_b)]:
+        print(f"--- {side_name} hinge ---")
+        mu = np.nanmean(H, axis=0)
+        rms = np.array([centered_rms(H[:, j]) for j in range(3)])
+        pp  = np.array([amplitude_pp(H[:, j]) for j in range(3)])
+
+        for j, cname in enumerate(comp_names):
+            print(f"{cname}: mean = {mu[j]: .4f} mm, centered RMS = {rms[j]: .4f} mm, peak-to-peak = {pp[j]: .4f} mm, "
+                f"mean/R = {mu[j]/R_wing: .5f}, rms/R = {rms[j]/R_wing: .5f}")
+        print("")
+
+
+    # frequency estimate from phi
+    f_phi_L, _, _ = dominant_freq_hz_from_signal(t0, phi_L_s)
+    f_phi_R, _, _ = dominant_freq_hz_from_signal(t0, phi_R_s)
+
+    print(f"Dominant wingbeat frequency from phi_L: {f_phi_L:.3f} Hz")
+    print(f"Dominant wingbeat frequency from phi_R: {f_phi_R:.3f} Hz\n")
+
+    for side_name, H in [('Left', hinge_L_b), ('Right', hinge_R_b)]:
+        print(f"--- {side_name} hinge dominant frequencies ---")
+        for j, cname in enumerate(comp_names):
+            f0, _, _ = dominant_freq_hz_from_signal(t0, H[:, j])
+            print(f"{cname}: dominant freq = {f0:.3f} Hz")
+        print("")
+
+
+    # ---------- plots ----------
+    fig_hinge = plt.figure(figsize=(18, 14))
+
+    # 1) Left hinge x,y,z
+    for j, cname in enumerate(comp_names):
+        ax = fig_hinge.add_subplot(4, 3, j + 1)
+        ax.plot(t0, hinge_L_b[:, j], label=f'L {cname} raw')
+        ax.plot(t0, hinge_L_b_f[:, j], '--', label=f'L {cname} filtered')
+        ax.axhline(hinge_L_b_mean[j], linestyle=':', color='k', label='mean')
+        ax.set_title(f'Left hinge {cname}(t) [mm]')
+        ax.set_xlabel('t0 [s]')
+        ax.set_ylabel(f'{cname} [mm]')
+        ax.grid(True)
+        ax.legend()
+
+    # 2) Right hinge x,y,z
+    for j, cname in enumerate(comp_names):
+        ax = fig_hinge.add_subplot(4, 3, j + 4)
+        ax.plot(t0, hinge_R_b[:, j], label=f'R {cname} raw')
+        ax.plot(t0, hinge_R_b_f[:, j], '--', label=f'R {cname} filtered')
+        ax.axhline(hinge_R_b_mean[j], linestyle=':', color='k', label='mean')
+        ax.set_title(f'Right hinge {cname}(t) [mm]')
+        ax.set_xlabel('t0 [s]')
+        ax.set_ylabel(f'{cname} [mm]')
+        ax.grid(True)
+        ax.legend()
+
+    # 3) Left vs Right comparison
+    for j, cname in enumerate(comp_names):
+        ax = fig_hinge.add_subplot(4, 3, j + 7)
+        ax.plot(t0, hinge_L_b[:, j], label=f'L {cname}')
+        ax.plot(t0, hinge_R_b[:, j], label=f'R {cname}')
+        ax.axhline(0.0, linestyle=':', color='k')
+        ax.set_title(f'Left vs Right hinge {cname}(t) [mm]')
+        ax.set_xlabel('t0 [s]')
+        ax.set_ylabel(f'{cname} [mm]')
+        ax.grid(True)
+        ax.legend()
+
+    # 4) difference / sum diagnostics
+    ax = fig_hinge.add_subplot(4, 3, 10)
+    ax.plot(t0, hinge_L_b[:,1] - hinge_R_b[:,1], label='L_y - R_y')
+    ax.axhline(np.nanmean(hinge_L_b[:,1] - hinge_R_b[:,1]), linestyle=':', color='k', label='mean')
+    ax.set_title('L_y - R_y [mm]')
+    ax.set_xlabel('t0 [s]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_hinge.add_subplot(4, 3, 11)
+    ax.plot(t0, hinge_L_b[:,1] + hinge_R_b[:,1], label='L_y + R_y')
+    ax.axhline(np.nanmean(hinge_L_b[:,1] + hinge_R_b[:,1]), linestyle=':', color='k', label='mean')
+    ax.set_title('L_y + R_y [mm]')
+    ax.set_xlabel('t0 [s]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_hinge.add_subplot(4, 3, 12)
+    ax.plot(t0, phi_L_s * rad2deg, label='phi_L [deg]')
+    ax.plot(t0, phi_R_s * rad2deg, label='phi_R [deg]')
+    ax.set_title('Wingbeat reference')
+    ax.set_xlabel('t0 [s]')
+    ax.grid(True)
+    ax.legend()
+
+    fig_hinge.tight_layout()
+    fig_hinge.savefig(root + file + '_hinge_diagnostic_bodyframe.pdf')
+
+
+    # ---------- spectra ----------
+    fig_spec = plt.figure(figsize=(16, 8))
+
+    for idx, (side_name, H) in enumerate([('Left', hinge_L_b), ('Right', hinge_R_b)]):
+        for j, cname in enumerate(comp_names):
+            ax = fig_spec.add_subplot(2, 3, idx*3 + j + 1)
+            f0, f_hz, ek = dominant_freq_hz_from_signal(t0, H[:, j])
+            if f_hz is not None and ek is not None:
+                band = (f_hz >= 0) & (f_hz <= 60)
+                ax.plot(f_hz[band], ek[band])
+                if np.isfinite(f0):
+                    ax.axvline(f0, linestyle='--', color='k', label=f'f0={f0:.2f} Hz')
+                if np.isfinite(f_phi_L):
+                    ax.axvline(f_phi_L, linestyle=':', color='r', label=f'f_phiL={f_phi_L:.2f} Hz')
+                if np.isfinite(f_phi_R):
+                    ax.axvline(f_phi_R, linestyle=':', color='g', label=f'f_phiR={f_phi_R:.2f} Hz')
+            ax.set_title(f'{side_name} hinge {cname}: spectrum')
+            ax.set_xlabel('Frequency [Hz]')
+            ax.set_ylabel('Energy')
+            ax.grid(True)
+            ax.legend()
+
+    fig_spec.tight_layout()
+    fig_spec.savefig(root + file + '_hinge_spectra.pdf')
+
+
+    # ---------- local-frame check on singlewing ----------
+    fig_local, axs = plt.subplots(1, 2, figsize=(14, 6))
+
+    axs[0].plot(x_wing_w[:,0], x_wing_w[:,1], 'k.', ms=2, alpha=0.25, label='singlewing mesh')
+    axs[0].plot(0.0, 0.0, 'ro', ms=8, label='origin (0,0,0)')
+    axs[0].set_title('Left/Right hinge mean position in BODY frame\n')
+    axs[0].set_xlabel('x_wing mesh [mm]')
+    axs[0].set_ylabel('y_wing mesh [mm]')
+    axs[0].grid(True)
+    axs[0].axis('equal')
+    axs[0].legend()
+
+    axs[1].plot(hinge_L_b[:,0], hinge_L_b[:,1], label='Left hinge (body)')
+    axs[1].plot(hinge_R_b[:,0], hinge_R_b[:,1], label='Right hinge (body)')
+    axs[1].plot(hinge_L_b_mean[0], hinge_L_b_mean[1], 'bo', ms=8, label='Left mean')
+    axs[1].plot(hinge_R_b_mean[0], hinge_R_b_mean[1], 'ro', ms=8, label='Right mean')
+    axs[1].axhline(0, color='k', linestyle=':')
+    axs[1].axvline(0, color='k', linestyle=':')
+    axs[1].set_title('Hinge trajectories in BODY frame (x-y)')
+    axs[1].set_xlabel('x_body [mm]')
+    axs[1].set_ylabel('y_body [mm]')
+    axs[1].grid(True)
+    axs[1].axis('equal')
+    axs[1].legend()
+
+    plt.tight_layout()
+    fig_local.savefig(root + file + '_hinge_xy_bodyframe.pdf')
+
+
     
-   
+    #%% Rotation + translation vs translation only
+    fig_cmp = plt.figure(figsize=(18, 12))
+
+    # LEFT
+    ax = fig_cmp.add_subplot(3, 2, 1)
+    ax.plot(t0, phi_L_s * rad2deg, label='phi L with t')
+    ax.plot(t0, phi_L_not_s * rad2deg, '--', label='phi L no t')
+    ax.set_title('Left phi')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_cmp.add_subplot(3, 2, 3)
+    ax.plot(t0, alpha_L_s * rad2deg, label='alpha L with t')
+    ax.plot(t0, alpha_L_not_s * rad2deg, '--', label='alpha L no t')
+    ax.set_title('Left alpha')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_cmp.add_subplot(3, 2, 5)
+    ax.plot(t0, theta_L_s * rad2deg, label='theta L with t')
+    ax.plot(t0, theta_L_not_s * rad2deg, '--', label='theta L no t')
+    ax.set_title('Left theta')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+    plt.show()
+
+    # RIGHT
+    ax = fig_cmp.add_subplot(3, 2, 2)
+    ax.plot(t0, phi_R_s * rad2deg, label='phi R with t')
+    ax.plot(t0, phi_R_not_s * rad2deg, '--', label='phi R no t')
+    ax.set_title('Right phi')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_cmp.add_subplot(3, 2, 4)
+    ax.plot(t0, alpha_R_s * rad2deg, label='alpha R with t')
+    ax.plot(t0, alpha_R_not_s * rad2deg, '--', label='alpha R no t')
+    ax.set_title('Right alpha')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+
+    ax = fig_cmp.add_subplot(3, 2, 6)
+    ax.plot(t0, theta_R_s * rad2deg, label='theta R with t')
+    ax.plot(t0, theta_R_not_s * rad2deg, '--', label='theta R no t')
+    ax.set_title('Right theta')
+    ax.set_xlabel('t0 [s]')
+    ax.set_ylabel('[deg]')
+    ax.grid(True)
+    ax.legend()
+    plt.show()
+
+    fig_cmp.tight_layout()
+    fig_cmp.savefig(root + file + '_angles_compare_translation_vs_no_translation.pdf')
+
+    fig_diff = plt.figure(figsize=(18, 12))
+    def wrap_pi(a):
+        return (a + np.pi) % (2*np.pi) - np.pi
+
+    dphi_L   = wrap_pi(phi_L_s   - phi_L_not_s) * rad2deg
+    dalpha_L = wrap_pi(alpha_L_s - alpha_L_not_s) * rad2deg
+    dtheta_L = wrap_pi(theta_L_s - theta_L_not_s) * rad2deg
+
+    dphi_R   = wrap_pi(phi_R_s   - phi_R_not_s) * rad2deg
+    dalpha_R = wrap_pi(alpha_R_s - alpha_R_not_s) * rad2deg
+    dtheta_R = wrap_pi(theta_R_s - theta_R_not_s) * rad2deg
+
+    for k, (y, ttl) in enumerate([
+        (dphi_L,   'Delta phi L'),
+        (dalpha_L, 'Delta alpha L'),
+        (dtheta_L, 'Delta theta L'),
+        (dphi_R,   'Delta phi R'),
+        (dalpha_R, 'Delta alpha R'),
+        (dtheta_R, 'Delta theta R'),
+    ]):
+        ax = fig_diff.add_subplot(3, 2, k+1)
+        ax.plot(t0, y)
+        ax.axhline(0, color='k', linestyle=':')
+        ax.set_title(ttl + ' [deg]')
+        ax.set_xlabel('t0 [s]')
+        ax.grid(True)
+    plt.show()
+
+    fig_diff.tight_layout()
+    fig_diff.savefig(root + file + '_angle_differences_translation_vs_no_translation.pdf')
+
+    def rms(x):
+        x = np.asarray(x, dtype=float)
+        return np.sqrt(np.nanmean(x**2))
+
+    print("\n================ ANGLE COMPARISON: WITH vs WITHOUT TRANSLATION ================\n")
+    print(f"phi_L   RMS diff [deg] = {rms(dphi_L):.4f}")
+    print(f"alpha_L RMS diff [deg] = {rms(dalpha_L):.4f}")
+    print(f"theta_L RMS diff [deg] = {rms(dtheta_L):.4f}")
+    print(f"phi_R   RMS diff [deg] = {rms(dphi_R):.4f}")
+    print(f"alpha_R RMS diff [deg] = {rms(dalpha_R):.4f}")
+    print(f"theta_R RMS diff [deg] = {rms(dtheta_R):.4f}")
+
+    print("\n================ FIT ERRORS: WITH vs WITHOUT TRANSLATION ================\n")
+    print(f"err_L    mean with t    = {np.nanmean(err_L):.6f}")
+    print(f"err_L    mean no t      = {np.nanmean(err_L_not):.6f}")
+    print(f"err_R    mean with t    = {np.nanmean(err_R):.6f}")
+    print(f"err_R    mean no t      = {np.nanmean(err_R_not):.6f}")
+
+    # Phase shift diagnostic between with/without translation
+
+    def estimate_time_shift(x, y, dt):
+        """
+        Returns time shift tau such that y(t) ~ x(t - tau)
+        Positive tau means y is delayed relative to x.
+        """
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+
+        mask = np.isfinite(x) & np.isfinite(y)
+        x = x[mask]
+        y = y[mask]
+
+        x = x - np.mean(x)
+        y = y - np.mean(y)
+
+        corr = np.correlate(y, x, mode='full')
+        lags = np.arange(-len(x)+1, len(x))
+        lag_best = lags[np.argmax(corr)]
+        tau = lag_best * dt
+        return tau, lag_best, corr, lags
+
+    dt_sec = np.median(np.diff(t0))
+    fbeat = f_phi_L if np.isfinite(f_phi_L) else f_phi_R
+
+    for name, sig_with, sig_without in [
+        ("phi_L", phi_L_s, phi_L_not_s),
+        ("phi_R", phi_R_s, phi_R_not_s),
+        ("alpha_L", alpha_L_s, alpha_L_not_s),
+        ("alpha_R", alpha_R_s, alpha_R_not_s),
+        ("theta_L", theta_L_s, theta_L_not_s),
+        ("theta_R", theta_R_s, theta_R_not_s),
+    ]:
+        tau, lag_best, corr, lags = estimate_time_shift(sig_with, sig_without, dt_sec)
+        phase_deg = 360.0 * fbeat * tau if np.isfinite(fbeat) else np.nan
+        print(f"{name}: time shift = {tau*1000:.3f} ms, lag = {lag_best} frames, phase shift = {phase_deg:.2f} deg of cycle")
+
+    plt.ioff()
+    plt.show()
 
 #%% Part3: plotting
 plot3d  = False
