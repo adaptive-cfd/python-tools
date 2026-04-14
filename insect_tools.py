@@ -2548,6 +2548,10 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         fname: string
             ini file name describing the wing shape. It must contan the [Wing] section
             and describe a Fourier wing. The wing may have bristles, no problem.
+            You can also pass several INI files (as a list), and we plot them together
+            in one figure. This is useful for butterflies, where we often consider fore-
+            and hind wing, but that they move together as one (i.e., same hinge point
+            etc), so functionally, this is one wing.
             
     Output:
     -------
@@ -2562,7 +2566,7 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
     
     plt.rcParams["text.usetex"] = False
 
-    
+    area_total = 0.0
     
     # open the new figure:
     if fig is None and ax is None:
@@ -2570,91 +2574,101 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         
     if ax is None:
         ax = plt.gca()
+
+    if not isinstance(fname, list):
+        # always use lists, even if only one file is passed - easier to program
+        # convert to list:
+        files = [fname]
+    else:
+        # is already a list
+        files = fname
         
-    # -------------------------------------------------------------------------
-    # damage (if present)
-    # Drawn first as a background
-    # -------------------------------------------------------------------------  
-    damaged = inifile_tools.get_ini_parameter(fname, "Wing", "damaged", bool, default=False)
-    
-    if damaged:
-        # actual 0/1 damage mask:
-        mask = inifile_tools.get_ini_parameter( fname, 'Wing', 'damage_mask', dtype=float, vector=False, default=None, matrix=True )
-        mask = mask.T
+    for file in files:
+        # -------------------------------------------------------------------------
+        # damage (if present)
+        # Drawn first as a background
+        # -------------------------------------------------------------------------  
+        damaged = inifile_tools.get_ini_parameter(file, "Wing", "damaged", bool, default=False)
         
-        # the bounding box of the mask is set here:
-        bbox = inifile_tools.get_ini_parameter( fname, 'Wing', 'corrugation_array_bbox', dtype=float, vector=True, default=None )
-        
-        n1, n2 = mask.shape[0], mask.shape[1]
-        
-        x1, x2 = np.linspace(bbox[0], bbox[1], num=n2, endpoint=True), np.linspace(bbox[2], bbox[3], num=n1, endpoint=True)
-        X, Y = np.meshgrid(x2, x1)
-        
-        plt.contourf(Y.T, X.T, mask, levels=[0.5, 1.0], colors=[color_fill_mask])
-        
-        dx, dy = x1[1]-x1[0], x2[1]-x2[0]
-        
-        
-        # evaluate wing shape file.
-        xc, yc, area = wing_contour_from_file(fname)         
-        # create a polygon with the wing contour
-        polygon = Polygon( zip(xc,yc) )        
-        
-        # compute area of damaged wing (=intersection of damage mask and contour)
-        # loop over all grid points (2D grid and check if the point is inside the polygon)
-        area_damaged = 0.0
-        for i in range(mask.shape[0]):
-            for j in range(mask.shape[1]):
-                if polygon.contains( Point(Y.T[i,j], X.T[i,j]) ) and (mask[i,j]>0.0):
-                    # yes, the point is inside the contour and its damage mask is >0
-                    area_damaged += dx*dy 
-                            
-    # -------------------------------------------------------------------------  
-    # contour
-    # -------------------------------------------------------------------------    
-    xc, yc, area = wing_contour_from_file(fname)
+        if damaged:
+            # actual 0/1 damage mask:
+            mask = inifile_tools.get_ini_parameter( file, 'Wing', 'damage_mask', dtype=float, vector=False, default=None, matrix=True )
+            mask = mask.T
             
-    # plots wing outline
-    ax.plot( xc, yc, '-', color=color_contour, label='wing')
-    
-    if fill:
-        color = change_color_opacity(color_contour, fillAlpha)
-        ax.fill( np.append(xc, xc[0]), np.append(yc, yc[0]), color=color )
-    
-    ax.axis('equal')
-    
-    title = "wing shape visualization: \n%s\nA=%2.2f AR=%2.2f" % (fname, area, 1.0/area)
-    
-    if damaged:
-        title += ' A_damaged=%f (%2.2f%%)' % (area_damaged, 100*area_damaged/area)
-    
-    # draw rotation axis a bit longer than the wing
-    d = 0.1
-    # plot the rotation axes
-    ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'k--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
-    ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'k--')
-    # ax.grid()
-    ax.legend()
-    ax.set_title(title)
-    
-    # -------------------------------------------------------------------------
-    # bristles (if present)
-    # -------------------------------------------------------------------------
-    # if present, add bristles    
-    bristles = inifile_tools.get_ini_parameter(fname, "Wing", "bristles", bool, default=False)
-    if bristles:
-        bristles_coords = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_coords", matrix=True)
-        print(bristles_coords.shape)
-        for j in range( bristles_coords.shape[0]):
-            ax.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
-    
-    # -------------------------------------------------------------------------
-    # save to image file
-    # -------------------------------------------------------------------------
-    if savePNG:
-        plt.savefig( fname.replace('.ini','')+'_shape.png', dpi=300 )
-    if savePDF:
-        plt.savefig( fname.replace('.ini','')+'_shape.pdf', dpi=300 )
+            # the bounding box of the mask is set here:
+            bbox = inifile_tools.get_ini_parameter( file, 'Wing', 'corrugation_array_bbox', dtype=float, vector=True, default=None )
+            
+            n1, n2 = mask.shape[0], mask.shape[1]
+            
+            x1, x2 = np.linspace(bbox[0], bbox[1], num=n2, endpoint=True), np.linspace(bbox[2], bbox[3], num=n1, endpoint=True)
+            X, Y = np.meshgrid(x2, x1)
+            
+            plt.contourf(Y.T, X.T, mask, levels=[0.5, 1.0], colors=[color_fill_mask])
+            
+            dx, dy = x1[1]-x1[0], x2[1]-x2[0]
+            
+            
+            # evaluate wing shape file.
+            xc, yc, area = wing_contour_from_file(file)         
+            # create a polygon with the wing contour
+            polygon = Polygon( zip(xc,yc) )        
+            
+            # compute area of damaged wing (=intersection of damage mask and contour)
+            # loop over all grid points (2D grid and check if the point is inside the polygon)
+            area_damaged = 0.0
+            for i in range(mask.shape[0]):
+                for j in range(mask.shape[1]):
+                    if polygon.contains( Point(Y.T[i,j], X.T[i,j]) ) and (mask[i,j]>0.0):
+                        # yes, the point is inside the contour and its damage mask is >0
+                        area_damaged += dx*dy 
+                                
+        # -------------------------------------------------------------------------  
+        # contour
+        # -------------------------------------------------------------------------    
+        xc, yc, area = wing_contour_from_file(file)
+        area_total += area
+                
+        # plots wing outline
+        ax.plot( xc, yc, '-', color=color_contour, label='wing')
+        
+        if fill:
+            color = change_color_opacity(color_contour, fillAlpha)
+            ax.fill( np.append(xc, xc[0]), np.append(yc, yc[0]), color=color )
+        
+        ax.axis('equal')
+        
+        title = "wing shape visualization: \n%s\nA=%2.2f AR=%2.2f" % (file, area_total, 1.0/area_total)
+        
+        if damaged:
+            title += ' A_damaged=%f (%2.2f%%)' % (area_damaged, 100*area_damaged/area)
+        
+        # draw rotation axis a bit longer than the wing
+        d = 0.1
+        # plot the rotation axes
+        ax.plot( [np.min(xc)-d, np.max(xc)+d], [0.0, 0.0], 'k--', label='rotation axis ($x^{(w)}$, $y^{(w)}$)')
+        ax.plot( [0.0, 0.0], [np.min(yc)-d, np.max(yc)+d], 'k--')
+        # ax.grid()
+        ax.legend()
+        ax.set_title(title)
+        
+        # -------------------------------------------------------------------------
+        # bristles (if present)
+        # -------------------------------------------------------------------------
+        # if present, add bristles    
+        bristles = inifile_tools.get_ini_parameter(file, "Wing", "bristles", bool, default=False)
+        if bristles:
+            bristles_coords = inifile_tools.get_ini_parameter(file, "Wing", "bristles_coords", matrix=True)
+            print(bristles_coords.shape)
+            for j in range( bristles_coords.shape[0]):
+                ax.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
+        
+        # -------------------------------------------------------------------------
+        # save to image file
+        # -------------------------------------------------------------------------
+        if savePNG:
+            plt.savefig( file.replace('.ini','')+'_shape.png', dpi=300 )
+        if savePDF:
+            plt.savefig( file.replace('.ini','')+'_shape.pdf', dpi=300 )
         
         
 def piecewise_linear_function(x, xi, fi, periodize=True ):
