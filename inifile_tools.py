@@ -244,6 +244,13 @@ def check_parameters_for_stupid_errors( file ):
             
             if not os.path.isfile(root_folder+kineloader_file):
                 bcolors.err('Kineloader used file not found ! body_motion=%s wing_motion=(%s  %s)\n infile=%s' % (body_motion, wing_motion_L, wing_motion_R, kineloader_file) )
+
+        if get_ini_parameter( file, 'Insects', 'BodyType', str, "ellipsoid") == "superSTL":
+            bodySTL = root_folder + get_ini_parameter( file, 'Insects', 'BodySuperSTLfile', dtype=str, default="not-given")
+            if not os.path.isfile(bodySTL):
+                bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
+            else:
+                print('BodySuperSTLfile file found !')
                 
         WingShape = get_ini_parameter( file, 'Insects', 'WingShape', str, 'none')[0]
         print("   WingShape            = %s" % (WingShape))

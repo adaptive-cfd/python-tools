@@ -1651,7 +1651,7 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
             # rotation matrix from body to wing coordinate system 
             M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
             # convert wing points to sagittal coordinate system
-            x_tip_m = M_b2sagittal @ np.transpose(M_b2w) @ x_tip_w + x_pivot_b
+            x_tip_m = M_b2sagittal @ (np.transpose(M_b2w) @ x_tip_w + x_pivot_b)
 
             xpath[i] = x_tip_m[0]
             zpath[i] = x_tip_m[2]
@@ -1687,8 +1687,8 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     if meanflow is not None:
         if max(abs(np.asarray(meanflow))) > 0.0:
             x0, y0 = 0.0, 0.0
-            plt.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
-            plt.text(x0+meanflow[0]*1.1, y0+meanflow[2]*1.1, '$u_\\infty$' )
+            ax.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
+            ax.text(x0+meanflow[0]*1.1, y0+meanflow[2]*1.1, '$u_\\infty$' )
 
     if reverse_x_axis:
         ax.invert_xaxis()
