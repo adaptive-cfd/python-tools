@@ -158,6 +158,7 @@ def check_parameters_for_stupid_errors( file ):
     print("   Bs = (%i %i %i)  L=(%2.1f, %2.1f, %2.1f)   Jmin = %i   Jmax = %i   N = %i per unit length" % 
           ( bs[0], bs[1], bs[2], L[0], L[1], L[2], jmin, jmax, int(1.0/dx)))
     print("   Nequi = %i**%i up to %i**%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
+    print("   Péclet = c0*dx_min/nu = %f" %(c0*dx/nu))
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     uinfty_mag = np.linalg.norm(np.asarray(uinfty))
@@ -969,7 +970,7 @@ def prepare_resuming_backup( inifile ):
     # otherwise, just resume the latest H5 files
     if os.path.isfile('dt.t'):
 
-        d = np.loadtxt('dt.t')
+        d = np.loadtxt('dt.t', skiprows=1)
         t1 = d[-1,0]
         print('Last time stamp in logs is: %f' % (t1))
 
