@@ -1412,8 +1412,8 @@ def apply_rotations_to_vectors(M, x):
 
 
 
-def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor='k',
-                             x_pivot_b=[0,0,0], wing='left', chord_length=0.1,
+def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.0, equal_axis=True, DrawPath=False, PathColor=None,
+                             x_pivot_b=[0,0,0], wing='left', chord_length=0.1, coordinate_system='sagittal',
                              draw_true_chord=False, meanflow=None, reverse_x_axis=False, colorbar=False, 
                              time=np.linspace( start=0.0, stop=1.0, endpoint=False, num=40), cmap=None, 
                              ax=None, savePNG=False, savePDF=True, draw_stoke_plane=True, mark_pivot=True,
@@ -1506,8 +1506,16 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     import os
     import matplotlib.pyplot as plt
     import matplotlib
-
     
+    # default color for lines etc (black on white background and white on black background)
+    color_foreground = 'k'
+    if ax.get_facecolor() == (0.0, 0.0, 0.0, 1.0):
+        color_foreground = 'w'
+    if PathColor is None:
+        PathColor = color_foreground
+    
+    if coordinate_system not in ['sagittal', 'global']:
+        raise ValueError("coordinate_system="+coordinate_system+" is unknown (use sagittal or global)")
 
     if not os.path.isfile(fname):
         raise ValueError("The file "+fname+" does not exist.")
@@ -1529,6 +1537,13 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     if type(gamma) != np.ndarray:
         gamma = gamma * np.ones_like(time)
         
+    assert beta.shape == psi.shape == gamma.shape == time.shape, "beta, psi, gamma need to be the same shape as time"
+    
+    if (np.max(np.abs(psi)) > 0.0 or np.max(np.abs(gamma)) > 0.0) and coordinate_system == 'global':
+        print("""WARNING! The body roll and yaw angle are non-zero -- this makes the Lollipop diagram look distorted.
+              Consider overwriting psi and gamma with zeros for clarity. """)
+        
+        
     # this diagram would be most convenient in the body coordinate system,
     # but that is not the convention. The convention is the sagittal plane, looking from the 
     # side at the insect, i.e. you can see the pitch angle. However as this is arbitrary, it
@@ -1546,11 +1561,10 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     # read kinematics data:
     time, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time, unit_out='deg')
     
-        
     # wing tip in wing coordinate system
-    x_tip_w = np.asarray([0.0, 1.0, 0.0])
-    x_le_w  = np.asarray([ 0.5*chord_length,1.0,0.0])
-    x_te_w  = np.asarray([-0.5*chord_length,1.0,0.0])
+    x_tip_w   = np.asarray([0.0, 1.0, 0.0])
+    x_le_w    = np.asarray([ 0.5*chord_length,1.0,0.0])
+    x_te_w    = np.asarray([-0.5*chord_length,1.0,0.0])
     x_pivot_b = np.asarray(x_pivot_b)
 
     # array of color (note normalization to 1 for query values)
@@ -1578,16 +1592,22 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
     # step 1: draw the symbols for the wing section for some time steps
     for i in range(time.size):        
-        # (true) body transformation matrix
-        M_g2b = get_M_g2b(psi[i], beta[i], gamma[i], unit_in='deg')
+        
+        if coordinate_system == 'global':
+            # (true) body transformation matrix
+            M_g2b = get_M_g2b(psi[i], beta[i], gamma[i], unit_in='deg')
+            # replace M_b2sagittal so that resulting diagram is in global coordinates
+            # (correctly taking time-varying body pitch into account)
+            M_b2sagittal = M_g2b.T
             
         # rotation matrix (body -> wing)
         M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
 
         # convert wing points to sagittal coordinate system
-        x_tip_m =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_tip_w + x_pivot_b ) 
-        x_le_m  =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_le_w  + x_pivot_b ) 
-        x_te_m  =  M_b2sagittal @ ( np.transpose(M_b2w) @ x_te_w  + x_pivot_b )
+        x_tip_m   = M_b2sagittal @ ( np.transpose(M_b2w) @ x_tip_w + x_pivot_b ) 
+        x_le_m    = M_b2sagittal @ ( np.transpose(M_b2w) @ x_le_w  + x_pivot_b ) 
+        x_te_m    = M_b2sagittal @ ( np.transpose(M_b2w) @ x_te_w  + x_pivot_b )
+        x_pivot_m = M_b2sagittal @ x_pivot_b
 
         if not draw_true_chord:
             # the wing chord changes in length, as the wing moves and is oriented differently
@@ -1608,6 +1628,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         ax.plot( x_le_m[0], x_le_m[2], marker='o', color=colors[i], markersize=4 )
         # draw wing chord
         ax.plot( [x_te_m[0], x_le_m[0]], [x_te_m[2], x_le_m[2]], '-', color=colors[i])
+        
+        if mark_pivot:
+            ax.plot(x_pivot_m[0], x_pivot_m[2], 'o', color=color_foreground)
         
         # draw arrow for forces
         if force_vectors:
@@ -1644,10 +1667,24 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         time2 = np.linspace( start=0.0, stop=1.0, endpoint=False, num=1000)
         xpath, zpath = np.zeros_like(time2), np.zeros_like(time2)
         
-        # different time vector
+        if coordinate_system == 'global':
+            # interpolate body angles from the given vector to an extended one 
+            # for the trajectory.
+            beta  = np.interp(time2, time, beta )
+            psi   = np.interp(time2, time, psi  )
+            gamma = np.interp(time2, time, gamma)
+            
+        # evaluate wing angles on different time vector
         time2, phi, alpha, theta = eval_angles_kinematics_file(fname, time=time2, unit_out='deg')
 
         for i in range(time2.size):
+            if coordinate_system == 'global':
+                # (true) body transformation matrix
+                M_g2b = get_M_g2b(psi[i], beta[i], gamma[i], unit_in='deg')
+                # replace M_b2sagittal so that resulting diagram is in global coordinates
+                # (correctly taking time-varying body pitch into account)
+                M_b2sagittal= M_g2b.T
+            
             # rotation matrix from body to wing coordinate system 
             M_b2w = get_M_b2w(alpha[i], theta[i], phi[i], eta_stroke, wing, unit_in='deg')
             # convert wing points to sagittal coordinate system
@@ -1655,6 +1692,8 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
 
             xpath[i] = x_tip_m[0]
             zpath[i] = x_tip_m[2]
+        
+        # actual plot
         ax.plot( xpath, zpath, linestyle='--', color=PathColor, linewidth=1.0 )
 
 
@@ -1672,14 +1711,11 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         x2_m = M_b2sagittal @ ( np.transpose(M_b2s) @ x2_s + x_pivot_b )       
     
         # remember we're in the x-z plane
-        ax.plot( [x1_m[0],x2_m[0]], [x1_m[2],x2_m[2]], color='k', linewidth=1.0, linestyle='--')
+        ax.plot( [x1_m[0],x2_m[0]], [x1_m[2],x2_m[2]], color=color_foreground, linewidth=1.0, linestyle='--')
 
 
-    if mark_pivot:
-        color = 'k'
-        if ax.get_facecolor() == (0.0, 0.0, 0.0, 1.0):
-            color = 'w'
-        ax.plot(x_pivot_b[0], x_pivot_b[2], 'p', color=color)
+
+            
     
     if equal_axis:
         axis_equal_keepbox( plt.gcf(), ax )
@@ -1695,13 +1731,34 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
         
     if colorbar:
         sm = plt.cm.ScalarMappable( cmap=cmap, norm=plt.Normalize(vmin=0,vmax=1) )
-        sm._A =[]
-        plt.colorbar(sm)
+        sm.set_array([])
+        
+        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+        
+        # Create colorbar axis attached to ax
+        cax = inset_axes(
+            ax,
+            width="60%",      # width relative to parent axis
+            height="4%",    # height relative to parent axis
+            # loc="lower left",
+            # bbox_to_anchor=(1.02, 0.2, 1, 1),
+            loc="lower center",
+            bbox_to_anchor=(0, 0.1, 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0,
+        )
+        
+        cbar = plt.colorbar(sm, cax=cax, orientation="horizontal")
+        cbar.set_label("t/T")
     
     ax.set_yticks([-1.0, -0.5, 0.0, 0.5, 1.0])
     ax.set_xticks([-1.0, -0.5, 0.0, 0.5, 1.0])
-    ax.set_xlabel('x_{sagittal}/R')
-    ax.set_ylabel('z_{sagittal}/R')
+    if coordinate_system == 'sagittal':
+        ax.set_xlabel('x_{sagittal}/R')
+        ax.set_ylabel('z_{sagittal}/R')
+    else:
+        ax.set_xlabel('x_{global}/R')
+        ax.set_ylabel('z_{global}/R')
     
     axis_equal_keepbox(plt.gcf(), ax)
     
@@ -3767,7 +3824,8 @@ def collision_test( time, wing_pointcloud_L_w, alpha_L, theta_L, phi_L, x_hinge_
     return collision
         
         
-def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40, DrawPath=False):
+def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePNG=True, N_lollipops=40, DrawPath=False,
+                     coordinate_system='sagittal', colorbar=True):
     """
     A wrapper for visualize_wingpath_chord() that extracts all required parameters
     from a WABBIT/FLUSI type Parameter file (PARAMS.ini), including body angles etc.
@@ -3812,30 +3870,42 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
         x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_l2', dtype=float, vector=True)
     elif wing == 'right2':
         x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_r2', dtype=float, vector=True)
-            
     
+    # time vector for lollipops        
+    time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False)
     
+    # body motion type
     motion = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'BodyMotion', dtype=str)
-        
+    
     if motion == "tethered":
+        # tethered flight - body angles are constant
         yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+        # constant arrays
+        psi, gamma, beta = np.full_like(time, yawpitchroll_0[2]), np.full_like(time, yawpitchroll_0[0]), np.full_like(time, yawpitchroll_0[1])
+        
     elif motion == "yawpitchroll_param":
         # used for the EM simulations, here the pitch angle oscillates sinusoidally. we just pass the mean pitch angle
         # to the lollipop diagram.
         # This is the zero-mode of the body angles:
-        yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+        yawpitchroll_0  = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+        yawpitchroll_a1 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_a1', dtype=float, vector=True)
+        yawpitchroll_b1 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_b1', dtype=float, vector=True)
+        
+        # even if they are non zero, we set roll and yaw to zero here
+        psi   = np.zeros_like(time)
+        gamma = np.zeros_like(time)
+        # pitch angle is taken into account
+        beta  = yawpitchroll_0[1] + yawpitchroll_a1[1]*np.cos(2.0*np.pi*time) + yawpitchroll_b1[1]*np.sin(2.0*np.pi*time)# ! pitch
     else:
         raise ValueError("Unfortunately, the Lollipop diagram cannot be created for this run because it is not tethered flight.")
         
+    # mean flow (of the fluid, not of the body)
     u_infty = inifile_tools.get_ini_parameter(PARAMS, 'ACM-new', 'u_mean_set', dtype=float, vector=True)
     
-    
-    visualize_wingpath_chord(fname_kine, psi=yawpitchroll_0[2], gamma=yawpitchroll_0[0], 
-                             beta=yawpitchroll_0[1], eta_stroke=eta, ax=ax, 
+    # actual drawing
+    visualize_wingpath_chord(fname_kine, psi=psi, gamma=gamma, beta=beta, eta_stroke=eta, ax=ax, 
                              meanflow=u_infty, savePDF=savePDF, savePNG=savePNG,
-                             x_pivot_b=x_pivot_b,
-                             time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False),
-                             DrawPath=DrawPath)
+                             x_pivot_b=x_pivot_b, time = time, DrawPath=DrawPath, coordinate_system=coordinate_system, colorbar=colorbar)
     
 
 
