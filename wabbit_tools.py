@@ -54,7 +54,7 @@ def read_wabbit_hdf5_legacy(fname_wabbit):
     x0       = wabbit_obj.coords_origin
     dx       = wabbit_obj.coords_spacing
     data     = wabbit_obj.blocks
-    treecode = wabbit_obj.treecode
+    treecode = wabbit_obj.block_treecode
     time     = wabbit_obj.time
     box      = wabbit_obj.domain_size
     
@@ -120,7 +120,7 @@ class WabbitHDF5file:
     """
     def __init__(self):
         pass
-
+    
     """
         reads in variables, we can either define to read in "all", "meta" (all but blocks) or only a single variable
     """    
@@ -139,14 +139,15 @@ class WabbitHDF5file:
         self.periodic_BC = dset_id.attrs.get('periodic_BC')
         self.symmetry_BC = dset_id.attrs.get('symmetry_BC')
         self.block_size = dset_id.attrs.get('block-size')
-        # for all scalar entries they can be read in as scalars or lists
         
+        # for all scalar entries they can be read in as scalars or lists        
         self.time = dset_id.attrs.get('time', default=[None])[0]
         iteration = dset_id.attrs.get('iteration', default=[None])
         if isinstance(iteration, (list, np.ndarray)):
             self.iteration = iteration[0]
         else:
             self.iteration = iteration
+            
         total_number_blocks = dset_id.attrs.get('total_number_blocks')
         if isinstance(total_number_blocks, (list, np.ndarray)):
             self.total_number_blocks = total_number_blocks[0]
