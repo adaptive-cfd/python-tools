@@ -302,26 +302,8 @@ class WabbitHDF5file:
             return
         level_num = int(level_num)
 
-        # alter values, we need to copy first line as we have redundant setting - this assumes periodicity
-        block_red = np.zeros(np.array(block_values.shape)+1-includes_g)
-        if not includes_g:
-            if dim == 2:
-                block_red[:-1,:-1] = block_values[:,:]   # copy interior
-                block_red[ -1,:-1] = block_values[0,:]   # copy x-line
-                block_red[:-1, -1] = block_values[:,0]   # copy y-line
-                block_red[ -1, -1] = block_values[0,0]   # copy last corner
-            else:
-                block_red[:-1,:-1,:-1] = block_values[:,:,:]   # copy interior
-                block_red[ -1,:-1,:-1] = block_values[0,:,:]   # copy x-face
-                block_red[:-1, -1,:-1] = block_values[:,0,:]   # copy y-face
-                block_red[:-1,:-1, -1] = block_values[:,:,0]   # copy z-face
-                block_red[ -1, -1,:-1] = block_values[0,0,:]   # copy xy-edge
-                block_red[ -1,:-1, -1] = block_values[0,:,0]   # copy xz-edge
-                block_red[:-1, -1, -1] = block_values[:,0,0]   # copy yz-edge
-                block_red[ -1, -1, -1] = block_values[0,0,0]   # copy last corner
-        else:
-            if dim == 2: block_red[:,:] = block_values[:,:]   # copy interior
-            if dim == 3: block_red[:,:,:] = block_values[:,:,:]   # copy interior
+        # we have redundant setting, so the last point is a ghost point that has to be added, so that we have [1, 2, ..., N, 1]
+        block_red = np.pad(block_values, (0, 1), mode='wrap') if not includes_g else block_values
 
         number_blocks = 2**(level_num*dim)
         treecode = np.zeros(number_blocks)
@@ -390,7 +372,7 @@ class WabbitHDF5file:
             if np.max(np.abs(dx_this-dx_comp)) > 1.0e-13:
                 raise ValueError(f'Inconsistency found: block spacing stored in coords_spacing and the one computed from level do not match! B{i} - {dx_this} vs {dx_comp}')
             if np.max(np.abs(block_treecode_this-block_treecode_comp)) > 0:
-                raise ValueError(f'Inconsistency found: block treecode array stored in block_treecode and the one computed from (treecode,level) do not match! B{i} - {block_treecode_this} vs {block_treecode_comp}')
+                raise ValueError(f'Inconsistency found: block treecode array stored in block_treecode and the one computed from (treecode,level) do not match! B{i} - {block_treecode_this} vs {block_treecode_comp}, level={self.level[i]}, tc={self.block_treecode_num[i]}, dim={self.dim}, max_level={self.max_level}')
 
         # those are necessary for wabbit
         fid.create_dataset( 'blocks', data=self.blocks, dtype=np.float64)
@@ -473,7 +455,7 @@ class WabbitHDF5file:
             print("Tried to access a block outside block range")
             return None
 
-        fid = h5py.File(file_write,'r')
+        fid = h5py.File(file_write,'r+')
         fid['blocks'][self.blocks_order[i_b], :] = block  # we assume here that block sizes are equal
         fid.close()
         return
@@ -887,6 +869,25 @@ class WabbitHDF5file:
 
                         if len(block.shape) == 3: self.blocks[i_block, i_x, i_y, i_z] = fun_val
                         else: self.blocks[i_block, i_x, i_y] = fun_val
+    
+    def change_max_level(self, max_level_new):
+        """ From the fortran version:
+        ! if JMax of input file is not equal to JMax of simulation then we need to shift the treecode by factor of 2**(dim*(JMax_sim - JMax_file))
+        treecode = int(dble(block_treecode_num(k)) * 2.0**(params%dim*(params%Jmax - tc_max_level)), kind=tsize)
+        """
+        if max_level_new == self.max_level: return
+        if max_level_new < max(self.level):
+            raise ValueError(f'New max level {max_level_new} is smaller than current highest level {max(self.level)}')
+        if max_level_new > 63 // self.dim:
+            raise ValueError(f'New max level {max_level_new} is too large for dimension {self.dim}, max is {63 // self.dim}')
+
+        # update treecodes
+        self.block_treecode_num *= 2 ** (self.dim * (max_level_new - self.max_level))
+
+        # update max level
+        self.max_level = max_level_new
+        # now we need to update the block_treecode
+        self.block_treecode = tcb_level_2_tcarray(self.block_treecode_num, self.level, self.max_level, self.dim)
 
 
 #
@@ -943,7 +944,7 @@ def read_wabbit_hdf5_dir(dir):
 
 
 
-def add_convergence_labels(dx, er, ax=None):
+def add_convergence_labels(dx, er, ax=None, digits=1):
     """
     This generic function adds the local convergence rate as nice labels between
     two datapoints of a convergence rate (see https://arxiv.org/abs/1912.05371 Fig 3E)
@@ -970,7 +971,7 @@ def add_convergence_labels(dx, er, ax=None):
     for i in range(len(dx)-1):
         x = 10**( 0.5 * ( np.log10(dx[i]) + np.log10(dx[i+1]) ) )
         y = 10**( 0.5 * ( np.log10(er[i]) + np.log10(er[i+1]) ) )
-        order = "%2.1f" % ( convergence_order(dx[i:i+1+1],er[i:i+1+1]) )
+        order = f"{convergence_order(dx[i:i+1+1], er[i:i+1+1])[0]:.{int(digits)}f}"
         ax.text(x, y, order, horizontalalignment='center', verticalalignment='center',
                  bbox=dict(facecolor='w', alpha=0.75, edgecolor='none'), fontsize=7 )
 
@@ -1049,8 +1050,14 @@ def plot_wabbit_dir(d, **kwargs):
 def tc_get_digit_at_level(tc_b, level, max_level=21, dim=3):
     result = (tc_b // (2**(dim*(max_level - level))) % (2**dim))
     if isinstance(tc_b, np.ndarray):
+        if isinstance(level, np.ndarray):
+            result[level < 1] = -1
+            result[level > max_level] = -1
+        else:
+            if level < 1 or level > max_level: result = -1
         return result.astype(int)
     else:
+        if level < 1 or level > max_level: return -1
         return int(result)
 
 # set for numerical treecode the digit at a specific level
@@ -1125,12 +1132,14 @@ def tc_to_str(tc_b, level, max_level=21, dim=3):
 
 # take level and numerical treecode and convert to treecode array
 def tcb_level_2_tcarray(tc_b, level, max_level=21, dim=3):
-    if isinstance(tc_b, np.ndarray): tc_array = np.zeros((tc_b.shape[0], max_level))
-    else: tc_array = np.zeros((1, max_level))
+    if isinstance(tc_b, np.ndarray): tc_array = np.ones((tc_b.shape[0], max_level)) * -1
+    else: tc_array = np.ones((1, max_level)) * -1
     # extract number of each level
     # level <= i_level ensures -1 values are inserted for unset levels
-    for i_level in np.arange(max_level)+1:
-        tc_array[:, i_level-1] = tc_get_digit_at_level(tc_b, i_level, max_level=max_level, dim=dim) - (level <= i_level)
+    for i_level in np.arange(np.max(level)).astype(int)+1:
+        tc_array[:, i_level-1] = tc_get_digit_at_level(tc_b, i_level, max_level=max_level, dim=dim)
+    if isinstance(tc_b, np.ndarray) and isinstance(level, np.ndarray):
+        for i_b in range(tc_b.shape[0]): tc_array[i_b, int(level[i_b]):] = -1
     return tc_array
 
 # extract level from treecode array, assume field
@@ -1242,14 +1251,14 @@ def origin2treecode( origin, max_level=21, dim=3, domain_size=[1,1,1] ):
 
 # return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def level2spacing( level, dim=3, block_size=[21,21,21], domain_size=[1,1,1] ):
-    spacing=np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
-
-    return spacing[::-1]  # we are reversing to get Z,Y,X order, in which coords_spacing is currently stored
+    spacing = np.array(domain_size[:dim] / (np.array(block_size[:dim])-1))/(2**level)
+    return spacing[::-1]  # we are reversing to get Z,Y,X order, in which coords_origin is currently stored
 
 # return coords_spacing from level - we need to check for non-isotrop BS if we might need to invert the indices
 def spacing2level( spacing, block_size=[21,21,21], domain_size=[1,1,1] ):
-    if np.any(spacing[:] == 0): return np.infty
-    level = np.log2(domain_size[0]/((block_size[0]-1)*spacing[0]))
+    spacing_n = np.copy(spacing[::-1])  # coords_spacing is in Z,Y,X order and we are reversing to get X,Y,Z order, in which tc_encoding and tc_decoding work
+    if np.any(spacing_n[:] == 0): return np.infty
+    level = np.log2(domain_size[0]/((block_size[0]-1)*spacing_n[0]))
     if level - np.rint(level) > 0.1:
         print(f"Level deviates much from integer: {level}")
     return np.rint( level ).astype(int)
@@ -1380,6 +1389,65 @@ def plot_1d_cut( wabbit_obj: WabbitHDF5file, y ):
 #    plt.plot(x_values, f_values, '-')
 
 #
+def create_colormap(cmap='rainbow', ncolors=None, color_exponent=1.0):
+    """
+    Create a colormap with optional discretization and power-law color distribution.
+    
+    Parameters:
+    -----------
+    cmap : str or Colormap
+        Base colormap name or object
+    ncolors : int or None
+        If set, creates discrete colormap with this many colors
+    color_exponent : float
+        Power-law exponent for color distribution (default 1.0=linear).
+        For symmetric data: >1 gives more colors near zero, <1 at extremes.
+        Uses transformation: sign(x) * |x|^exponent
+    
+    Returns:
+    --------
+    tuple: (colormap, boundaries_normalized) 
+        - colormap: Colormap object
+        - boundaries_normalized: None or array of normalized boundaries in [-1, 1] for power-law spacing
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
+    
+    # Get base colormap
+    base_cmap = plt.cm.get_cmap(cmap)
+    
+    # Create discrete colormap if requested
+    if ncolors is not None:
+        # Sample colors uniformly from the colormap to preserve color richness
+        colors = base_cmap(np.linspace(0, 1, ncolors))
+        cmap_discrete = ListedColormap(colors)
+        
+        # If color_exponent is used, return power-law boundaries for later scaling
+        if color_exponent != 1.0:
+            # Create boundaries using power-law for symmetric data [-1, 1]
+            xs = np.linspace(-1, 1, ncolors + 1)  # ncolors+1 boundaries for ncolors bins
+            xs_distorted = np.sign(xs) * (np.abs(xs) ** color_exponent)
+            return cmap_discrete, xs_distorted
+        else:
+            return cmap_discrete, None
+    
+    elif color_exponent != 1.0:
+        # For continuous colormaps with power-law, use finer discretization
+        # Sample colors uniformly to preserve color richness
+        n_samples = 256
+        colors = base_cmap(np.linspace(0, 1, n_samples))
+        cmap_continuous = ListedColormap(colors)
+        # Create power-law boundaries
+        xs = np.linspace(-1, 1, n_samples + 1)
+        xs_distorted = np.sign(xs) * (np.abs(xs) ** color_exponent)
+        return cmap_continuous, xs_distorted
+    
+    else:
+        # Return original colormap
+        return cmap, None
+
+#
 def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, cmap='rainbow', caxis=None,
                      caxis_symmetric=False, title=True, mark_blocks=True, block_linewidth=1.0,
                      gridonly=False, contour=False, ax=None, fig=None, ticks=True,
@@ -1389,7 +1457,9 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
                      gridonly_coloring='mpirank', flipud=False, 
                      fileContainsGhostNodes=False, 
                      filename_png=None,
-                     filename_pdf=None):
+                     filename_pdf=None,
+                     ncolors=None,
+                     color_exponent=1.0):
     """
     Read and plot a 2D wabbit file. Not suitable for 3D data, use Paraview for that.
     
@@ -1402,6 +1472,12 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
             If true, we plot only the blocks and not the actual, point data on those blocks.
         gridonly_coloring: string
             if gridonly is true we can still color the blocks. One of 'lgt_id', 'refinement-status', 'mpirank', 'level', 'file-index'
+        ncolors: int or None
+            If set, creates a discrete colormap with specified number of colors for clearer shaded areas
+        color_exponent: float
+            Power-law exponent for color distribution (default 1.0=linear). 
+            For symmetric data: >1 gives more colors near zero, <1 gives more at extremes.
+            E.g., 2.0 applies sign(x)*|x|^2 transformation for better resolution near zero.
     
     """
 
@@ -1409,11 +1485,15 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
     import matplotlib.patches as patches
     import matplotlib.pyplot as plt
     import h5py
+    from matplotlib.colors import BoundaryNorm
+    
+    # Create colormap with optional discretization and power-law distribution
+    cmap, boundaries_normalized = create_colormap(cmap, ncolors, color_exponent)
     
     if filename_pdf is None:
-        filename_pdf = wabbit_obj.orig_file.replace('h5','pdf')
+        filename_pdf = wabbit_obj.orig_file.rsplit('.', 1)[0] + '.pdf'
     if filename_png is None:
-        filename_png = wabbit_obj.orig_file.replace('h5','png')
+        filename_png = wabbit_obj.orig_file.rsplit('.', 1)[0] + '.png'
 
     
     cb = []
@@ -1583,17 +1663,29 @@ def plot_wabbit_file( wabbit_obj:WabbitHDF5file, savepng=False, savepdf=False, c
         if caxis is None:
             if not caxis_symmetric:
                 # automatic colorbar, using min and max throughout all patches
+                vmin, vmax = min(c1), max(c2)
                 for hplots in h:
-                    hplots.set_clim( (min(c1),max(c2))  )
+                    hplots.set_clim( (vmin, vmax)  )
             else:
                     # automatic colorbar, but symmetric, using the SMALLER of both absolute values
                     c= min( [abs(min(c1)), max(c2)] )
+                    vmin, vmax = -c, c
                     for hplots in h:
-                        hplots.set_clim( (-c,c)  )
+                        hplots.set_clim( (vmin, vmax)  )
         else:
             # set fixed (user defined) colorbar for all patches
+            vmin, vmax = min(caxis), max(caxis)
             for hplots in h:
-                hplots.set_clim( (min(caxis),max(caxis))  )
+                hplots.set_clim( (vmin, vmax)  )
+        
+        # Create BoundaryNorm if we have power-law boundaries
+        if boundaries_normalized is not None:
+            # Scale boundaries from [-1,1] normalized space to actual data range
+            boundaries = boundaries_normalized * (vmax - vmin) / 2.0 + (vmax + vmin) / 2.0
+            norm = BoundaryNorm(boundaries, ncolors)
+            # Apply norm to all plots
+            for hplots in h:
+                hplots.set_norm(norm)
 
         # add colorbar, if desired
         cb = None

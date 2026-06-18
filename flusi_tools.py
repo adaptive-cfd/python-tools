@@ -83,7 +83,7 @@ def read_flusi_HDF5( fname, dtype=np.float32, twoD=False, verbose=True):
 
 
 
-def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.0,0.0,0.0]), dtype=np.float32 ):
+def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.0,0.0,0.0]), dtype=np.float32, verbose=True ):
     import h5py
 
     dset_name = get_dset_name( fname )
@@ -91,7 +91,7 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
     if len(data.shape)==3:
         #3d data
         nx, ny, nz = data.shape
-        print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i %i " % (fname, dset_name, np.max(data), np.min(data), nx,ny,nz) )
+        if verbose: print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i %i " % (fname, dset_name, np.max(data), np.min(data), nx,ny,nz) )
         # i dont really know why, but there is a messup in fortran vs c ordering, so here we have to swap
         # axis
         # data = np.swapaxes(data, 0, 2)
@@ -100,7 +100,7 @@ def write_flusi_HDF5( fname, time, box, data, viscosity=0.0, origin=np.array([0.
     else:
         #2d data
         nx, ny = data.shape
-        print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i" % (fname, dset_name, np.max(data), np.min(data), nx,ny) )
+        if verbose: print( "Writing to file=%s dset=%s max=%e min=%e size=%i %i" % (fname, dset_name, np.max(data), np.min(data), nx,ny) )
         data = np.swapaxes(data, 0, 1)
         nxyz = np.array([1, nx,ny])
 
