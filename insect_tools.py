@@ -307,20 +307,28 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
         header = f.readline()
         # a header is a comment that begins with % (not all files have one)
         if "%" in header:
+            f.close()
             # remove comment character
             header = header.replace('%',' ')
-            # convert header line to list of strings
-            header = chunkstring(header, 16)
-            f.close()
+            if ";" in header:
+                # newer versions of flusi/wabbit use ; as delimiter
+                header = header.split(';')
+                # now remove trailing and leading spaces and spaces
+                header = [h.strip().replace('\n', '') for h in header]
+                for i in range(0,len(header)):
+                    if verbose: print( 'd[:,%i] %s' % (i, header[i] ) )
+            else:
+                # convert header line to list of strings
+                header = chunkstring(header, 16)
 
-            # format and print header
-            for i in range(0,len(header)):
-                # remove spaces (leading+trailing, conserve mid-spaces)
-                header[i] = header[i].strip()
-                # remove newlines
-                header[i] = header[i].replace('\n','')
-                if verbose:
-                    print( 'd[:,%i] %s' % (i, header[i] ) )
+                # format and print header
+                for i in range(0,len(header)):
+                    # remove spaces (leading+trailing, conserve mid-spaces)
+                    header[i] = header[i].strip()
+                    # remove newlines
+                    header[i] = header[i].replace('\n','')
+                    if verbose:
+                        print( 'd[:,%i] %s' % (i, header[i] ) )
         else:
             print('You requested a header, but we did not find one...')
             # return empty list
@@ -336,7 +344,6 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
     # old call:
     #
     #    data_raw = np.loadtxt( fname, comments="%")
-    
     import datetime
     import time
     
@@ -396,7 +403,8 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
             for line in f:
                 if not '%' in line:
                     # turn line into list
-                    tmp = line.split()
+                    if ';' in line: tmp = line.split(';')  # newer versions
+                    else: tmp = line.split()  # older versions
                     # did we already figure out how many cols the file has?
                     if ncols is None:
                         ncols = len(tmp)
@@ -464,10 +472,30 @@ def load_t_file( fname, interp=False, time_out=None, return_header=False,
                 istart = np.argmin( np.abs(time_raw[0:it-1]-t1) )                
                 tstart = time_raw[istart]
                 
-                if (abs(tstart - t1) >= 1.0e-3):
+                # Compute local threshold based on neighboring intervals around istart
+                # For adaptive simulations, the time step may vary, so we check locally
+                n_neighbors = 5
+                idx_start = max(0, istart - n_neighbors)
+                idx_end = min(len(time_raw) - 1, istart + n_neighbors)
+                
+                # Compute positive time steps in the neighborhood
+                local_dt = np.diff(time_raw[idx_start:idx_end+1])
+                local_dt_positive = local_dt[local_dt > 0]
+                
+                if len(local_dt_positive) > 0:
+                    max_local_dt = np.max(local_dt_positive)
+                    # print("DEBUG: At istart=%i (t=%.6f), max local dt (±%i neighbors) = %.6f" % (istart, tstart, n_neighbors, max_local_dt))
+                    # Use threshold slightly larger than local max to account for numerical roundoff
+                    threshold = max_local_dt * 1.5
+                else:
+                    # Fallback to old threshold if we can't compute it locally
+                    threshold = 1.0e-3
+                    # print("DEBUG: Could not compute local max dt at istart=%i, using fallback threshold = %.6f" % (istart, threshold))
+                
+                if (abs(tstart - t1) >= threshold):
                     print("""Warning. 
                           In %s we found a jump in time (duplicate values) t[%i]=%f t[%i]=%f but the nearest
-                          time in the past is t[%i]=%f so it may not be duplicates""" % (fname, it-1, t0, it, t1, istart, tstart) )
+                          time in the past is t[%i]=%f so it may not be duplicates (threshold=%.6f)""" % (fname, it-1, t0, it, t1, istart, tstart, threshold) )
                 else:
                     # legit jump (duplicate values)
                     it_unique[istart:it] = False

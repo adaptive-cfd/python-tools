@@ -36,6 +36,7 @@ parser.add_argument('--max-level', type=int, help='Maxmium level for treecode of
 parser.add_argument('--domain-size', type=float, help='Size of computational domain, default is 1', default=1)
 parser.add_argument('--time', type=float, help='Current time of WABBIT-file, default is 0.0', default=0.0)
 parser.add_argument('--iteration', type=float, help='Current iteration of WABBIT-file, default is 0', default=0)
+parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output')
 
 args = parser.parse_args()
 
@@ -54,7 +55,7 @@ with open(args.TEXT) as text_file:
     version = float(header.split(" ")[-1].replace("v",""))
     # possible version changes can be implemented here
     
-    print(f"Reading in WABBIT-grid file with version v{version}")
+    if args.verbose: print(f"Reading in WABBIT-grid file with version v{version}")
 
     # read in next line where we should identify the level
     level_line = text_file.readline()
@@ -63,7 +64,7 @@ with open(args.TEXT) as text_file:
         print("I need this to identify how much I have to read in!")
         sys.exit(1)
     Jmax = int(level_line.replace("level=",""))
-    print(f"Grid has maximum level Jmax = {Jmax}")
+    if args.verbose: print(f"Grid has maximum level Jmax = {Jmax}")
 
     grid_lines = text_file.readlines()
 
@@ -113,4 +114,4 @@ else:
         new_name = args.output
     else:
         new_name = args.output + ".h5"
-w_obj.write(new_name)
+w_obj.write(new_name, verbose=args.verbose)

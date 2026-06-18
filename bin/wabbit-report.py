@@ -300,8 +300,9 @@ if plot_meanmax_flow[0]:
     plt.grid(True)
     plt.xlim(t_values['umag'][0,0], t_values['umag'][-1,0])
     plt.subplot(sum(plot_meanmax_flow),1,2)
-    plt.semilogy(t_values['umag'][:,0], t_values['umag'][:,2], label='c0' if not latex else "$c_0$")
-    plt.semilogy(t_values['umag'][:,0], t_values['umag'][:,4], label='uC' if not latex else "$u_C$")
+    # check if umag has >=2 entries and only then plot the following
+    if t_values['umag'].shape[1] >= 3: plt.semilogy(t_values['umag'][:,0], t_values['umag'][:,2], label='c0' if not latex else "$c_0$")
+    if t_values['umag'].shape[1] >= 5: plt.semilogy(t_values['umag'][:,0], t_values['umag'][:,4], label='uC' if not latex else "$u_C$")
     plt.legend()
     plt.ylabel("ACM characteristic velocities")
     plt.xlabel(time_label)

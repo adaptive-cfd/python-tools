@@ -38,6 +38,8 @@ if os.path.isfile( jobfile ):
                 iniline = line
             elif "MEMORY=" in line:
                 memline = line
+            elif "MEMPERCORE=" in line:
+                mempercoreline = line
             elif "AUTO_RESUB=" in line:
                 line = line.replace('"','').replace('AUTO_RESUB=','')
                 if float(line) > 0:
@@ -65,8 +67,24 @@ if os.path.isfile( jobfile ):
     wtimelist = wtimeline.split()
     wtime = float(wtimelist[2])
 
-    core_per_node = 48
-    
+    core_per_node = 128  # for Rome, byebye Skylake with 48 cores
+    mempercore_max = 1.781  # GB
+    mempercore_lim = 1.7  # GB
+    if 'mempercoreline' in locals():
+        mempercorelist = mempercoreline.split('=')
+        mempercore = float( mempercorelist[1].replace('"','').replace('GB','').replace('\n','') )
+    elif 'memline' in locals():
+        memlist = memline.split('=')
+        totalmem = float( memlist[1].replace('"','').replace('GB','').replace('\n','') )
+        mempercore = totalmem / ncpu
+    else:
+        bcolors.err(f"Please specify either MEMORY or MEMPERCORE in your job submission script for launching so that we can check whether your memory request is reasonable and does not exceed the maximum per core (which is {mempercore_max:.3f} GB, but it is recommended to set below {mempercore_lim:.3f} GB).")
+        raise ValueError("Missing MEMORY or MEMPERCORE specification in job submission script.")
+    if mempercore > mempercore_max:
+        print('Memory per core  : %sYou requested %.3f GB per core, which exceeds the usage limit of %.3f GB per core!%s' % (bcolors.FAIL, mempercore, mempercore_max, bcolors.ENDC) )
+        raise ValueError("Requested memory per core exceeds allowed limit.")
+    elif mempercore > mempercore_lim:
+        print('Memory per core  : %sYou requested %.3f GB per core, which exceeds the recommended limit of %.3f GB per core!%s' % (bcolors.WARNING, mempercore, mempercore_lim, bcolors.ENDC) )
 
     if not os.path.isfile(paramsfile):
         print('paramsfile check  : %snot found%s' % (bcolors.FAIL,bcolors.ENDC) )
@@ -77,6 +95,7 @@ if os.path.isfile( jobfile ):
     print("program           = %s%s%s" % (bcolors.OKBLUE, progfile, bcolors.ENDC) )
     print("paramsfile        = %s%s%s" % (bcolors.OKBLUE, paramsfile, bcolors.ENDC) )
     print("ncpu              = %s%i%s" % (bcolors.OKBLUE, ncpu, bcolors.ENDC) )
+    print('Memory per core   = %s%.3f GB per core%s' % (bcolors.OKBLUE, mempercore, bcolors.ENDC) )
     print("wtime (jobfile)   = %s%i%s sec (%2.2f hours)" % (bcolors.OKBLUE, wtime, bcolors.ENDC, wtime/3600.0) )
     wtime_ini = inifile_tools.get_ini_parameter(paramsfile, "Time", "walltime_max", float)
     # hours to seconds
@@ -89,7 +108,7 @@ if os.path.isfile( jobfile ):
         print('RESUBMISSION      : %sAutomatic resubmission is DEACTIVTÀTED!!%s' % (bcolors.WARNING,bcolors.ENDC) )
 
     if abs(ncpu/core_per_node - float(round(ncpu/core_per_node))) > 0.0:
-        print('Complete node(s)  : %sYou did not specify N*48 CPUS%s' % (bcolors.FAIL,bcolors.ENDC) )
+        print('Complete node(s)  : %sYou did not specify N*%i CPUS%s' % (bcolors.FAIL, core_per_node, bcolors.ENDC) )
     else:
         print('Complete node(s)  : %sokay%s' % (bcolors.OKGREEN,bcolors.ENDC) )
 
@@ -105,5 +124,5 @@ if os.path.isfile( jobfile ):
 
 else:
     bcolors.err("Jobfile %s not found" % (jobfile))
-    raise ValueError( )
+    raise ValueError("Jobfile not found.")
 
