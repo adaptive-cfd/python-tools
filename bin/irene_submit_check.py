@@ -38,7 +38,10 @@ if os.path.isfile( jobfile ):
                 iniline = line
             elif "MEMORY=" in line:
                 memline = line
-            elif "MEMPERCORE=" in line:
+            elif "--mem-per-core" in line or "MEMPERCORE=" in line:
+                # may be set as bash variable (JB: MEMPERCORE=2.0GB)
+                # or in the wabbit call directly (TE: --mem-per-core=2.0gb)
+                # note GB and gb are okay
                 mempercoreline = line
             elif "AUTO_RESUB=" in line:
                 line = line.replace('"','').replace('AUTO_RESUB=','')
@@ -72,17 +75,17 @@ if os.path.isfile( jobfile ):
     mempercore_lim = 1.7  # GB
     if 'mempercoreline' in locals():
         mempercorelist = mempercoreline.split('=')
-        mempercore = float( mempercorelist[1].replace('"','').replace('GB','').replace('\n','') )
+        mempercore = float( mempercorelist[1].replace('"','').replace('GB','').replace('\n','').replace('gb','') )
     elif 'memline' in locals():
         memlist = memline.split('=')
         totalmem = float( memlist[1].replace('"','').replace('GB','').replace('\n','') )
         mempercore = totalmem / ncpu
     else:
         bcolors.err(f"Please specify either MEMORY or MEMPERCORE in your job submission script for launching so that we can check whether your memory request is reasonable and does not exceed the maximum per core (which is {mempercore_max:.3f} GB, but it is recommended to set below {mempercore_lim:.3f} GB).")
-        raise ValueError("Missing MEMORY or MEMPERCORE specification in job submission script.")
+        
     if mempercore > mempercore_max:
         print('Memory per core  : %sYou requested %.3f GB per core, which exceeds the usage limit of %.3f GB per core!%s' % (bcolors.FAIL, mempercore, mempercore_max, bcolors.ENDC) )
-        raise ValueError("Requested memory per core exceeds allowed limit.")
+        
     elif mempercore > mempercore_lim:
         print('Memory per core  : %sYou requested %.3f GB per core, which exceeds the recommended limit of %.3f GB per core!%s' % (bcolors.WARNING, mempercore, mempercore_lim, bcolors.ENDC) )
 
