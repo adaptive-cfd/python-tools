@@ -2254,7 +2254,16 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header go
     """
     
     import matplotlib.pyplot as plt
-    import easygui
+    
+    try:
+        import easygui
+        GUI = True
+    except ImportError as e:
+        GUI = False
+        print("""The module EASYGUI is not available, so interactive dialogs in 
+              insect_tools::write_kinematics_ini_file will be disabled.""")
+        pass  # module doesn't exist, deal with it.
+
 
     if len(nfft) != 3:
         raise ValueError("not the right number of fourier coefficients!")
@@ -2283,7 +2292,7 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header go
     i = 0
     for data, name in zip( [alpha,phi,theta], ['alpha','phi','theta']):
         
-        if nfft[i] == -1:
+        if nfft[i] == -1 and GUI:
             fig = plt.figure()
             
             # first guess:
@@ -2320,6 +2329,8 @@ def write_kinematics_ini_file(fname, alpha, phi, theta, nfft, header=['header go
                     nfft[i] = 20
                 elif choice == "N=30":
                     nfft[i] = 30
+        elif nfft[i] == -1 and not GUI:
+            raise ValueError("Interactive mode but python package EASYGUI is not available.")
 
         a0, ai, bi = fseries( data, nfft[i] )
 
