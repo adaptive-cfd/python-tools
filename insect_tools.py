@@ -696,7 +696,7 @@ def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None, force_fullstroke=Tr
             # the others are identical as saved in the data file
             dat = np.interp( time, d[:,0], d[:,col] )
 
-            D[istroke,col] = np.trapz( dat, x=time) / (tend-tbegin)
+            D[istroke,col] = np.trapezoid( dat, x=time) / (tend-tbegin)
 
         istroke = istroke + 1
     return D
