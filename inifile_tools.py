@@ -88,7 +88,9 @@ def check_parameters_for_stupid_errors( file ):
         
     jmax            = get_ini_parameter(file, 'Blocks', 'max_treelevel', int)
     jmin            = get_ini_parameter(file, 'Blocks', 'min_treelevel', int, default=1)
+    jini            = get_ini_parameter(file, 'Blocks', 'ini_treelevel', int, default=jmin)
     adapt_tree      = get_ini_parameter(file, 'Blocks', 'adapt_tree', int, default=1)
+    adapt_inicond   = get_ini_parameter(file, 'Blocks', 'adapt_inicond', int, default=adapt_tree)
     ceps            = get_ini_parameter(file, 'Blocks', 'eps')
     bs              = get_ini_parameter(file, 'Blocks', 'number_block_nodes', int, vector=True)
     g               = get_ini_parameter(file, 'Blocks', 'number_ghost_nodes', int, default=g_default)
@@ -364,6 +366,12 @@ def check_parameters_for_stupid_errors( file ):
             print(x0_insect)
             print(L)
             bcolors.err('Insect placed outside of domain?' )
+            
+    if penalized and adapt_inicond != 1 and jini < jmax:
+        bcolors.err("""It is strongly discouraged to use adapt_inicond=0 when using penalization,
+          because the initial mask at t=0 is not on the finest level Jmax (highest resolution).
+          An alternative is to start from the finest, equidistant grid by setting ini_treelevel==max_treelevel,
+          but that possibility is expensive (full memory required on startup).\n""")
             
    
     if time_step_method == "RungeKuttaChebychev":
