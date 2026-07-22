@@ -641,7 +641,7 @@ class WabbitHDF5file:
                 if logger==None: print(text_now)
                 else: logger.info(text_now)    
             grid_interpolator = other.create_interpolator()
-            # return False
+            return False
         
         # check key values of data
         max1, min1, mean1, squares1 = keyvalues(self.domain_size, self.coords_spacing, self.blocks)
