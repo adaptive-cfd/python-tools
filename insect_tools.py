@@ -2443,9 +2443,9 @@ def wing_contour_from_file(fname, N=1024):
     wtype = inifile_tools.get_ini_parameter(fname, "Wing", "type", str)
     equiv_membrane = inifile_tools.get_ini_parameter(fname, "Wing", "bristles_simplex", bool, default=False)
     
-    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier' and wtype != 'fourierY':
+    if wtype != "fourier" and wtype != "linear" and wtype != 'kleemeier' and wtype != 'fourierY' and wtype != 'polygon':
         print(wtype)
-        raise ValueError("Not a fourier nor linear wing. This function currently only supports a "+
+        raise ValueError("Not a fourier/linear/polygon wing. This function currently only supports a "+
                          "Fourier or linear encoded wing (maybe with bristles)")
         
     x0 = inifile_tools.get_ini_parameter(fname, "Wing", "x0w", float, default=0.0)
@@ -2491,6 +2491,12 @@ def wing_contour_from_file(fname, N=1024):
             
             # there was a bug in here somewhere but i am too lazy to find it ... now I just
             # use polygon.area and am less unhappy. TE 12/feb/2025
+            area = Polygon( zip(xc,yc) ).area
+            
+        elif wtype == 'polygon':
+            # polygon wings directly contain the wing contour
+            xy = inifile_tools.get_ini_parameter("bumblebee_wing_polygon.ini", "Wing", 'polygon_points', matrix=True)
+            xc, yc = xy[:,0].copy(), xy[:,1].copy()            
             area = Polygon( zip(xc,yc) ).area
             
         elif wtype == 'fourierY':
@@ -2632,6 +2638,52 @@ def compute_wing_geom_factors(fname):
     
     return area, S1, S2
 
+
+def simplify_polygon_wing(fname, fname_out, tol=0.001):
+    """
+    Takes an existing WING INI file that describes a polygon wing, and simplifies it to fewer points.
+    The algorithm to do that is smart (from shapely, Ramer–Douglas–Peucker (RDP) algorithm) and keeps points
+    where the geometry is changing abruptly (corners, cuts, etc).
+    
+    Output written to a new INI file.
+    """
+    import shapely
+    import os
+    import inifile_tools
+    import matplotlib.pyplot as plt
+    
+    xc, yc, area = wing_contour_from_file(fname)
+    # periodization
+    xc = np.hstack( (xc,xc[0]))
+    yc = np.hstack( (yc,yc[0]))
+    
+    poly = shapely.Polygon( zip(xc,yc) )
+    poly_simplified = poly.simplify(tolerance=tol, preserve_topology=True)
+    
+    os.system('cp %s %s' %(fname,fname_out))
+    
+    N1 = len(poly.exterior.coords)
+    N2 = len(poly_simplified.exterior.coords)
+    
+    print("Simplified polygon shape from %i to %i points" % (N1, N2))
+    
+    dat = np.asarray(poly_simplified.exterior.coords)
+    data = "(/"
+    for i in range(dat.shape[0]-1):
+        data = data + "%e %e\n" % (dat[i,0], dat[i,1])
+    data = data + "%e %e/)" % (dat[-1,0], dat[-1,1])
+    
+    plt.figure()
+    plt.plot( np.asarray(poly.exterior.coords)[:,0], 
+              np.asarray(poly.exterior.coords)[:,1], '.-', label='input N=%i' % (N1))
+    plt.plot( np.asarray(poly_simplified.exterior.coords)[:,0], 
+              np.asarray(poly_simplified.exterior.coords)[:,1], 'o-', label='simplified N=%i' % (N2), 
+              mfc='none')
+    plt.legend()
+    plt.grid()
+    plt.axis("equal")
+    
+    inifile_tools.replace_ini_value(fname_out, "Wing", 'polygon_points', data)
     
 def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False, fillAlpha=0.15, 
                               savePDF=False, color_contour='r', color_fill_mask='k'):

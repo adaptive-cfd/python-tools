@@ -9,7 +9,7 @@ list_save_names = ['scalar1', 'scalar2', 'scalar3', 'scalar4', 'scalar5', 'scala
 list_statistics_names = ['ux-avg','ux-var','uy-avg','uy-var','uz-avg','uz-var','p-avg','p-var','umag-avg','umag-var','divu-avg','div-avg','divu-var','div-var','vort-avg','vor-avg','vort-var','vor-var','vorabs-avg','vorabs-var','helabs-avg','helabs-var','dissipation-avg','dissipation-var','uxdx-avg','uxdy-avg','uxdz-avg','uydx-avg','uydy-avg','uydz-avg','uzdx-avg','uzdy-avg','uzdz-avg','uxdx2-avg','uxdy2-avg','uxdz2-avg','uydx2-avg','uydy2-avg','uydz2-avg','uzdx2-avg','uzdy2-avg','uzdz2-avg','ux-2-avg','uy-2-avg','uz-2-avg','uxuy-avg','uxuz-avg','uyuz-avg','uxp-avg','uyp-avg','uzp-avg','uxuy-cov','uxuz-cov','uyuz-cov','uxp-cov','uyp-cov','uzp-cov']
 
 # This routine is WABBIT specific, so it actually belongs in WABBIT_TOOLS
-def check_parameters_for_stupid_errors( file ):
+def check_parameters_for_stupid_errors( file ):    
     """
     For a given WABBIT parameter file, check for the most common stupid errors
     the user can commit: Jmax<Jmin, negative time steps, etc.
@@ -28,6 +28,7 @@ def check_parameters_for_stupid_errors( file ):
     
     """
     import os
+    import insect_tools
     #     # loop over all lines
     #     for line in f:
     #         line = line.lstrip()
@@ -228,9 +229,9 @@ def check_parameters_for_stupid_errors( file ):
         coff = bcolors.ENDC        
         cl,cr,cr2,cl2,cb = '\033[30m','\033[30m','\033[30m','\033[30m','\033[30m'
         
-        if get_ini_parameter(file, 'Insects', 'RightWing', bool, False):
+        if get_ini_parameter(file, 'Insects', 'RightWing', bool, default=False):
             cr = bcolors.OKBLUE# '\033[37m'
-        if get_ini_parameter(file, 'Insects', 'LeftWing', bool, False):
+        if get_ini_parameter(file, 'Insects', 'LeftWing', bool, default=False):
             cl = bcolors.OKBLUE#'\033[37m'
         if get_ini_parameter(file, 'Insects', 'RightWing2', bool, default=False):
             cr2 = bcolors.OKBLUE#'\033[37m'
@@ -250,55 +251,97 @@ def check_parameters_for_stupid_errors( file ):
         print("  %s (O :8 ::/ %s%s\\_/%s%s \\:: 8: O) %s" % (cl2,coff, cb, coff, cr2, coff))      
         print("  %s  \\O `::/ %s    %s  \\::' O/%s" % (cl2,coff, cr2, coff))
         print("  %s   ''--'  %s     %s  `--''%s" % (cl2,coff, cr2, coff))
-
-        
-        # when using insects, we may read various extra files. check if they are present.
-        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, 'none')[0]
-        wing_motion_L = get_ini_parameter( file, 'Insects', 'FlappingMotion_left', str, 'none')[0]
-        wing_motion_R = get_ini_parameter( file, 'Insects', 'FlappingMotion_left', str, 'none')[0]
-        
         print("")
         print("")
-        print("   BodyMotion           = %s" % (body_motion))
-        print("   FlappingMotion_left  = %s" % (wing_motion_L))
-        print("   FlappingMotion_right = %s" % (wing_motion_R))
         
-        if body_motion == 'kinematics_loader' or wing_motion_L=='kinematics_loader' or wing_motion_R=='kinematics_loader':
-            print( "   kineloader is used !")
-            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
-            
-            if kineloader_file == '':
-                bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
-            
-            if not os.path.isfile(root_folder+kineloader_file):
-                bcolors.err('Kineloader used file not found ! body_motion=%s wing_motion=(%s  %s)\n infile=%s' % (body_motion, wing_motion_L, wing_motion_R, kineloader_file) )
-
-        if get_ini_parameter( file, 'Insects', 'BodyType', str, "ellipsoid") == "superSTL":
+        body_shape = get_ini_parameter( file, 'Insects', 'BodyType', str, "ellipsoid")[0]
+        print("  %s = %s" % ("BodyShape".ljust(25), body_shape))
+        if body_shape == "superSTL":
             bodySTL = root_folder + get_ini_parameter( file, 'Insects', 'BodySuperSTLfile', dtype=str, default="not-given")
             if not os.path.isfile(bodySTL):
                 bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
-            else:
-                print('BodySuperSTLfile file found !')
-                
-        WingShape = get_ini_parameter( file, 'Insects', 'WingShape', str, 'none')[0]
-        print("   WingShape            = %s" % (WingShape))
+
         
-        if "from_file::" in WingShape:
-            WingShape = root_folder + WingShape.replace("from_file::","")
+        # when using insects, we may read various extra files. check if they are present.
+        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, 'none')[0]        
+        print("  %s = %s" % ("BodyMotion".ljust(25), body_motion))
+        
+        if body_motion == 'kinematics_loader':
+            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
             
-            if not os.path.isfile(WingShape):
-                bcolors.err('WingShape file %s not found !' % (WingShape) )
-            else:
-                print('WingShape file found !')
-                
-                
-        if "from_file::" in wing_motion_L:
-            fname = root_folder + wing_motion_L.replace("from_file::","")
+            if kineloader_file == '':
+                bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
             
-            if not os.path.isfile(fname):
-                bcolors.err('WingKinematics file %s not found !' % (fname) )
-            else:
-                print('WingKinematics file found !')
+            if not os.path.isfile(root_folder+kineloader_file):
+                bcolors.err('Kineloader used file not found ! \n infile=%s' % (kineloader_file) )
+ 
+                
+        #----------------------------------------------------------------------
+        # wing shape
+        #----------------------------------------------------------------------
+        # old parameter form, removed
+        WingShape = get_ini_parameter( file, 'Insects', 'WingShape', str, default='UNKNOWN')
+        if WingShape != 'UNKNOWN':            
+            bcolors.err("""Deprecation error! Your INI file contains the parameter Insects::WingShape. This parameter has been removed and replaced
+            by individual shape parameters for each wing: [WingShapeR, WingShapeL, WingShape2R, WingShape2L]. Please modify the INI file,
+            even if all wings are the same shape.\n
+            You can also automatically fix this by calling insect_migration_assistant.py on your file.\n""")
+            
+        # check if wing shape files are present in simulation folder
+        for wing_side, code in zip(['RightWing', 'LeftWing', 'RightWing2', 'LeftWing2'], ['R','L','2R','2L']):        
+            if get_ini_parameter(file, 'Insects', wing_side, bool, default=False):
+                WingShape = get_ini_parameter( file, 'Insects', 'WingShape'+code, str, default='UNKNOWN')
+                label = "WingShape"+code
+                print("  %s = %s" % (label.ljust(25), WingShape))
+                
+                if "from_file::" in WingShape:
+                    WingShape = root_folder + WingShape.replace("from_file::","")                
+                    if not os.path.isfile(WingShape):                        
+                        bcolors.err('WingShape file %s not found !' % (WingShape) )
+                    else:
+                        # for polygon wing, check spacing
+                        xc, yc, area = insect_tools.wing_contour_from_file(WingShape)
+                        ds = np.sqrt( (xc[1:]-xc[0:-1])**2 + (yc[1:]-yc[0:-1])**2 )
+                        
+                        print("                            Polygon wing ds_max=%2.2e ds_min=%2.2e ds_mean=%2.2e" % (np.max(ds),np.min(ds),np.mean(ds)))
+                
+                        
+   
+        #----------------------------------------------------------------------
+        # wing motion
+        #----------------------------------------------------------------------
+        for wing, wing_side in zip(['right', 'left', 'right2', 'left2'], ['RightWing','LeftWing','RightWing2','LeftWing2']):  
+            # is the wing used?
+            if get_ini_parameter(file, 'Insects', wing_side, bool, default=False): 
+                # yes its used
+                wing_motion = get_ini_parameter( file, 'Insects', 'FlappingMotion_'+wing, str, 'none')[0]
+                
+                label = 'FlappingMotion_'+wing
+                print("  %s = %s " % (label.ljust(25), wing_motion))
+                
+                if wing_motion == 'kinematics_loader':
+                    kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
+                                        
+                    if kineloader_file == '':
+                        bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
+                    
+                    if not os.path.isfile(root_folder+kineloader_file):
+                        bcolors.err('Kineloader used, but file not found ! infile=%s' % (kineloader_file) )
+                        
+                        
+                elif "from_file::" in wing_motion:
+                    fname = root_folder + wing_motion.replace("from_file::","")
+                    
+                    if not os.path.isfile(fname):
+                        bcolors.err('WingKinematics file %s not found !' % (fname) )
+                    
+        if exists_ini_parameter(file, 'Insects', 'L_chord'):
+            bcolors.warn("Deprecated (unused) parameter found: Insects::L_chord")
+        if exists_ini_parameter(file, 'Insects', 'L_span'):
+            bcolors.warn("Deprecated (unused) parameter found: Insects::L_span")
+        if exists_ini_parameter(file, 'Insects', 'infile'):
+            bcolors.err("Deprecated parameter found: Insects::infile WILL CAUSE ABORT; REMOVE! (or call insect_migration_assistant.py)")
+             
                 
         if time_step_method == 'RungeKuttaChebychev' and refinement_indicator == 'significant':
             bcolors.warn(""" 11/2025: We have encountered problems when combining refinement_indicator=significant and time_step_method=RungeKuttaChebychev.
@@ -811,7 +854,48 @@ def exists_ini_section( inifile, section ):
     return found_section
 
 
-def replace_ini_value(file, section, keyword, new_value):
+def delete_ini_value(file, section, keyword):
+    """
+    delete ini value: Removes a parameter (by commenting it) from the INI file.
+    """
+    import bcolors
+    
+    found_section = False
+
+    with open(file, 'r') as f:
+        # read a list of lines into data
+        data = f.readlines()
+    
+    # loop over all lines
+    for k, line in enumerate(data):
+        line = line.lstrip().rstrip()
+        if len(line) > 0:
+            if line[0] != ';':
+                # copy line string and remove comments
+                line_nocomments = line
+                
+                if ';' in line:
+                    line_nocomments = line_nocomments[0:line.index(';')]
+                    
+                # is this the beginning of the section ?
+                if '['+section+']' in line_nocomments:
+                    found_section = True
+                            
+    
+                    
+                # do we find the keyword here?
+                if keyword+'=' in line_nocomments and found_section:
+                    # delete value by commenting it out
+                    data[k] = ';'+line+'\n'
+                    break
+
+    # .... and write everything back
+    with open(file, 'w') as f:
+        f.writelines( data )                 
+
+
+
+def replace_ini_value(file, section, keyword, new_value, warn_ifChangingNonexistingParameter=True):
     """
     replace ini value: Sets a value in an INI file. Useful for scripting of preprocessing.
     
@@ -865,7 +949,8 @@ def replace_ini_value(file, section, keyword, new_value):
                 # appended at the end of a section, right before the next section.
                 # that may look ugly, but it is correct.
                 if ('[' in line_nocomments and ']' in line_nocomments and not '['+section+']' in line_nocomments and found_section) or (found_section and k==len(data)) :
-                    print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
+                    if warn_ifChangingNonexistingParameter:
+                        print( bcolors.WARNING+"WARNING!"+bcolors.ENDC+" The requested parameter did not exist in the INI file - adding it "+bcolors.BLINK+bcolors.WARNING+"(check if this was not a typo!!)."+bcolors.ENDC)
                     # insert parameter
                     if is_matrix:
                         # Insert matrix lines
@@ -1177,3 +1262,62 @@ def find_WABBIT_main_inifile(run_directory='./', verbose=False):
         raise ValueError("Did not find simulations main INI file - unable to proceed")
 
     return inifile_return
+
+
+
+def insect_INI_migration(file):
+    import os
+    
+    if "Insect" not in get_ini_parameter( file, 'VPM', 'geometry', str, default='default'):
+        raise ValueError("This INI file does not seem to concern an Insect simulation.")
+    
+    # root_folder = os.path.dirname(file)+'/'        
+    # if root_folder == '/':
+    #     root_folder = './'
+    
+    print("""~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Note: the best way to migrate an older INI file is to use the current template
+shipped with the code, and start from that. This way, comments find their way
+into the INI file. This migration assistant fixes some deprecations, but the INI
+file will not be as pretty. It won't add comments.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n\n""")
+    
+    section = "Insects" # because we can also have Insect1 Insect2 etc....
+    
+    if exists_ini_parameter(file, section, "WingShape"):
+        print("INIfile contains old parameter WingShape")
+        value = get_ini_parameter(file, section, "WingShape", str)
+        replace_ini_value(file, section, "WingShapeR", value, False)
+        replace_ini_value(file, section, "WingShapeL", value, False)
+        delete_ini_value(file, section, "WingShape")
+        
+    if exists_ini_parameter(file, section, "WingShape2"):
+        print("INIfile contains old parameter WingShape2")
+        value = get_ini_parameter(file, section, "WingShape2", str)
+        replace_ini_value(file, section, "WingShape2R", value, False)
+        replace_ini_value(file, section, "WingShape2L", value, False)
+        delete_ini_value(file, section, "WingShape2")
+        
+    for wing, wing_side in zip(['right', 'left'], ['RightWing','LeftWing']):  
+        wing_motion = get_ini_parameter( file, section, 'FlappingMotion_'+wing, str, default='UNKNOWN')
+        
+        if wing_motion == "from_file":
+            print('   FlappingMotion_'+wing+" = "+wing_motion)
+            infile = get_ini_parameter( file, section, "infile", str, default='UNKNOWN')            
+            replace_ini_value( file, section, 'FlappingMotion_'+wing, 'from_file::'+infile)
+            
+    for wing, wing_side in zip(['right2', 'left2'], ['RightWing2','LeftWing2']):  
+        wing_motion = get_ini_parameter( file, section, 'FlappingMotion_'+wing, str, default='UNKNOWN')
+        
+        if wing_motion == "from_file":
+            print('   FlappingMotion_'+wing+" = "+wing_motion)
+            infile = get_ini_parameter( file, section, "infile2", str, default='UNKNOWN')            
+            replace_ini_value( file, section, 'FlappingMotion_'+wing, 'from_file::'+infile)
+            
+    delete_ini_value(file, section, 'infile')
+    delete_ini_value(file, section, 'infile2')
+    delete_ini_value(file, section, 'L_chord')
+    delete_ini_value(file, section, 'L_span')
+    
+    print("Done !")         
+        

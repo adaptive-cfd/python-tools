@@ -301,7 +301,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         # if pre+'z' in p_names: scalars.append(pre+'z')
 
   if grid2field == None: grid2field = []
-  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''}, {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\" ' if len(v_names) > 0 else ''}and {len(grid2field)} grid field{'s' if len(grid2field) != 1 else ''} {'\"' + ', '.join(grid2field) + '\" ' if len(grid2field) > 0 else ''}to vtkhdf file")
+#  print(f"    Adding {len(s_names)} scalar field{'s' if len(s_names) != 1 else ''} {'\"' + ', '.join(s_names) + '\"' if len(s_names) > 0 else ''}, {len(v_names)} vector field{'s' if len(v_names) != 1 else ''} {'\"' + ', '.join(v_names) + '\" ' if len(v_names) > 0 else ''}and {len(grid2field)} grid field{'s' if len(grid2field) != 1 else ''} {'\"' + ', '.join(grid2field) + '\" ' if len(grid2field) > 0 else ''}to vtkhdf file")
 
   ### prepare filename
   file_ending = '.vtkhdf'
