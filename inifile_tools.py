@@ -121,7 +121,18 @@ def check_parameters_for_stupid_errors( file ):
         skew_symmetry= get_ini_parameter( file, 'NSPP', 'skew_symmetry', int, default=0)
     ceta         = get_ini_parameter( file, 'VPM', 'C_eta', float, default=0.0)
     penalized    = get_ini_parameter( file, 'VPM', 'penalization', bool, default=False)
-    geometry     = get_ini_parameter( file, 'VPM', 'geometry', str, default='default')
+    
+    geometry     = get_ini_parameter( file, 'VPM', 'geometry', str, default='default', verbose=False)
+    if geometry == "default":
+        # this INI file has thenew structure
+        geometries = get_ini_parameter( file, 'VPM', 'geometries', str, default='default', verbose=False).lower().split()
+        N_geometries = get_ini_parameter( file, 'VPM', 'n_geometries', int, default=1, verbose=False)
+    else:
+        # old structure, one keyword
+        geometries = [geometry]
+        N_geometries = 1
+    del geometry
+    
     sponged      = get_ini_parameter( file, 'Sponge', 'use_sponge', bool, default=False)
     csponge      = get_ini_parameter( file, 'Sponge', 'C_sponge', float, default=0.0)
     sponge_type  = get_ini_parameter( file, 'Sponge', 'sponge_type', str, default='default')
@@ -214,20 +225,33 @@ def check_parameters_for_stupid_errors( file ):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- penalization')
     if penalized == 1:
-        print("   use_penalization= %i   geometry= %s   C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
-              (penalized, geometry, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+        print("   use_penalization= %i  N_geometries=%i  C_eta= %2.2e %s    ~~> K_eta = %2.2f%s" % 
+              (penalized, N_geometries, ceta, bcolors.OKBLUE, keta, bcolors.ENDC))
+        for i, geom in enumerate(geometries):
+            print("   geometry[%i]=%s" % (i+1, geom))
         print("   soft_penalization_startup= %i" % (get_ini_parameter( file, 'VPM', 'soft_penalization_startup', bool, default=False)))
     else:
         print("   use_penalization= %i %s~~~> no penalization used! %s" % 
               (penalized, bcolors.OKBLUE, bcolors.ENDC))
+    
+    if N_geometries > 1:
+        bcolors.err("WARNING ! This INI file contains several geometries, for which the check routine is not yet ready!!!")
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #                                     INSECTS
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if geometry == "Insect":
-        h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, default=0.0)
+    if geometries[0].lower() == "Insect".lower():
+        
+        if exists_ini_section(file, 'Insects'):
+            section_insect = 'Insects'
+        elif exists_ini_section(file, 'Insect1'): 
+            section_insect = 'Insect1'
+        else:
+            raise ValueError("It seems at least one geometry for the INI file is an insect, but we found neither [Insects] (old syntax) nor [Insect1] (new syntax)")
+        
+        h_wing = get_ini_parameter( file, section_insect, 'WingThickness', float, default=0.0)
         print('\n-- insect')
         if h_wing/dx > 4.5:
             color = bcolors.OKGREEN
@@ -242,15 +266,15 @@ def check_parameters_for_stupid_errors( file ):
         coff = bcolors.ENDC        
         cl,cr,cr2,cl2,cb = '\033[30m','\033[30m','\033[30m','\033[30m','\033[30m'
         
-        if get_ini_parameter(file, 'Insects', 'RightWing', bool, default=False):
+        if get_ini_parameter(file, section_insect, 'RightWing', bool, default=False):
             cr = bcolors.OKBLUE# '\033[37m'
-        if get_ini_parameter(file, 'Insects', 'LeftWing', bool, default=False):
+        if get_ini_parameter(file, section_insect, 'LeftWing', bool, default=False):
             cl = bcolors.OKBLUE#'\033[37m'
-        if get_ini_parameter(file, 'Insects', 'RightWing2', bool, default=False):
+        if get_ini_parameter(file, section_insect, 'RightWing2', bool, default=False):
             cr2 = bcolors.OKBLUE#'\033[37m'
-        if get_ini_parameter(file, 'Insects', 'LeftWing2', bool, default=False):
+        if get_ini_parameter(file, section_insect, 'LeftWing2', bool, default=False):
             cl2 = bcolors.OKBLUE#'\033[37m'    
-        if get_ini_parameter(file, 'Insects', 'BodyType', str, default='nobody') != "nobody":
+        if get_ini_parameter(file, section_insect, 'BodyType', str, default='nobody') != "nobody":
             cb = bcolors.OKBLUE#'\033[37m'    
         
         print("%s.==-.%s   configuration   %s.-==.%s  " % (cl,coff,cr,coff))
@@ -267,20 +291,20 @@ def check_parameters_for_stupid_errors( file ):
         print("")
         print("")
         
-        body_shape = get_ini_parameter( file, 'Insects', 'BodyType', str, default="ellipsoid")
+        body_shape = get_ini_parameter( file, section_insect, 'BodyType', str, default="ellipsoid")
         print("  %s = %s" % ("BodyShape".ljust(25), body_shape))
         if body_shape == "superSTL":
-            bodySTL = root_folder + get_ini_parameter( file, 'Insects', 'BodySuperSTLfile', dtype=str, default="not-given")
+            bodySTL = root_folder + get_ini_parameter( file, section_insect, 'BodySuperSTLfile', dtype=str, default="not-given")
             if not os.path.isfile(bodySTL):
                 bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
 
         
         # when using insects, we may read various extra files. check if they are present.
-        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, default='none')
+        body_motion   = get_ini_parameter( file, section_insect, 'BodyMotion', str, default='none')
         print("  %s = %s" % ("BodyMotion".ljust(25), body_motion))
         
         if body_motion == 'kinematics_loader':
-            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, default='')
+            kineloader_file = get_ini_parameter( file, section_insect, 'infile_kineloader', str, default='')
             
             if kineloader_file == '':
                 bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
@@ -288,12 +312,18 @@ def check_parameters_for_stupid_errors( file ):
             if not os.path.isfile(root_folder+kineloader_file):
                 bcolors.err('Kineloader used file not found ! \n infile=%s' % (kineloader_file) )
  
+
+        x0_insect = get_ini_parameter( file, section_insect, 'x0', float, vector=True, default=L/2.0)
+        if any(x0_insect>L) or any(x0_insect<0):
+            print(x0_insect)
+            print(L)
+            bcolors.err('Insect placed outside of domain?' )
                 
         #----------------------------------------------------------------------
         # wing shape
         #----------------------------------------------------------------------
         # old parameter form, removed
-        WingShape = get_ini_parameter( file, 'Insects', 'WingShape', str, default='UNKNOWN')
+        WingShape = get_ini_parameter( file, section_insect, 'WingShape', str, default='UNKNOWN')
         if WingShape != 'UNKNOWN':            
             bcolors.err("""Deprecation error! Your INI file contains the parameter Insects::WingShape. This parameter has been removed and replaced
             by individual shape parameters for each wing: [WingShapeR, WingShapeL, WingShape2R, WingShape2L]. Please modify the INI file,
@@ -302,8 +332,8 @@ def check_parameters_for_stupid_errors( file ):
             
         # check if wing shape files are present in simulation folder
         for wing_side, code in zip(['RightWing', 'LeftWing', 'RightWing2', 'LeftWing2'], ['R','L','2R','2L']):        
-            if get_ini_parameter(file, 'Insects', wing_side, bool, default=False):
-                WingShape = get_ini_parameter( file, 'Insects', 'WingShape'+code, str, default='UNKNOWN')
+            if get_ini_parameter(file, section_insect, wing_side, bool, default=False):
+                WingShape = get_ini_parameter( file, section_insect, 'WingShape'+code, str, default='UNKNOWN')
                 label = "WingShape"+code
                 print("  %s = %s" % (label.ljust(25), WingShape))
                 
@@ -325,15 +355,15 @@ def check_parameters_for_stupid_errors( file ):
         #----------------------------------------------------------------------
         for wing, wing_side in zip(['right', 'left', 'right2', 'left2'], ['RightWing','LeftWing','RightWing2','LeftWing2']):  
             # is the wing used?
-            if get_ini_parameter(file, 'Insects', wing_side, bool, default=False): 
+            if get_ini_parameter(file, section_insect, wing_side, bool, default=False): 
                 # yes its used
-                wing_motion = get_ini_parameter( file, 'Insects', 'FlappingMotion_'+wing, str, default='none')
+                wing_motion = get_ini_parameter( file, section_insect, 'FlappingMotion_'+wing, str, default='none')
                 
                 label = 'FlappingMotion_'+wing
                 print("  %s = %s " % (label.ljust(25), wing_motion))
                 
                 if wing_motion == 'kinematics_loader':
-                    kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, default='')
+                    kineloader_file = get_ini_parameter( file, section_insect, 'infile_kineloader', str, default='')
                                         
                     if kineloader_file == '':
                         bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
@@ -348,11 +378,11 @@ def check_parameters_for_stupid_errors( file ):
                     if not os.path.isfile(fname):
                         bcolors.err('WingKinematics file %s not found !' % (fname) )
                     
-        if exists_ini_parameter(file, 'Insects', 'L_chord'):
+        if exists_ini_parameter(file, section_insect, 'L_chord'):
             bcolors.warn("Deprecated (unused) parameter found: Insects::L_chord")
-        if exists_ini_parameter(file, 'Insects', 'L_span'):
+        if exists_ini_parameter(file, section_insect, 'L_span'):
             bcolors.warn("Deprecated (unused) parameter found: Insects::L_span")
-        if exists_ini_parameter(file, 'Insects', 'infile'):
+        if exists_ini_parameter(file, section_insect, 'infile'):
             bcolors.err("Deprecated parameter found: Insects::infile WILL CAUSE ABORT; REMOVE! (or call insect-migration-assistant.py)")
              
                 
@@ -360,26 +390,26 @@ def check_parameters_for_stupid_errors( file ):
             bcolors.warn(""" 11/2025: We have encountered problems when combining refinement_indicator=significant and time_step_method=RungeKuttaChebychev.
             Combining those is no longer recommended - we now recommend you use RungeKuttaGeneric or even consider using refine_everywhere strategy.""")
     
-    
-    if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
-        # we use a fractal tree
-        file_tree = get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str)
-        if not os.path.isfile(file_tree):
-            bcolors.err('Fractal tree module in use but input file not found: '+file_tree)
+    # NEEDS TO BE REDONE FOR NEW INI FILES
+    # if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
+    #     # we use a fractal tree
+    #     file_tree = get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str)
+    #     if not os.path.isfile(file_tree):
+    #         bcolors.err('Fractal tree module in use but input file not found: '+file_tree)
         
-        d_tree = np.loadtxt(get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str), comments="%")
-        d_tree *= get_ini_parameter(file, 'Insects', 'fractal_tree_scaling')
+    #     d_tree = np.loadtxt(get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str), comments="%")
+    #     d_tree *= get_ini_parameter(file, 'Insects', 'fractal_tree_scaling')
         
-        # file contains radius not diameter
-        D_min = 2.0*np.min(d_tree[:,6])
-        D_max = 2.0*np.max(d_tree[:,6])
-        # tree height
-        H_tree = np.max(d_tree[:,5])-np.min(d_tree[:,2])
+    #     # file contains radius not diameter
+    #     D_min = 2.0*np.min(d_tree[:,6])
+    #     D_max = 2.0*np.max(d_tree[:,6])
+    #     # tree height
+    #     H_tree = np.max(d_tree[:,5])-np.min(d_tree[:,2])
         
-        print('\n-- fractal tree:')
-        print('   Dmin=%f (%2.2f dx) Dmax=%f (%2.2f dx)' %(D_min, D_min/dx, D_max, D_max/dx))
-        print('   H_tree=%f H_tree/dx=%2.1f' % (H_tree, H_tree/dx)  )
-        print('')
+    #     print('\n-- fractal tree:')
+    #     print('   Dmin=%f (%2.2f dx) Dmax=%f (%2.2f dx)' %(D_min, D_min/dx, D_max, D_max/dx))
+    #     print('   H_tree=%f H_tree/dx=%2.1f' % (H_tree, H_tree/dx)  )
+    #     print('')
     
     print("======================================================================================")
     
@@ -415,13 +445,7 @@ def check_parameters_for_stupid_errors( file ):
     if g < g_default:
         bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
         
-    if geometry == "Insect":
-        x0_insect = get_ini_parameter( file, 'Insects', 'x0', float, vector=True, default=L/2.0)
-        
-        if any(x0_insect>L) or any(x0_insect<0):
-            print(x0_insect)
-            print(L)
-            bcolors.err('Insect placed outside of domain?' )
+
             
     if penalized and adapt_inicond != 1 and jini < jmax:
         bcolors.err("""It is strongly discouraged to use adapt_inicond=0 when using penalization,
@@ -755,7 +779,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
             
         # first row, if found keyword.
         if found_section:
-            if keyword+"=" in line:
+            if line.startswith( keyword+"=" ):
                 # remove first vct=
                 line = line.replace(keyword+"=", "")
                 
@@ -1285,7 +1309,10 @@ def find_WABBIT_main_inifile(run_directory='./', verbose=False):
 def insect_INI_migration(file):
     import os
     
-    if "Insect" not in get_ini_parameter( file, 'VPM', 'geometry', str, default='default') and "Insect" not in get_ini_parameter( file, 'VPM', 'geometries', str, default='default'):
+    geometry   = get_ini_parameter( file, 'VPM', 'geometry', str, default='default')
+    geometries = get_ini_parameter( file, 'VPM', 'geometries', str, default='default')
+    
+    if "Insect".lower() not in geometry.lower() and "Insect".lower() not in geometries.lower():
         raise ValueError("This INI file does not seem to concern an Insect simulation.")
     
     # root_folder = os.path.dirname(file)+'/'        
