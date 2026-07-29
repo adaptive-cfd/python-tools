@@ -192,11 +192,24 @@ def check_parameters_for_stupid_errors( file ):
     uinfty_mag = np.linalg.norm(np.asarray(uinfty))
     print('\n-- ACM')
     print("   nu = %2.2e   Re0=1/nu = %2.2e   C_0 = %2.2e   u_infty = %2.2e   Mach = %2.2e" % (nu, 1.0/nu if nu != 0 else 1e200, c0, uinfty_mag, uinfty_mag/c0))
-    
+    col = bcolors.WARNING if skew_symmetry == 0 else bcolors.OKBLUE
+    txt = " !!! unusual !!!" if skew_symmetry == 0 else ""
+    print("   skew_symmetry = %s%i%s%s" % (col, skew_symmetry,txt,bcolors.ENDC))
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- wavelet')
-    print("   C_eps = %2.2e   wavelet = %s  dealias = %i  adapt_tree = %i" % (ceps, wavelet, dealias, adapt_tree))
-    print("   useCoarseExtension = %i useSecurityZone = %i  refinement_indicator = %s" % (useCoarseExtension, useSecurityZone, refinement_indicator))
+    print("   C_eps = %2.2e" % (ceps), end="")
+    print("   wavelet = %s" % ( wavelet), end="")
+    col = bcolors.WARNING if dealias == 1 else bcolors.OKBLUE
+    txt = " !!! unusual !!!" if dealias == 1 else ""
+    print("   dealias = %s%i%s%s" % ( col, dealias, txt, bcolors.ENDC ), end="")
+    col = bcolors.WARNING if adapt_tree == 0 else bcolors.OKBLUE
+    txt = " !!! unusual !!!" if adapt_tree == 0 else ""
+    print("   adapt_tree = %s%i%s%s" % ( col, adapt_tree, txt, bcolors.ENDC ))
+    
+    col = bcolors.WARNING if refinement_indicator == 'everywhere' else bcolors.OKBLUE
+    txt = " !!! unusual !!!"  if refinement_indicator == 'everywhere' else ""
+    print("   useCoarseExtension = %i useSecurityZone = %i  refinement_indicator = %s%s%s%s" % (useCoarseExtension, useSecurityZone, 
+                                                                                              col, refinement_indicator, txt, bcolors.ENDC))
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- penalization')
@@ -214,7 +227,7 @@ def check_parameters_for_stupid_errors( file ):
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if geometry == "Insect":
-        h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, 0.0)
+        h_wing = get_ini_parameter( file, 'Insects', 'WingThickness', float, default=0.0)
         print('\n-- insect')
         if h_wing/dx > 4.5:
             color = bcolors.OKGREEN
@@ -237,7 +250,7 @@ def check_parameters_for_stupid_errors( file ):
             cr2 = bcolors.OKBLUE#'\033[37m'
         if get_ini_parameter(file, 'Insects', 'LeftWing2', bool, default=False):
             cl2 = bcolors.OKBLUE#'\033[37m'    
-        if get_ini_parameter(file, 'Insects', 'BodyType', str, 'nobody') != "nobody":
+        if get_ini_parameter(file, 'Insects', 'BodyType', str, default='nobody') != "nobody":
             cb = bcolors.OKBLUE#'\033[37m'    
         
         print("%s.==-.%s   configuration   %s.-==.%s  " % (cl,coff,cr,coff))
@@ -254,7 +267,7 @@ def check_parameters_for_stupid_errors( file ):
         print("")
         print("")
         
-        body_shape = get_ini_parameter( file, 'Insects', 'BodyType', str, "ellipsoid")[0]
+        body_shape = get_ini_parameter( file, 'Insects', 'BodyType', str, default="ellipsoid")
         print("  %s = %s" % ("BodyShape".ljust(25), body_shape))
         if body_shape == "superSTL":
             bodySTL = root_folder + get_ini_parameter( file, 'Insects', 'BodySuperSTLfile', dtype=str, default="not-given")
@@ -263,11 +276,11 @@ def check_parameters_for_stupid_errors( file ):
 
         
         # when using insects, we may read various extra files. check if they are present.
-        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, 'none')[0]        
+        body_motion   = get_ini_parameter( file, 'Insects', 'BodyMotion', str, default='none')
         print("  %s = %s" % ("BodyMotion".ljust(25), body_motion))
         
         if body_motion == 'kinematics_loader':
-            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
+            kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, default='')
             
             if kineloader_file == '':
                 bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
@@ -285,7 +298,7 @@ def check_parameters_for_stupid_errors( file ):
             bcolors.err("""Deprecation error! Your INI file contains the parameter Insects::WingShape. This parameter has been removed and replaced
             by individual shape parameters for each wing: [WingShapeR, WingShapeL, WingShape2R, WingShape2L]. Please modify the INI file,
             even if all wings are the same shape.\n
-            You can also automatically fix this by calling insect_migration_assistant.py on your file.\n""")
+            You can also automatically fix this by calling insect-migration-assistant.py on your file.\n""")
             
         # check if wing shape files are present in simulation folder
         for wing_side, code in zip(['RightWing', 'LeftWing', 'RightWing2', 'LeftWing2'], ['R','L','2R','2L']):        
@@ -314,13 +327,13 @@ def check_parameters_for_stupid_errors( file ):
             # is the wing used?
             if get_ini_parameter(file, 'Insects', wing_side, bool, default=False): 
                 # yes its used
-                wing_motion = get_ini_parameter( file, 'Insects', 'FlappingMotion_'+wing, str, 'none')[0]
+                wing_motion = get_ini_parameter( file, 'Insects', 'FlappingMotion_'+wing, str, default='none')
                 
                 label = 'FlappingMotion_'+wing
                 print("  %s = %s " % (label.ljust(25), wing_motion))
                 
                 if wing_motion == 'kinematics_loader':
-                    kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, '')
+                    kineloader_file = get_ini_parameter( file, 'Insects', 'infile_kineloader', str, default='')
                                         
                     if kineloader_file == '':
                         bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
@@ -340,7 +353,7 @@ def check_parameters_for_stupid_errors( file ):
         if exists_ini_parameter(file, 'Insects', 'L_span'):
             bcolors.warn("Deprecated (unused) parameter found: Insects::L_span")
         if exists_ini_parameter(file, 'Insects', 'infile'):
-            bcolors.err("Deprecated parameter found: Insects::infile WILL CAUSE ABORT; REMOVE! (or call insect_migration_assistant.py)")
+            bcolors.err("Deprecated parameter found: Insects::infile WILL CAUSE ABORT; REMOVE! (or call insect-migration-assistant.py)")
              
                 
         if time_step_method == 'RungeKuttaChebychev' and refinement_indicator == 'significant':
@@ -416,6 +429,8 @@ def check_parameters_for_stupid_errors( file ):
           An alternative is to start from the finest, equidistant grid by setting ini_treelevel==max_treelevel,
           but that possibility is expensive (full memory required on startup).\n""")
             
+    if refinement_indicator == "everywhere":
+        bcolors.warn("Your refinement indicator is EVERYWHERE, which is unusual - are you sure you'd not rather use SIGNIFICANT ?")
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
@@ -621,6 +636,8 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
     if not os.path.isfile(inifile):
         raise ValueError("Stupidest error of all: we did not find the INI file.")
 
+    if not isinstance(vector, bool):
+        raise ValueError("get_ini_parameter is called incorrectly (maybe you forgot to set defaul= in the call?")
 
     # a matrix is something that starts with (/ (FORTRAN style) and it extends
     # over many lines. this is incompatible with the python ini files parser
