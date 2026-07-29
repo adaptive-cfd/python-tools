@@ -1285,7 +1285,7 @@ def find_WABBIT_main_inifile(run_directory='./', verbose=False):
 def insect_INI_migration(file):
     import os
     
-    if "Insect" not in get_ini_parameter( file, 'VPM', 'geometry', str, default='default'):
+    if "Insect" not in get_ini_parameter( file, 'VPM', 'geometry', str, default='default') and "Insect" not in get_ini_parameter( file, 'VPM', 'geometries', str, default='default'):
         raise ValueError("This INI file does not seem to concern an Insect simulation.")
     
     # root_folder = os.path.dirname(file)+'/'        
