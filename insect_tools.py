@@ -2495,7 +2495,7 @@ def wing_contour_from_file(fname, N=1024):
             
         elif wtype == 'polygon':
             # polygon wings directly contain the wing contour
-            xy = inifile_tools.get_ini_parameter("bumblebee_wing_polygon.ini", "Wing", 'polygon_points', matrix=True)
+            xy = inifile_tools.get_ini_parameter(fname, "Wing", 'polygon_points', matrix=True)
             xc, yc = xy[:,0].copy(), xy[:,1].copy()            
             area = Polygon( zip(xc,yc) ).area
             
