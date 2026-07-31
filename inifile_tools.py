@@ -341,13 +341,6 @@ def check_parameters_for_stupid_errors( file ):
                     WingShape = root_folder + WingShape.replace("from_file::","")                
                     if not os.path.isfile(WingShape):                        
                         bcolors.err('WingShape file %s not found !' % (WingShape) )
-                    else:
-                        # for polygon wing, check spacing
-                        xc, yc, area = insect_tools.wing_contour_from_file(WingShape)
-                        ds = np.sqrt( (xc[1:]-xc[0:-1])**2 + (yc[1:]-yc[0:-1])**2 )
-                        
-                        print("                            Polygon wing ds_max=%2.2e ds_min=%2.2e ds_mean=%2.2e" % (np.max(ds),np.min(ds),np.mean(ds)))
-                
                         
    
         #----------------------------------------------------------------------

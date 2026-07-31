@@ -2639,6 +2639,95 @@ def compute_wing_geom_factors(fname):
     return area, S1, S2
 
 
+def write_polygon_wing(fname, xc, yc, simplify=True):
+    # Given the polygon wing, write the INI file for WABBIT
+    import shapely
+    
+    # periodization
+    if abs(xc[0]-xc[-1]) > 1.0e-12:
+        xc = np.hstack( (xc,xc[0]))
+        yc = np.hstack( (yc,yc[0]))
+    
+    # construct a polygon
+    poly = shapely.Polygon( zip(xc,yc) )
+    # and use build-in intelligent function to simplify it.
+    if simplify:
+        poly = poly.simplify(tolerance=0.001, preserve_topology=True)  
+    
+    
+    # construct array with polygon data points
+    dat = np.asarray(poly.exterior.coords)
+    # and convert it to a long, long string with '\n' characters. This is a requirement
+    # for calling replace_ini_value below.
+    data = "(/"
+    for i in range(dat.shape[0]-1):
+        data = data + "%e %e\n" % (dat[i,0], dat[i,1])
+    data = data + "%e %e/)" % (dat[-1,0], dat[-1,1])
+        
+    # write the INI file
+    f = open( fname, 'w' ) #open file, erase existing
+    f.write("[Wing]\n")
+    f.write("type=polygon;\n")
+    f.write("polygon_points="+data)
+    f.close()
+
+def convert_to_polygon_wing(fname, fname_out):
+    import shapely
+    import os
+    import inifile_tools
+    import matplotlib.pyplot as plt
+    
+    # get contour from current model
+    xc, yc, area = wing_contour_from_file(fname)
+    # periodization
+    if abs(xc[0]-xc[-1]) > 1.0e-12:
+        xc = np.hstack( (xc,xc[0]))
+        yc = np.hstack( (yc,yc[0]))
+    
+    # construct a polygon
+    poly = shapely.Polygon( zip(xc,yc) )
+    # and use build-in intelligent function to simplify it.
+    poly_simplified = poly.simplify(tolerance=0.001, preserve_topology=True)   
+    
+    N1 = len(poly.exterior.coords)
+    N2 = len(poly_simplified.exterior.coords)    
+    
+    plt.figure()
+    plt.plot( np.asarray(poly.exterior.coords)[:,0], 
+              np.asarray(poly.exterior.coords)[:,1], '.-', label='input N=%i' % (N1))
+    plt.plot( np.asarray(poly_simplified.exterior.coords)[:,0], 
+              np.asarray(poly_simplified.exterior.coords)[:,1], 'o-', label='simplified N=%i' % (N2), 
+              mfc='none')
+    plt.legend()
+    plt.grid()
+    plt.axis("equal")
+    
+    # construct array with polygon data points
+    dat = np.asarray(poly_simplified.exterior.coords)
+    # and convert it to a long, long string with '\n' characters. This is a requirement
+    # for calling replace_ini_value below.
+    data = "(/"
+    for i in range(dat.shape[0]-1):
+        data = data + "%e %e\n" % (dat[i,0], dat[i,1])
+    data = data + "%e %e/)" % (dat[-1,0], dat[-1,1])
+    
+    # copy the input file, this way other settings and comments are preserved
+    os.system('cp %s %s' % (fname, fname_out))
+    
+    inifile_tools.replace_ini_value(fname_out, "Wing", 'type', 'polygon')
+    # because adding a parameter to the end of an INI file does not work (bug)
+    with open(fname_out, 'a') as file:
+        file.write('polygon_points=;\n')
+    inifile_tools.replace_ini_value(fname_out, "Wing", 'polygon_points', data)
+    
+    inifile_tools.delete_ini_value(fname_out, "Wing", 'x0w')
+    inifile_tools.delete_ini_value(fname_out, "Wing", 'y0w')
+    
+    inifile_tools.delete_ini_value(fname_out, "Wing", 'a0_wings')
+    inifile_tools.delete_ini_value(fname_out, "Wing", 'ai_wings')
+    inifile_tools.delete_ini_value(fname_out, "Wing", 'bi_wings')
+    
+
 def simplify_polygon_wing(fname, fname_out, tol=0.001):
     """
     Takes an existing WING INI file that describes a polygon wing, and simplifies it to fewer points.
@@ -2652,14 +2741,19 @@ def simplify_polygon_wing(fname, fname_out, tol=0.001):
     import inifile_tools
     import matplotlib.pyplot as plt
     
+    # get contour from current model
     xc, yc, area = wing_contour_from_file(fname)
     # periodization
-    xc = np.hstack( (xc,xc[0]))
-    yc = np.hstack( (yc,yc[0]))
+    if abs(xc[0]-xc[-1]) > 1.0e-12:
+        xc = np.hstack( (xc,xc[0]))
+        yc = np.hstack( (yc,yc[0]))
     
+    # construct a polygon
     poly = shapely.Polygon( zip(xc,yc) )
+    # and use build-in intelligent function to simplify it.
     poly_simplified = poly.simplify(tolerance=tol, preserve_topology=True)
     
+    # copy the input file, this way other settings and comments are preserved
     os.system('cp %s %s' %(fname,fname_out))
     
     N1 = len(poly.exterior.coords)
@@ -2667,7 +2761,10 @@ def simplify_polygon_wing(fname, fname_out, tol=0.001):
     
     print("Simplified polygon shape from %i to %i points" % (N1, N2))
     
+    # construct array with polygon data points
     dat = np.asarray(poly_simplified.exterior.coords)
+    # and convert it to a long, long string with '\n' characters. This is a requirement
+    # for calling replace_ini_value below.
     data = "(/"
     for i in range(dat.shape[0]-1):
         data = data + "%e %e\n" % (dat[i,0], dat[i,1])
