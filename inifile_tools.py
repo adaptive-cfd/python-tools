@@ -103,6 +103,8 @@ def check_parameters_for_stupid_errors( file ):
     coarsening_indicator = get_ini_parameter(file, 'Blocks', 'coarsening_indicator', str, default='threshold-state-vector')
     dim             = get_ini_parameter(file, 'Domain', 'dim', int)
     L               = get_ini_parameter(file, 'Domain', 'domain_size', vector=True)
+    L_crop_min      = get_ini_parameter(file, 'Domain', 'domain_cropping_min', vector=True, default=np.array([0.0]*dim), keyword_legacy="domain_slice_min")
+    L_crop_max      = get_ini_parameter(file, 'Domain', 'domain_cropping_max', vector=True, default=np.array([1.0]*dim), keyword_legacy="domain_slice_max")
     discretization  = get_ini_parameter(file, 'Discretization', 'order_discretization', str)
     physics_type    = get_ini_parameter(file, 'Physics', 'physics_type', str)
     time_step_method = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
@@ -148,6 +150,10 @@ def check_parameters_for_stupid_errors( file ):
     useSecurityZone    = get_ini_parameter(file, 'Blocks', 'useSecurityZone', int, default=0)
     threshold_state_vector_component = get_ini_parameter(file, 'Blocks', 'threshold_state_vector_component', int, vector=True, default=[])
 
+    # free flight
+    physics_free_flight   = get_ini_parameter( file, 'FreeFlightSolver', 'use_free_flight_solver', bool, default=0)
+    timestepper_free_flight = "FSI" in time_stepper
+
     # scalars
     use_passive_scalar = get_ini_parameter(file, 'Scalars', 'use_passive_scalar', int, default=0)
     N_scalars = get_ini_parameter(file, 'Scalars', 'N_scalars', int, default=0)
@@ -166,9 +172,10 @@ def check_parameters_for_stupid_errors( file ):
     
     dx = L[0]*2**-jmax/(bs[0])
     keta = np.sqrt(ceta*nu)/dx
-    
-    dxdydz = L*(2**-jmax)/bs
-    
+
+    dxdydz = L[:dim]*(2**-jmax)/bs[:dim]
+    if dim == 2: dxdydz = np.append(dxdydz, 0.0)
+
     print("======================================================================================")
     print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
           (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
@@ -185,8 +192,8 @@ def check_parameters_for_stupid_errors( file ):
     
     if abs(dxdydz[0]-dxdydz[1])>1.0e-10 or abs(dxdydz[0]-dxdydz[2])>1.0e-10 or abs(dxdydz[2]-dxdydz[1])>1.0e-10:
         print('\nResolution is not isotropic. dx=(/ %e , %e , %e /)' % (dxdydz[0],dxdydz[1],dxdydz[2]))
-        print('N_equi = (/ %i , %i , %i /)' % (int(L[0]/dxdydz[0]), int(L[1]/dxdydz[1]), int(L[2]/dxdydz[2]) ))
-        print('K_eta = (/ %f , %f , %f /)\n' % (np.sqrt(ceta*nu)/dxdydz[0], np.sqrt(ceta*nu)/dxdydz[1], np.sqrt(ceta*nu)/dxdydz[2]))
+        print('N_equi = (/ %i , %i , %i /)' % (int(L[0]/dxdydz[0]), int(L[1]/dxdydz[1]), int(L[2]/dxdydz[2]) if dim==3 else 0))
+        print('K_eta = (/ %f , %f , %f /)\n' % (np.sqrt(ceta*nu)/dxdydz[0], np.sqrt(ceta*nu)/dxdydz[1], np.sqrt(ceta*nu)/dxdydz[2] if dim==3 else 0))
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
@@ -194,8 +201,11 @@ def check_parameters_for_stupid_errors( file ):
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     print('\n-- grid')
-    print("   Bs = (%i %i %i)  L=(%2.1f, %2.1f, %2.1f)   Jmin = %i   Jmax = %i   N = %i per unit length" % 
-          ( bs[0], bs[1], bs[2], L[0], L[1], L[2], jmin, jmax, int(1.0/dx)))
+    print("   Bs = (%i %i %i)  L=(%2.1f, %2.1f, %2.1f) V=%2.1f   Jmin = %i   Jmax = %i   N = %i per unit length" % 
+          ( bs[0], bs[1], bs[2], L[0], L[1], L[2] if dim==3 else 0, np.prod(L[:dim]), jmin, jmax, int(1.0/dx)))
+    if np.any(L_crop_min > 0) or np.any(L_crop_max < 1):
+        print("   domain is cropped to: (%2.2f, %2.2f, %2.2f) - (%2.2f, %2.2f, %2.2f) with active volume = %2.2f" % 
+              (L_crop_min[0]*L[0], L_crop_min[1]*L[1], L_crop_min[2]*L[2] if dim==3 else 0, L_crop_max[0]*L[0], L_crop_max[1]*L[1], L_crop_max[2]*L[2] if dim==3 else 0, np.prod(L[:dim] * (L_crop_max[:dim] - L_crop_min[:dim]))))
     print("   Nequi = %i**%i up to %i**%i" % (int(bs[0]*2**jmin), dim, int(bs[0]*2**jmax), dim) )
     print("   Péclet = c0*dx_min/nu = %f" %(c0*dx/nu))
     
@@ -242,32 +252,45 @@ def check_parameters_for_stupid_errors( file ):
     #                                     INSECTS
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if geometries[0].lower() == "Insect".lower():
-        
-        if exists_ini_section(file, 'Insects'):
-            section_insect = 'Insects'
-        elif exists_ini_section(file, 'Insect1'): 
-            section_insect = 'Insect1'
-        else:
-            raise ValueError("It seems at least one geometry for the INI file is an insect, but we found neither [Insects] (old syntax) nor [Insect1] (new syntax)")
-        
-        h_wing = get_ini_parameter( file, section_insect, 'WingThickness', float, default=0.0)
-        print('\n-- insect')
+    # loop over all geometries and check if it an insect
+    insect_id = 1
+    for i_geom, geom in enumerate(geometries):
+        if geom != "Insect": continue
 
+        # we have an insect, check in what section it is
+        insect_section = f"Insect{insect_id}"
+        if insect_id == 1:
+            insect_section = "Insects"
+            if not section_exists(file, insect_section): insect_section = f"Insect{insect_id}"
+        else: insect_section = f"Insect{insect_id}"
+        if not section_exists(file, insect_section):
+            bcolors.err(f"Insect {insect_id} is set but we did not find section [{insect_section}] in the ini file! Check if you have a section for this insect and if it is correctly named.")
+            continue
+
+        h_wing = get_ini_parameter( file, insect_section, 'WingThickness', float, 0.0)
+        print(f'\n-- insect {insect_id}')
+        if h_wing/dx > 4.5:
+            color = bcolors.OKGREEN
+        elif h_wing/dx <= 4.5 and h_wing/dx >= 3.49:
+            color = bcolors.WARNING
+        else:
+            color = bcolors.FAIL
+            
+        print('   h_wing/dx = %s%2.2f%s' % (color, h_wing/dx, bcolors.ENDC))
         print('')
         
         coff = bcolors.ENDC        
         cl,cr,cr2,cl2,cb = '\033[30m','\033[30m','\033[30m','\033[30m','\033[30m'
         
-        if get_ini_parameter(file, section_insect, 'RightWing', bool, default=False):
+        if get_ini_parameter(file, insect_section, 'RightWing', bool, default=False):
             cr = bcolors.OKBLUE# '\033[37m'
-        if get_ini_parameter(file, section_insect, 'LeftWing', bool, default=False):
+        if get_ini_parameter(file, insect_section, 'LeftWing', bool, default=False):
             cl = bcolors.OKBLUE#'\033[37m'
-        if get_ini_parameter(file, section_insect, 'RightWing2', bool, default=False):
+        if get_ini_parameter(file, insect_section, 'RightWing2', bool, default=False):
             cr2 = bcolors.OKBLUE#'\033[37m'
-        if get_ini_parameter(file, section_insect, 'LeftWing2', bool, default=False):
+        if get_ini_parameter(file, insect_section, 'LeftWing2', bool, default=False):
             cl2 = bcolors.OKBLUE#'\033[37m'    
-        if get_ini_parameter(file, section_insect, 'BodyType', str, default='nobody') != "nobody":
+        if get_ini_parameter(file, insect_section, 'BodyType', str, 'nobody') != "nobody":
             cb = bcolors.OKBLUE#'\033[37m'    
         
         print("%s.==-.%s   configuration   %s.-==.%s  " % (cl,coff,cr,coff))
@@ -281,52 +304,61 @@ def check_parameters_for_stupid_errors( file ):
         print("  %s (O :8 ::/ %s%s\\_/%s%s \\:: 8: O) %s" % (cl2,coff, cb, coff, cr2, coff))      
         print("  %s  \\O `::/ %s    %s  \\::' O/%s" % (cl2,coff, cr2, coff))
         print("  %s   ''--'  %s     %s  `--''%s" % (cl2,coff, cr2, coff))
-        print("")
-        print("")
-        
-        body_shape = get_ini_parameter( file, section_insect, 'BodyType', str, default="ellipsoid")
-        print("  %s = %s" % ("BodyShape".ljust(25), body_shape))
-        if body_shape == "superSTL":
-            bodySTL = root_folder + get_ini_parameter( file, section_insect, 'BodySuperSTLfile', dtype=str, default="not-given")
-            if not os.path.isfile(bodySTL):
-                bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
 
         
         # when using insects, we may read various extra files. check if they are present.
-        body_motion   = get_ini_parameter( file, section_insect, 'BodyMotion', str, default='none')
-        print("  %s = %s" % ("BodyMotion".ljust(25), body_motion))
+        body_motion   = get_ini_parameter( file, insect_section, 'BodyMotion', str, 'none')[0]
+        wing_motion_L = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, 'none')[0]
+        wing_motion_R = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, 'none')[0]
+        WingShape = get_ini_parameter( file, insect_section, 'WingShape', str, 'none')[0]
+        print("")
+        print("")
+        print("   BodyMotion           = %s" % (body_motion))
+        print("   FlappingMotion_left  = %s" % (wing_motion_L))
+        print("   FlappingMotion_right = %s" % (wing_motion_R))
+        print("   WingShape            = %s" % (WingShape))
+        print("")
         
-        if body_motion == 'kinematics_loader':
-            kineloader_file = get_ini_parameter( file, section_insect, 'infile_kineloader', str, default='')
+        if body_motion == 'kinematics_loader' or wing_motion_L=='kinematics_loader' or wing_motion_R=='kinematics_loader':
+            print( "   kineloader is used !")
+            kineloader_file = get_ini_parameter( file, insect_section, 'infile_kineloader', str, '')
             
             if kineloader_file == '':
-                bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
+                bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
             
             if not os.path.isfile(root_folder+kineloader_file):
-                bcolors.err('Kineloader used file not found ! \n infile=%s' % (kineloader_file) )
- 
+                bcolors.err('Kineloader used file not found ! body_motion=%s wing_motion=(%s  %s)\n infile=%s' % (body_motion, wing_motion_L, wing_motion_R, kineloader_file) )
 
-        x0_insect = get_ini_parameter( file, section_insect, 'x0', float, vector=True, default=L/2.0)
-        if any(x0_insect>L) or any(x0_insect<0):
-            print(x0_insect)
-            print(L)
-            bcolors.err('Insect placed outside of domain?' )
-                
-        #----------------------------------------------------------------------
-        # wing shape
-        #----------------------------------------------------------------------
-        # old parameter form, removed
-        WingShape = get_ini_parameter( file, section_insect, 'WingShape', str, default='UNKNOWN')
-        if WingShape != 'UNKNOWN':            
-            bcolors.err("""Deprecation error! Your INI file contains the parameter Insects::WingShape. This parameter has been removed and replaced
-            by individual shape parameters for each wing: [WingShapeR, WingShapeL, WingShape2R, WingShape2L]. Please modify the INI file,
-            even if all wings are the same shape.\n
-            You can also automatically fix this by calling insect-migration-assistant.py on your file.\n""")
+        if wing_motion_L=='from_file' or wing_motion_R=='from_file':
+            kineloader_file = get_ini_parameter( file, insect_section, 'infile', str, '')
+            print( f"   wing kinematics from file is used ! infile={kineloader_file}")
+            if kineloader_file == '':
+                bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
+            
+            if not os.path.isfile(root_folder+kineloader_file):
+                bcolors.err('Kineloader used file not found ! wing_motion=(%s  %s)\n infile=%s' % (wing_motion_L, wing_motion_R, kineloader_file) )
+
+        if body_motion == 'free_flight':
+            print( "   free flight is used ! use_free_flight_solver=%i, timestepper=%s" % (physics_free_flight, time_step_method))
+            if not physics_free_flight:
+                bcolors.err('Free flight is used but use_free_flight_solver=0 in [FreeFlightSolver] section!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
+            if not timestepper_free_flight:
+                bcolors.err('Free flight is used but time_step_method does not contain FSI!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
+
+        if get_ini_parameter( file, insect_section, 'BodyType', str, "ellipsoid") == "superSTL":
+            bodySTL = root_folder + get_ini_parameter( file, insect_section, 'BodySuperSTLfile', dtype=str, default="not-given")
+            if not os.path.isfile(bodySTL):
+                bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
+            else:
+                print('BodySuperSTLfile file found !')
+
+        if "from_file::" in WingShape:
+            WingShape = root_folder + WingShape.replace("from_file::","")
             
         # check if wing shape files are present in simulation folder
         for wing_side, code in zip(['RightWing', 'LeftWing', 'RightWing2', 'LeftWing2'], ['R','L','2R','2L']):        
-            if get_ini_parameter(file, section_insect, wing_side, bool, default=False):
-                WingShape = get_ini_parameter( file, section_insect, 'WingShape'+code, str, default='UNKNOWN')
+            if get_ini_parameter(file, insect_section, wing_side, bool, default=False):
+                WingShape = get_ini_parameter( file, insect_section, 'WingShape'+code, str, default='UNKNOWN')
                 label = "WingShape"+code
                 print("  %s = %s" % (label.ljust(25), WingShape), end='')
                 
@@ -336,7 +368,7 @@ def check_parameters_for_stupid_errors( file ):
                     if not os.path.isfile(WingShape):                        
                         bcolors.err('WingShape file %s not found !' % (WingShape) )
                         
-                    hw = get_ini_parameter( WingShape, section_insect, "wing_thickness_value", default=h_wing)
+                    hw = get_ini_parameter( WingShape, insect_section, "wing_thickness_value", default=h_wing)
                     
                 # display wing thickness in grid points and color for unusual values (not an absolute criterion, though)
                 if h_wing/dx > 4.5:
@@ -354,15 +386,15 @@ def check_parameters_for_stupid_errors( file ):
         #----------------------------------------------------------------------
         for wing, wing_side in zip(['right', 'left', 'right2', 'left2'], ['RightWing','LeftWing','RightWing2','LeftWing2']):  
             # is the wing used?
-            if get_ini_parameter(file, section_insect, wing_side, bool, default=False): 
+            if get_ini_parameter(file, insect_section, wing_side, bool, default=False): 
                 # yes its used
-                wing_motion = get_ini_parameter( file, section_insect, 'FlappingMotion_'+wing, str, default='none')
+                wing_motion = get_ini_parameter( file, insect_section, 'FlappingMotion_'+wing, str, default='none')
                 
                 label = 'FlappingMotion_'+wing
                 print("  %s = %s " % (label.ljust(25), wing_motion))
                 
                 if wing_motion == 'kinematics_loader':
-                    kineloader_file = get_ini_parameter( file, section_insect, 'infile_kineloader', str, default='')
+                    kineloader_file = get_ini_parameter( file, insect_section, 'infile_kineloader', str, default='')
                                         
                     if kineloader_file == '':
                         bcolors.err('Kineloader used but no file given (Insects::infile_kineloader) !')
@@ -377,11 +409,11 @@ def check_parameters_for_stupid_errors( file ):
                     if not os.path.isfile(fname):
                         bcolors.err('WingKinematics file %s not found !' % (fname) )
                     
-        if exists_ini_parameter(file, section_insect, 'L_chord'):
+        if exists_ini_parameter(file, insect_section, 'L_chord'):
             bcolors.warn("Deprecated (unused) parameter found: Insects::L_chord")
-        if exists_ini_parameter(file, section_insect, 'L_span'):
+        if exists_ini_parameter(file, insect_section, 'L_span'):
             bcolors.warn("Deprecated (unused) parameter found: Insects::L_span")
-        if exists_ini_parameter(file, section_insect, 'infile'):
+        if exists_ini_parameter(file, insect_section, 'infile'):
             bcolors.err("Deprecated parameter found: Insects::infile WILL CAUSE ABORT; REMOVE! (or call insect-migration-assistant.py)")
              
                 
@@ -389,15 +421,23 @@ def check_parameters_for_stupid_errors( file ):
             bcolors.warn(""" 11/2025: We have encountered problems when combining refinement_indicator=significant and time_step_method=RungeKuttaChebychev.
             Combining those is no longer recommended - we now recommend you use RungeKuttaGeneric or even consider using refine_everywhere strategy.""")
     
-    # NEEDS TO BE REDONE FOR NEW INI FILES
-    # if penalized and geometry=='Insect' and get_ini_parameter(file, 'Insects', 'fractal_tree', dtype=bool, default=False ):
-    #     # we use a fractal tree
-    #     file_tree = get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str)
+        x0_insect = get_ini_parameter( file, insect_section, 'x0', float, vector=True, default=L/2.0)
+        if any(x0_insect>L_crop_max*L) or any(x0_insect<L_crop_min*L):
+            print(x0_insect)
+            print(L)
+            bcolors.err('Insect placed outside of domain?' )
+        
+        # now, at last, we need to increment insect_id for the next insect, if any
+        insect_id += 1
+    
+    # if penalized and np.any(geometries=='primitives-collection'):
+    #     # MAYBE we use a fractal tree, let's check for now
+    #     file_tree = get_ini_parameter(file, insect_section, 'fractal_tree_file', dtype=str)
     #     if not os.path.isfile(file_tree):
     #         bcolors.err('Fractal tree module in use but input file not found: '+file_tree)
         
-    #     d_tree = np.loadtxt(get_ini_parameter(file, 'Insects', 'fractal_tree_file', dtype=str), comments="%")
-    #     d_tree *= get_ini_parameter(file, 'Insects', 'fractal_tree_scaling')
+    #     d_tree = np.loadtxt(get_ini_parameter(file, insect_section, 'fractal_tree_file', dtype=str), comments="%")
+    #     d_tree *= get_ini_parameter(file, insect_section, 'fractal_tree_scaling')
         
     #     # file contains radius not diameter
     #     D_min = 2.0*np.min(d_tree[:,6])
@@ -416,15 +456,23 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.err('For stability it is recommended to set useCoarseExtension=1 and useSecurityZone=1')
     
     Neqn_expected = dim + 1 + (use_passive_scalar*N_scalars) + (time_statistics*N_time_statistics)
+    Neqn_expected_rhs = dim + 1 + (use_passive_scalar*N_scalars)
     if physics_type == 'ACM-new' and Neqn != Neqn_expected:
         bcolors.err(
             f"For {dim}D ACM, you MUST set number_equations={Neqn_expected} (ux,uy{',uz' if dim == 3 else ''},p"
             f"{',' + str(N_scalars) + ' scalars' if use_passive_scalar else ''}"
             f"{',' + str(N_time_statistics) + ' time_statistics' if time_statistics else ''})"
         )
+    if physics_type == 'ACM-new' and Neqn_rhs != Neqn_expected_rhs:
+        bcolors.err(
+            f"For {dim}D ACM, you MUST set number_equations_rhs={Neqn_expected_rhs} (ux,uy{',uz' if dim == 3 else ''},p"
+            f"{',' + str(N_scalars) + ' scalars' if use_passive_scalar else ''})"
+        )
     if adapt_tree and coarsening_indicator == 'threshold-state-vector':
         if len(threshold_state_vector_component) != Neqn:
             bcolors.err("You use the 'threshold-state-vector' coarsening indicator, so you MUST provide a threshold for EACH of the %i equations. You provided %i values." % (Neqn, len(threshold_state_vector_component)) )
+        if np.any(np.array(threshold_state_vector_component) != 1):
+            bcolors.warn("You use the 'threshold-state-vector' coarsening indicator. Any component of threshold_state_vector_component not being 1 is experimental. You should know what you are doing")
    
     if len(bs) > 1:
         bs = bs[0]
@@ -442,7 +490,30 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.warn("Block size Bs=%i too small for wavelet %s to use leaf_first adaption algorithm (Bs=%i). Performance will be slightly reduced" % (bs, wavelet, Bs_leaf_first))
           
     if g < g_default:
-        bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )
+        bcolors.err("Not enough ghost nodes for wavelet %s g=%i < %i" % (wavelet, g, g_default) )      
+
+    ## domain crop checks
+    # check if domain crop is valid
+    if any(L_crop_min < 0) or any(L_crop_max < L_crop_min) or any(L_crop_max > 1):
+        bcolors.err('Domain crop is invalid: domain_crop_min and domain_crop_max have to be in [0,1]')
+    def dyadic_level(x, jmax, tol=1e-10):
+        """Smallest level j<=jmax so that x is an exact multiple of 1/2**j, or None if none exists."""
+        for j in range(jmax + 1):
+            val = x * 2**j
+            if abs(val - round(val)) < tol:
+                return j
+        return None
+
+    levels_min = [dyadic_level(x, jmax) for x in L_crop_min]
+    levels_max = [dyadic_level(x, jmax) for x in L_crop_max]
+
+    # check if domain crop is dyadic, i.e. representable exactly as k/2**j (j<=max_treelevel) on the octree grid
+    if any(l is None for l in levels_min) or any(l is None for l in levels_max):
+        bcolors.err('Domain crop is invalid: domain_crop_min and domain_crop_max have to be dyadic fractions (representable as k/2**j with j<=max_treelevel)')
+    # check if dyadic representation is compatible with min_treelevel
+    level_needed = max(levels_min + levels_max)
+    if level_needed > jmin:
+        bcolors.warn('Level needed for correct crop is: %i, but min_treelevel is %i. This will be automatically adjusted during the simulation.' % (level_needed, jmin))
         
 
             
@@ -607,7 +678,28 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.info("This simulation is being started from initial condition (and not from file)")
 
 #
-def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False ):
+def section_exists( inifile, section ):
+    """
+    Check if a section exists in the ini file.
+    This uses a configparser, which is the standard python module to read ini files. It works with [Section] headers, but the keyword things probably need tweaking?
+    """
+    import configparser
+    import os
+
+    # check if the file exists, at least
+    if not os.path.isfile(inifile):
+        raise ValueError("Stupidest error of all: we did not find the INI file.")
+
+    # initialize parser object
+    config = configparser.ConfigParser(allow_no_value=True)
+    # read (parse) inifile.
+    config.read(inifile)
+
+    return config.has_section(section)
+
+
+#
+def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, default=None, matrix=False, verbose=False, keyword_legacy=[] ):
     """
     From a given ini file, read [Section]::keyword and return the value
     If the value is not found, an error is raised, if no default is given.
@@ -640,6 +732,10 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
                 8,2,2,2/)\n
             Again, the use of commas is optional. The fortran code seems to be more restrictive: I think it
             can only read values separated by a SINGLE SPACE. If one row has a different length, reading will fail.
+        verbose: bool
+            If true, print some information about what is being read.
+        keyword_legacy: list of strings
+            If the keyword is not found, we will also check if any of the legacy keywords are present. This is useful if we renamed a keyword in the ini file, but want to keep backward compatibility.
         default: value
             If the entry in ini file is not found, this value is returned instead. If no default is given, not finding raises ValueError
         
@@ -657,7 +753,7 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
 
     # check if the file exists, at least
     if not os.path.isfile(inifile):
-        raise ValueError("Stupidest error of all: we did not find the INI file.")
+        raise ValueError(f"Stupidest error of all: we did not find the INI file: {inifile}")
 
     if not isinstance(vector, bool):
         raise ValueError("get_ini_parameter is called incorrectly (maybe you forgot to set defaul= in the call?")
@@ -697,13 +793,14 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
                 
             # first row, if found keyword.
             if found_section:
-                if keyword+"=" in line:
+                if line.startswith(keyword+"=") or any([line.startswith(k+"=") for k in keyword_legacy]):
+                    keyword_found = keyword if line.startswith(keyword+"=") else [k for k in keyword_legacy if line.startswith(k+"=")][0]
                     
                     if not '(/' in line:
                         raise ValueError("You try to read a matrix, and we found the keyword, but it does not seem to be a matrix..")
                     
                     # remove first vct=
-                    line = line.replace(keyword+"=", "")
+                    line = line.replace(keyword_found+"=", "")
                     # remove (/
                     line = line.replace('(/', '')                                        
                     # some vectors are separated by commas ',', remove them.
@@ -778,9 +875,10 @@ def get_ini_parameter( inifile, section, keyword, dtype=float, vector=False, def
             
         # first row, if found keyword.
         if found_section:
-            if line.startswith( keyword+"=" ):
+            if line.startswith(keyword+"=") or any([line.startswith(k+"=") for k in keyword_legacy]):
+                keyword_found = keyword if line.startswith(keyword+"=") else [k for k in keyword_legacy if line.startswith(k+"=")][0]
                 # remove first vct=
-                line = line.replace(keyword+"=", "")
+                line = line.replace(keyword_found+"=", "")
                 
                 # this is the result...
                 value_string = line

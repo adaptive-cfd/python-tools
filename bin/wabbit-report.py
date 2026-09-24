@@ -324,7 +324,7 @@ if any(plot_meanmax_flow): fig_grid.append([sum(plot_meanmax_flow),1])  # for ad
 # print forces for VPM
 plot_forces = isinstance(t_values['forces'], np.ndarray) and vpm
 fig_forces = plt.figure(4, figsize=(8.27, 11.69)) # this is din A4 size
-fig_forces.suptitle('Forces acting on the immersed body', fontsize=16, y=(11.69-1)/11.69)
+fig_forces.suptitle('Forces acting on all immersed bodies', fontsize=16, y=(11.69-1)/11.69)
 if plot_forces:
     forces_names = ["Fx", "Fy", "Fz"] if not latex else ["$F_x$", "$F_y$", "$F_z$"]
     for i_dim in range(dim):
@@ -336,18 +336,20 @@ if plot_forces:
         plt.xlim(t_values['forces'][0,0], t_values['forces'][-1,0])
     fig_grid.append([dim,1])    # for adequate positioning
 
-# print mask volume for VPM
+# print mask volume for VPM, it has entries for each color and at last the sponge volume
 plot_maskvolume = isinstance(t_values['mask_volume'], np.ndarray) and vpm
 fig_maskvolume = plt.figure(5, figsize=(8.27, 11.69)) # this is din A4 size
 fig_maskvolume.suptitle('Volume of the immersed body and sponge layer', fontsize=16, y=(11.69-1)/11.69)
 if plot_maskvolume:
-    label_now = ["Mask volume over time", "Sponge volume over time"]
-    for i_plot in range(2):
-        plt.subplot(2,1,i_plot+1)
-        plt.plot(t_values['mask_volume'][:,0], t_values['mask_volume'][:,i_plot+1])
-        plt.ylabel("Volume"); plt.xlabel(time_label); plt.grid(True)
-        plt.title(label_now[i_plot])
-        plt.xlim(t_values['mask_volume'][0,0], t_values['mask_volume'][-1,0])
+    plt.ylabel("Volume"); plt.xlabel(time_label); plt.grid(True)
+    plt.title("Mask volumes over time")
+    for i_plot in range(t_values['mask_volume'].shape[1]-1):
+        label = f"Color {i_plot}"
+        if i_plot == t_values['mask_volume'].shape[1]-2: label = "Sponge"
+        plt.semilogy(t_values['mask_volume'][:,0], t_values['mask_volume'][:,i_plot+1], label=label)
+
+    plt.xlim(t_values['mask_volume'][0,0], t_values['mask_volume'][-1,0])
+    plt.legend()
     fig_grid.append([2,1])  # for adequate positioning
 
 # print scalar integral
