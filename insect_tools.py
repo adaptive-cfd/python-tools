@@ -678,7 +678,7 @@ def stroke_average_matrix( d, tstroke=1.0, t1=None, t2=None, force_fullstroke=Tr
         j = np.argmin( abs(d[:,0]-tend) )
 
         # extract time vector
-        time = d[i:j+1,0]
+        time = d[i:j+1,0].copy()
         # replace first and last time instant with stroke begin/endpoint to avoid being just to dt close
         time[0] = tbegin
         time[-1] = tend
@@ -2903,7 +2903,6 @@ def visualize_wing_shape_file(fname, ax=None, fig=None, savePNG=True, fill=False
         bristles = inifile_tools.get_ini_parameter(file, "Wing", "bristles", bool, default=False)
         if bristles:
             bristles_coords = inifile_tools.get_ini_parameter(file, "Wing", "bristles_coords", matrix=True)
-            print(bristles_coords.shape)
             for j in range( bristles_coords.shape[0]):
                 ax.plot( [bristles_coords[j,0], bristles_coords[j,2]], [bristles_coords[j,1], bristles_coords[j,3]], 'r-')
         

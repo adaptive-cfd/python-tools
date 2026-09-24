@@ -253,14 +253,7 @@ def check_parameters_for_stupid_errors( file ):
         
         h_wing = get_ini_parameter( file, section_insect, 'WingThickness', float, default=0.0)
         print('\n-- insect')
-        if h_wing/dx > 4.5:
-            color = bcolors.OKGREEN
-        elif h_wing/dx <= 4.5 and h_wing/dx >= 3.49:
-            color = bcolors.WARNING
-        else:
-            color = bcolors.FAIL
-            
-        print('   h_wing/dx = %s%2.2f%s' % (color, h_wing/dx, bcolors.ENDC))
+
         print('')
         
         coff = bcolors.ENDC        
@@ -335,13 +328,26 @@ def check_parameters_for_stupid_errors( file ):
             if get_ini_parameter(file, section_insect, wing_side, bool, default=False):
                 WingShape = get_ini_parameter( file, section_insect, 'WingShape'+code, str, default='UNKNOWN')
                 label = "WingShape"+code
-                print("  %s = %s" % (label.ljust(25), WingShape))
+                print("  %s = %s" % (label.ljust(25), WingShape), end='')
                 
+                hw = h_wing
                 if "from_file::" in WingShape:
                     WingShape = root_folder + WingShape.replace("from_file::","")                
                     if not os.path.isfile(WingShape):                        
                         bcolors.err('WingShape file %s not found !' % (WingShape) )
                         
+                    hw = get_ini_parameter( WingShape, section_insect, "wing_thickness_value", default=h_wing)
+                    
+                # display wing thickness in grid points and color for unusual values (not an absolute criterion, though)
+                if h_wing/dx > 4.5:
+                    color = bcolors.OKGREEN
+                elif h_wing/dx <= 4.5 and h_wing/dx >= 3.49:
+                    color = bcolors.WARNING
+                else:
+                    color = bcolors.FAIL
+                    
+                print(' --->  h_wing/dx = %s%2.2f%s' % (color, hw/dx, bcolors.ENDC))
+                    
    
         #----------------------------------------------------------------------
         # wing motion

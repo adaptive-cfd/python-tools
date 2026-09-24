@@ -234,10 +234,12 @@ print(";-------------------")
 print( "; C0=%f C_eta=%e K_eta=%f Bs=%i" % (c0, C_eta, K_eta, Bs) )
 print( "; dx=%e CFL=%f jmax=%i nu=%e" % (dx, CFL, Jmax, nu ) )
 
-safety = False
+safety = True
 plot = True
 s_best, eps_best = finite_differences.select_RKC_scheme(eigenvalues, dt_set, plot=plot, safety=safety, eps_min=2.0)
 
+if plot:
+    plt.plot( eigenvalues.real / safety_factor, eigenvalues.imag / 3.0, ".g")
 
 if safety:
     for i in range(5):
