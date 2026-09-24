@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-import sys, os
+import sys, os, argparse
 sys.path.append(os.path.join(os.path.split(__file__)[0], ".."))
 import inifile_tools
 
+parser = argparse.ArgumentParser(
+    description="wabbit: resume simulation")
+parser.add_argument("inifile", nargs="?", default=None, help="WABBIT inifile to resume")
+args = parser.parse_args()
+
 print("----------------------------------------")
 print(" wabbit: resume simulation")
-print(" wabbit-resume-backup.py [inifile] ")
-print(" wabbit-resume-backup.py suzuki.ini")
 print("----------------------------------------")
 
-if len(sys.argv) > 1:
-    inifile = sys.argv[1]
+if args.inifile is not None:
+    inifile = args.inifile
     if not os.path.isfile(inifile):
         raise ValueError("no inifile found")
 else:
