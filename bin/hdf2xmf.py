@@ -222,7 +222,7 @@ def write_xmf_file_wabbit(args, outfile, times, timestamps, prefixes, scalars, v
         fid.write('        <DataItem Format="XML" NumberType="Float" Dimensions="%i">\n' % (len(timestamps)) )
         fid.write('          ')
         for time in times:
-            fid.write(' %e ' % (time) )
+            fid.write(' %e ' % (time[0]) )
         fid.write('</DataItem>\n')
         fid.write('        </Time>\n')
         fid.write('\n')
