@@ -1,11 +1,17 @@
 # Python-tools
 A collection of python scripts for WABBIT, FLUSI and insects.
+
 Following packages might be needed:
 - `numpy`
 - `matplotlib`
 - `scipy`
 - `h5py` - reading and writing with hdf5 files
-- `vtk` - converting files to be read in with paraview
+- `vtk` and `mpi4py` - `bin/hdf2vtkhdf.py`, converting files to be read in with ParaView
+- `opencv-python` (`cv2`) and `Pillow` (`PIL`) - `bin/image2wabbit.py`, converting images to WABBIT grids; `PIL` is also used by a few plotting helpers in `insect_tools.py`
+- `joblib` - `bin/wabbit-interpolate-data.py`, parallelized interpolation
+- `shapely` - `insect_tools.py`, polygon/point geometry for some insect-kinematics plots
+- `svgpathtools` - `insect_tools.py`, reading wing shapes from SVG files
+- `easygui` - `insect_tools.py`, optional GUI file picker (import is wrapped in a try/except, so it is not strictly required)
 
 ## Main tools
 <details>

@@ -14,6 +14,7 @@ except:
 try:
   from vtkmodules.vtkCommonCore import (
     vtkDoubleArray,
+    vtkBitArray,
   )
   from vtkmodules.vtkCommonDataModel import (
       vtkHyperTreeGrid,
@@ -225,7 +226,74 @@ def merge_directional(block_id_o, coords_origin_o, coords_spacing_o, level_o, tr
   return block_id, coords_origin, coords_spacing, level, treecode, sub_tree_size, sub_tree_positions
 
 
-def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, prune_tolerance=None, grid2field=None, data_type="CellData", exclude_prefixes=[], include_prefixes=[]):
+"""
+Shared helpers to embed a block's own data into the vtkhdf image's (X, Y, Z) space.
+
+A wabbit block always stores its data along its own "local" axes in the fixed order
+(local-x, local-y, local-z) - or, for 2D data, (local-x, local-y, thickness), where
+"thickness" is a dummy, size-1 (size-2 for PointData) stand-in for the direction that is
+not part of the 2D plane the data lives in.
+
+`axis_map` says which global vtkhdf axis (0=X, 1=Y, 2=Z) each local axis is embedded into.
+For 3D data this is always the identity [0, 1, 2]. For 2D data it depends on plane_2D, e.g.
+for a slice living in the XZ-plane, local-y is embedded into global Z and the dummy
+thickness axis into global Y - see where axis_map is built in hdf2vtkhdf() for the full table.
+This must stay in sync with how Origin/Spacing/WholeExtent are constructed for each plane.
+
+vtkhdf/HDF5 stores per-block arrays with numpy shape (Z, Y, X) - reversed relative to how
+Origin/Spacing/WholeExtent are given (X, Y, Z). These two helpers apply axis_map and then
+that reversal, once, so the permutation logic is not duplicated at every write site.
+"""
+def local_axes_to_numpy_shape(local_sizes, axis_map):
+  global_sizes = [None, None, None]
+  for local_axis, global_slot in enumerate(axis_map):
+    global_sizes[global_slot] = local_sizes[local_axis]
+  return tuple(global_sizes[::-1])
+
+
+def local_axes_to_numpy_slices(local_slices, axis_map):
+  global_slices = [None, None, None]
+  for local_axis, global_slot in enumerate(axis_map):
+    global_slices[global_slot] = local_slices[local_axis]
+  return tuple(global_slices[::-1])
+
+
+def local_array_to_numpy(local_order_array, axis_map):
+  """
+  local_order_array must have its first 3 axes in local (x, y, thickness/z) order (same
+  convention as local_axes_to_numpy_shape/_slices above); any further trailing axes (e.g. a
+  vector-component axis) are left untouched. Transposes those first 3 axes the same way
+  local_axes_to_numpy_shape/_slices permute sizes/slices, so that the RESULT actually has the
+  shape those functions promised.
+
+  This is needed because plain numpy broadcasting is not enough here: it only ever inserts
+  missing axes on the LEFT. That accidentally "worked" before axis_map existed, because the
+  thickness axis of a 2D block always sat at numpy axis 0 (the XY-plane case). For XZ/YZ planes
+  the thickness axis can end up in the middle or at the end, where implicit broadcasting cannot
+  place it - so we must explicitly transpose the source data into the right axis order instead
+  of relying on broadcasting to paper over a shape mismatch.
+  """
+  inv_axis_map = [None, None, None]
+  for local_axis, global_slot in enumerate(axis_map): inv_axis_map[global_slot] = local_axis
+  transpose_order = [inv_axis_map[2 - numpy_axis] for numpy_axis in range(3)]
+  transpose_order += list(range(3, local_order_array.ndim))  # keep any trailing axes (e.g. vector components) as-is
+  return np.transpose(local_order_array, transpose_order)
+
+
+def block_data_to_local_order(block_data, dim):
+  """
+  Raw wabbit block data (as returned by block_read) is stored axis-reversed - [z,y,x] for 3D
+  data, [y,x] for 2D - the same quirk noted for coords_origin/coords_spacing. This undoes that
+  reversal so the array's axes are in local (x, y, [z]) order. For 2D data it then appends the
+  dummy, size-1 thickness axis, so the result always has exactly 3 axes in local
+  (x, y, thickness/z) order and is ready to be passed into local_array_to_numpy().
+  """
+  local_order = np.transpose(block_data, axes=list(range(dim))[::-1])
+  if dim == 2: local_order = local_order[..., np.newaxis]
+  return local_order
+
+
+def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", scalars=False, split_levels=False, merge=True, prune_tolerance=None, grid2field=None, data_type="CellData", exclude_prefixes=[], include_prefixes=[], origin_translate=[0,0,0], scale=1, plane_2D="XY", low_memory=False):
   """
   Create a multi block dataset from the available data
     w_obj        - Required  : Object representeing the wabbit data or List of objects
@@ -236,6 +304,22 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     scalars      - Optional  : should vectors be identified or all included as scalars?
     split_levels - Optional  : For full-tree grids blocks are overlapping. This option entangles the blocks level-wise by giving them an offset
     merge        - Optional  : This option tries to merge sisters consecutively to minimize the amount of uniform blocks to load for paraview
+    low_memory   - Optional  : How to fetch the actual block DATA for this timestep (the metadata in w_obj is always fully
+                               loaded already - it is cheap). w_obj itself never holds the heavy block arrays; instead, a
+                               local "block_cache" (one dict per variable, see below) is built right before it is needed and
+                               discarded again once this function returns - so the long-lived w_obj objects (which callers
+                               may keep around for many timesteps, e.g. in a {time: [w_obj, ...]} map) never accumulate
+                               block data across timesteps.
+                                 False (default, "mode B"): read each variable's ENTIRE block array once, in one bulk HDF5
+                                   call (WabbitHDF5file.block_read_bulk(block_ids=None)). Fastest, needs one timestep's
+                                   data (all variables) to fit in RAM - fine unless the grid is very large/high-res or many
+                                   MPI ranks share a node's RAM.
+                                 True ("mode C"): first figure out exactly which blocks THIS RANK needs (its slice of the
+                                   merged grid below), then read only that subset per variable, again in one bulk call per
+                                   variable (block_read_bulk(block_ids=[...])). Keeps memory down to ~1/mpi_size of the
+                                   data, at the cost of one extra bookkeeping pass before reading.
+                               Either way we avoid the slow path of calling block_read() once per sub-block (which opens
+                               and closes the HDF5 file on every single call - by far the dominant cost for large grids).
   """
   ### Check if input contains only wabbit hdf5 files
   correct_input = False
@@ -320,7 +404,7 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   vtkhdf_group = f.create_group('VTKHDF', track_order=True)
   vtkhdf_group.attrs.create('Type', 'PartitionedDataSetCollection'.encode('ascii'), dtype=h5py.string_dtype('ascii', len('PartitionedDataSetCollection')))
   vtkhdf_group.attrs.create('Version', np.array([2, 3], dtype='i8'))
-  assembly_group = vtkhdf_group.create_group('Assembly')
+  assembly_group = vtkhdf_group.create_group('Assembly', track_order=True)
 
   ### merging - tries to merge blocks, so that paraview needs to load less blocks
   # this is a high-level optimization, but neatly reduces the time to load for paraview
@@ -341,6 +425,12 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
   total_blocks = w_main.total_number_blocks
   block_id = [[i_b] for i_b in np.arange(w_main.total_number_blocks)]  # this is the block_id, for sub_tree this contains all different block_ids of the subtrees
   bs_o = np.array(w_main.block_size.copy())  # original blocksize
+  # WABBIT blocks are stored as points (block_size points per direction), but vtkhdf ImageData
+  # WholeExtent/CellData count CELLS between points, hence the -1. This "bs_o" (block size in
+  # cells) is what all the extent/shape math below is built from. Note bs_o is always indexed in
+  # NATURAL (x, y, z) order (0=x, 1=y, 2=z) - unlike coords_origin/coords_spacing/block data below,
+  # which wabbit stores axis-reversed. For 2D data, dim=2 so only indices 0,1 are decremented;
+  # index 2 stays at its untouched value of 1 and later acts as the dummy "thickness" axis.
   bs_o[:w_main.dim] -= 1
 
   # sort everything after treecode - potentially usefull for neighbour merging
@@ -397,6 +487,20 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         if minutes > 0: print(f"    Merged in {dir_names[i_dir]}-dir:       {total_blocks:7d} blocks, took {int(minutes)}m {seconds:04.1f}s")
         else: print(f"    Merged in {dir_names[i_dir]}-dir:       {total_blocks:7d} blocks, took {seconds:.2g}s")
 
+  ### figure out how a block's own local axes map onto the vtkhdf global (X, Y, Z) axes.
+  # For 3D data this is trivially the identity - local (x, y, z) already ARE global (X, Y, Z).
+  # For 2D data, only two of the three local axes carry real data (x, y); the third is the dummy
+  # "thickness" axis (size 1, or 2 for PointData) standing in for the direction perpendicular to
+  # the 2D plane. plane_2D picks which global axis each local axis lands on - this MUST stay in
+  # sync with how Origin/Spacing/WholeExtent are built per-block below, and is used further down
+  # to place each block's raw data into the vtkhdf array via local_axes_to_numpy_shape/_slices.
+  if w_main.dim == 2:
+    if plane_2D.upper() == "XY":   axis_map = [0, 1, 2]  # local x->X, local y->Y, thickness->Z
+    elif plane_2D.upper() == "XZ": axis_map = [0, 2, 1]  # local x->X, local y->Z, thickness->Y
+    elif plane_2D.upper() == "YZ": axis_map = [1, 2, 0]  # local x->Y, local y->Z, thickness->X
+  else:
+    axis_map = [0, 1, 2]  # 3D: local (x, y, z) already match global (X, Y, Z)
+
   ### collective loop creating the metadata - all processes need to do this
   start_time = time.time()
   data_group = [[]]*total_blocks
@@ -405,18 +509,30 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     split_levels_add = (split_levels * (level[i_block]-1) * np.max(w_main.domain_size)) * 1.1
 
     # Create this block itself
-    block_group = vtkhdf_group.create_group(f'Block{i_block}')
+    block_group = vtkhdf_group.create_group(f'Block{i_block}', track_order=True)
 
     # Add attributes to block
     if w_main.dim == 2:
       block_group.attrs.create('Direction', np.array([1, 0, 0, 0, 1, 0, 0, 0, 1], dtype='f8'))
-      block_group.attrs.create('Origin', np.append(coords_origin[i_block][::-1], 0) + np.array([0,split_levels_add,0]), dtype='f8')
-      block_group.attrs.create('Spacing', np.append(coords_spacing[i_block][::-1], 0), dtype='f8')
-      block_group.attrs.create('WholeExtent', np.array([0, bs_o[0]*sub_tree_size[i_block][0], 0, bs_o[1]*sub_tree_size[i_block][1], 0, 1], dtype='i8'))      
+      if plane_2D.upper() == "XY":
+        origin = (np.append(coords_origin[i_block][::-1], 0) + np.array([0,split_levels_add,0]) + np.array(origin_translate)) * scale
+        spacing = np.append(coords_spacing[i_block][::-1], 0)*scale
+        extent = np.array([0, bs_o[0]*sub_tree_size[i_block][0], 0, bs_o[1]*sub_tree_size[i_block][1], 0, 1])
+      elif plane_2D.upper() == "XZ":
+        origin = (np.array([coords_origin[i_block][1], 0, coords_origin[i_block][0]]) + np.array([0,split_levels_add,0]) + np.array(origin_translate)) * scale
+        spacing = np.array([coords_spacing[i_block][1], 0, coords_spacing[i_block][0]])*scale
+        extent = np.array([0, bs_o[0]*sub_tree_size[i_block][0], 0, 1, 0, bs_o[1]*sub_tree_size[i_block][1]])
+      elif plane_2D.upper() == "YZ":
+        origin = (np.array([0, coords_origin[i_block][1], coords_origin[i_block][0]]) + np.array([0,split_levels_add,0]) + np.array(origin_translate)) * scale
+        spacing = np.array([0, coords_spacing[i_block][1], coords_spacing[i_block][0]])*scale
+        extent = np.array([0, 1, 0, bs_o[0]*sub_tree_size[i_block][0], 0, bs_o[1]*sub_tree_size[i_block][1]])
+      block_group.attrs.create('Origin', origin, dtype='f8')
+      block_group.attrs.create('Spacing', spacing, dtype='f8')
+      block_group.attrs.create('WholeExtent', extent, dtype='i8')      
     else:
       block_group.attrs.create('Direction', np.array([1, 0, 0, 0, 1, 0, 0, 0, 1], dtype='f8'))
-      block_group.attrs.create('Origin', coords_origin[i_block][::-1] + np.array([0,0,split_levels_add]), dtype='f8')
-      block_group.attrs.create('Spacing', coords_spacing[i_block][::-1], dtype='f8')
+      block_group.attrs.create('Origin', (coords_origin[i_block][::-1] + np.array([0,0,split_levels_add]) + np.array(origin_translate)) * scale, dtype='f8')
+      block_group.attrs.create('Spacing', coords_spacing[i_block][::-1] * scale, dtype='f8')
       block_group.attrs.create('WholeExtent', np.array([0, bs_o[0]*sub_tree_size[i_block][0], 0, bs_o[1]*sub_tree_size[i_block][1], 0, bs_o[2]*sub_tree_size[i_block][2]], dtype='i8'))
     block_group.attrs.create('Type', 'ImageData'.encode('ascii'), dtype=h5py.string_dtype('ascii', len('ImageData')))
     block_group.attrs.create('Version', np.array([2, 3], dtype='i8'))
@@ -424,33 +540,71 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     assembly_group[f'Block{i_block}'] = h5py.SoftLink(f'/VTKHDF/Block{i_block}')
 
     # Add block data
-    if data_type == "CellData": data_group[i_block] = block_group.create_group('CellData')
-    elif data_type == "PointData": data_group[i_block] = block_group.create_group('PointData')
+    if data_type == "CellData": data_group[i_block] = block_group.create_group('CellData', track_order=True)
+    elif data_type == "PointData": data_group[i_block] = block_group.create_group('PointData', track_order=True)
 
     # Create empty dataset for scalars
+    # bs_now is the block's size in LOCAL (x, y, thickness/z) order - same order as bs_o and
+    # sub_tree_size. We only get the actual (Z, Y, X) numpy shape to allocate after routing it
+    # through axis_map, since for 2D data the "thickness" axis may land on any of X/Y/Z depending
+    # on plane_2D (see where axis_map is built above).
     bs_now = np.array(sub_tree_size[i_block]) * bs_o
     if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] = 1 + (data_type == "PointData")
-    for i_s, i_n in zip(s_names, s_ind): data_group[i_block].create_dataset(i_s, shape=bs_now[::-1], dtype=np.float64)
-    
+    bs_now_numpy_shape = local_axes_to_numpy_shape(bs_now, axis_map)
+    for i_s, i_n in zip(s_names, s_ind): data_group[i_block].create_dataset(i_s, shape=bs_now_numpy_shape, dtype=np.float64)
+
     # Create empty datasets for vectors
-    for i_v, i_n in zip(v_names, v_ind): data_group[i_block].create_dataset(i_v, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+    for i_v, i_n in zip(v_names, v_ind): data_group[i_block].create_dataset(i_v, shape=np.append(bs_now_numpy_shape, w_main.dim), dtype=np.float64)
 
     # Create empty datasets for grid2Field
     if grid2field is not None:
       for i_f in grid2field:
         # scalar fields
-        if i_f in ["level", "treecode", "refinement_status", "procs", "lgt_ID"]: data_group[i_block].create_dataset(i_f, shape=bs_now[::-1], dtype=np.float64)
+        if i_f in ["level", "treecode", "refinement_status", "procs", "lgt_ID"]: data_group[i_block].create_dataset(i_f, shape=bs_now_numpy_shape, dtype=np.float64)
         # vector fields
-        if i_f in ["coords_origin", "coords_spacing"]: data_group[i_block].create_dataset(i_f, shape=np.append(bs_now[::-1], w_main.dim), dtype=np.float64)
+        if i_f in ["coords_origin", "coords_spacing"]: data_group[i_block].create_dataset(i_f, shape=np.append(bs_now_numpy_shape, w_main.dim), dtype=np.float64)
   if args.verbose and mpi_rank == 0:
     minutes, seconds = divmod(time.time() - start_time, 60)
     if minutes > 0: print(f"    Created metadata:                      took {int(minutes)}m {seconds:04.1f}s")
     else: print(f"    Created metadata:                      took {seconds:.2g}s")
 
+  ### fetch the actual block DATA this rank will need for the loop below, in one bulk read per
+  # variable file rather than one file-open per sub-block (see block_read_bulk() in wabbit_tools.py
+  # for why that matters - it is by far the dominant cost for large grids). The result is a plain,
+  # local list of dicts - "block_cache[i_n][i_b_now]" gives the same array block_read(i_b_now) on
+  # w_obj_list[i_n] would have returned, just fetched all at once. This cache lives only for the
+  # duration of this function call and is never attached to the w_obj_list objects themselves, so
+  # a caller that keeps w_obj_list around for many timesteps (e.g. hdf2vtkhdf.py's time_process
+  # dict) never accumulates block data in memory across timesteps.
+  start_time = time.time()
+  i_block_start, i_block_end = int(mpi_rank/mpi_size*total_blocks), int((mpi_rank+1)/mpi_size*total_blocks)
+  # every variable index (both plain scalars and each component of a vector) that block data is
+  # actually read from below - this is what we need to preload per w_obj_list entry
+  all_var_ind = s_ind + [i_ndim for group in v_ind for i_ndim in group]
+  if not low_memory:
+    # mode B (default): read every needed variable file fully, once, in a single bulk HDF5 call
+    block_cache = [w_obj_list[i_n].block_read_bulk() if i_n in all_var_ind else {} for i_n in range(len(w_obj_list))]
+  else:
+    # mode C (--low-memory): first walk through this rank's slice of the merged grid to collect
+    # exactly which (per-variable) logical block ids it will touch - the same (treecode,level) ->
+    # block id translation as the actual attach loop below, just to gather ids, not to read data -
+    # then read only that subset per variable, again in a single bulk call each.
+    needed_ids = [set() for _ in w_obj_list]
+    for i_block in range(i_block_start, i_block_end):
+      for i_merged_id in block_id[i_block]:
+        tc_now, lvl_now = w_main.block_treecode_num[i_merged_id], w_main.level[i_merged_id]
+        for i_n in all_var_ind:
+          needed_ids[i_n].add(w_obj_list[i_n].get_block_id(tc_now, lvl_now))
+    block_cache = [w_obj_list[i_n].block_read_bulk(needed_ids[i_n]) if i_n in all_var_ind else {} for i_n in range(len(w_obj_list))]
+  if args.verbose and mpi_rank == 0:
+    minutes, seconds = divmod(time.time() - start_time, 60)
+    if minutes > 0: print(f"    Preloaded block data:                  took {int(minutes)}m {seconds:04.1f}s")
+    else: print(f"    Preloaded block data:                  took {seconds:.2g}s")
+
   ### independent loop attaching the actual data - this is parallelized
   start_time = time.time()
-  for i_block in range(int(mpi_rank/mpi_size*total_blocks), int((mpi_rank+1)/mpi_size*total_blocks)):
+  for i_block in range(i_block_start, i_block_end):
     rem_time = (total_blocks - i_block) * (time.time() - start_time) / (i_block + 1e-4*(i_block == 0))
     # Format remaining time in HH:MM:SS format
     hours, rem = divmod(rem_time, 3600)
@@ -467,37 +621,47 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
     bs_now = np.array(sub_tree_size[i_block]) * bs_o
     if data_type == "PointData": bs_now[:w_main.dim] += 1
     if w_main.dim == 2: bs_now[2] = 1 + (data_type == "PointData")
-    for i_s, i_n in zip(s_names, s_ind):  
+    bs_now_numpy_shape = local_axes_to_numpy_shape(bs_now, axis_map)
+    for i_s, i_n in zip(s_names, s_ind):
       # block is composed of subtree
-      data_append = np.zeros(bs_now[::-1])
+      data_append = np.zeros(bs_now_numpy_shape)
       for i_merged in range(len(id_now)):
         # translate id from main to this object as the block ids could be shuffled
         i_b_now = w_obj_list[i_n].get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
-        j_block = w_obj_list[i_n].block_read(i_b_now)
-        # get block position of this sub-octree
+        j_block = block_cache[i_n][i_b_now]  # preloaded above (mode B: full array, mode C: this rank's subset)
+        # get block position of this sub-octree, in the SAME local (x, y, thickness/z) order as bs_o
         b_id = sub_tree_position[i_block][i_merged].astype(int)
         if w_main.dim == 2: b_id = np.append(b_id, 0)
-        # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
-        data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
-                bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
-                bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0]] = j_block[tuple([slice(None,-1 if data_type == "CellData" and not np.all(j_block.shape == bs_o[:w_main.dim]) else None)]*w_main.dim)]
+        # j_block itself is always stored [z,y,x] (3D) / [y,x] (2D) by wabbit, independent of
+        # plane_2D - we build the write-window per local axis first, then let axis_map decide
+        # which numpy axis of data_append (which IS plane-dependent) each one lands on.
+        local_slices = [slice(bs_o[d]*b_id[d], bs_o[d]+(data_type=="PointData")+bs_o[d]*b_id[d]) for d in range(3)]
+        j_block_trimmed = j_block[tuple([slice(None,-1 if data_type == "CellData" and not np.all(j_block.shape == bs_o[:w_main.dim]) else None)]*w_main.dim)]
+        # Explicitly reorder j_block into the same axis order as the destination window - do NOT
+        # rely on numpy broadcasting here, it only auto-inserts missing axes on the left, which
+        # silently "worked" for the XY-plane (thickness axis at numpy axis 0) but is wrong once
+        # the thickness axis moves to the middle/end for XZ/YZ.
+        j_block_local = block_data_to_local_order(j_block_trimmed, w_main.dim)
+        data_append[local_axes_to_numpy_slices(local_slices, axis_map)] = local_array_to_numpy(j_block_local, axis_map)
       data_group[i_block][i_s][:] = data_append
     # Attach data for vectors - currently copying but maybe there is a more clever way
     for i_v, i_n in zip(v_names, v_ind):
       # block is composed of subtree
-      data_append = np.zeros(np.append(bs_now[::-1], len(i_n)))
+      data_append = np.zeros(np.append(bs_now_numpy_shape, len(i_n)))
       for i_depth, i_ndim in enumerate(i_n):
         for i_merged in range(len(id_now)):
           # translate id from main to this object as the block ids could be shuffled
           i_b_now = w_obj_list[i_ndim].get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
-          j_block = w_obj_list[i_ndim].block_read(i_b_now)
-          # get block position of this sub-octree
+          j_block = block_cache[i_ndim][i_b_now]  # preloaded above (mode B: full array, mode C: this rank's subset)
+          # get block position of this sub-octree, in the SAME local (x, y, thickness/z) order as bs_o
           b_id = sub_tree_position[i_block][i_merged].astype(int)
           if w_main.dim == 2: b_id = np.append(b_id, 0)
-          # the block structure is in order [z,y,x] and the treecode ordering is [y,x,z]
-          data_append[bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
-                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
-                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0],i_depth] = j_block[tuple([slice(None,-1 if data_type == "CellData" and not np.all(j_block.shape == bs_o[:w_main.dim]) else None)]*w_main.dim)]
+          # same reasoning as the scalar case above; the trailing vector-component axis
+          # (i_depth) is untouched by axis_map since it is not one of the 3 spatial axes
+          local_slices = [slice(bs_o[d]*b_id[d], bs_o[d]+(data_type=="PointData")+bs_o[d]*b_id[d]) for d in range(3)]
+          j_block_trimmed = j_block[tuple([slice(None,-1 if data_type == "CellData" and not np.all(j_block.shape == bs_o[:w_main.dim]) else None)]*w_main.dim)]
+          j_block_local = block_data_to_local_order(j_block_trimmed, w_main.dim)
+          data_append[local_axes_to_numpy_slices(local_slices, axis_map) + (i_depth,)] = local_array_to_numpy(j_block_local, axis_map)
       data_group[i_block][i_v][:] = data_append
 
     # Attach data for grid2Field
@@ -506,8 +670,17 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
         for i_merged in range(len(id_now)):
           # translate id from main to this object as the block ids could be shuffled
           i_b_now = w_main.get_block_id(w_main.block_treecode_num[id_now[i_merged]], w_main.level[id_now[i_merged]])
-          # get block position of this sub-octree
+          # get block position of this sub-octree, in the SAME local (x, y, thickness/z) order as bs_o
+          # (unlike the scalar/vector loops above, b_id here is already length-3 for 2D data too,
+          # since sub_tree_position always stores 3 components - no padding needed)
           b_id = sub_tree_position[i_block][i_merged].astype(int)
+          local_slices = [slice(bs_o[d]*b_id[d], bs_o[d]+(data_type=="PointData")+bs_o[d]*b_id[d]) for d in range(3)]
+          # Unlike bs_o/j_block, these constant-fill arrays are built directly from bs_o[:dim]
+          # (no axis-reversal involved), so they are already in local (x, y, [z]) order. For 2D
+          # data we still need to append the size-1 (size-2 for PointData) dummy thickness axis
+          # ourselves, since bs_o[:dim] only has 2 entries in that case.
+          local_shape = list(bs_o[:w_main.dim] + (data_type=="PointData"))
+          if w_main.dim == 2: local_shape.append(1 + (data_type=="PointData"))
 
           # scalar variables
           if i_f in ["level", "treecode", "refinement_status", "procs", "lgt_ID"]:
@@ -516,19 +689,23 @@ def hdf2vtkhdf(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True,
             elif i_f == "refinement_status": grid_value = w_main.refinement_status[i_b_now]
             elif i_f == "procs": grid_value = w_main.procs[i_b_now]
             elif i_f == "lgt_ID": grid_value = w_main.lgt_ids[i_b_now]
-            data_group[i_block][i_f][bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
-                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
-                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0]] = np.full(bs_o[:w_main.dim]+(data_type=="PointData"), grid_value, dtype=np.float64)
+            # grid_value is a single constant filled across the whole block, so the CONTENT of
+            # the np.full array does not depend on axis order - but its SHAPE still has to be
+            # permuted into the destination's axis order via local_array_to_numpy, same as any
+            # other block data, otherwise the assignment below fails or (worse) silently misplaces
+            # the size-1 thickness axis for XZ/YZ planes.
+            grid_value_local = np.full(local_shape, grid_value, dtype=np.float64)
+            data_group[i_block][i_f][local_axes_to_numpy_slices(local_slices, axis_map)] = local_array_to_numpy(grid_value_local, axis_map)
 
           # vector fields
           if i_f in ["coords_origin", "coords_spacing"]:
             if i_f == "coords_origin": grid_values = w_main.coords_origin[i_b_now]
             elif i_f == "coords_spacing": grid_values = w_main.coords_spacing[i_b_now]
-            data_append = np.empty(list(bs_o[:w_main.dim]+(data_type=="PointData")) + [w_main.dim], dtype=np.float64)
+            # same reasoning as the scalar case: each component is a constant fill, but the
+            # trailing vector-component axis must be excluded from the axis_map permutation
+            data_append = np.empty(local_shape + [w_main.dim], dtype=np.float64)
             for d in range(w_main.dim): data_append[..., d] = grid_values[d]
-            data_group[i_block][i_f][bs_o[2]*b_id[2]:bs_o[2]+(data_type=="PointData")+bs_o[2]*b_id[2], \
-                  bs_o[1]*b_id[1]:bs_o[1]+(data_type=="PointData")+bs_o[1]*b_id[1], \
-                  bs_o[0]*b_id[0]:bs_o[0]+(data_type=="PointData")+bs_o[0]*b_id[0], :] = data_append
+            data_group[i_block][i_f][local_axes_to_numpy_slices(local_slices, axis_map) + (slice(None),)] = local_array_to_numpy(data_append, axis_map)
 
   # close file
   f.close()
@@ -561,15 +738,37 @@ def vtkhdf_time_bundle(in_folder, out_name, timestamps=[], verbose=True):
       json.dump(vtkhdf_data, json_file, indent=4)
   if verbose: print(f"Bundled data for different times: {series_filename}")
 
-def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False, exclude_prefixes=[], include_prefixes=[]):
+def collect_unused_leaves(cursor, added_indices, unused_indices):
+  """
+  Recursively walk a vtkHyperTreeGrid from the cursor's current position and collect the
+  GlobalNodeIndex of every leaf that is not in added_indices. These are leaves that only exist
+  because SubdivideLeaf() creates all siblings of a node at once, even though only one sibling
+  may lie on the path to an actual wabbit block - as well as whole subtrees that a
+  pruned/non-uniform domain never touches at all.
+  """
+  if cursor.IsLeaf():
+    idx = cursor.GetGlobalNodeIndex()
+    if idx not in added_indices: unused_indices.append(idx)
+  else:
+    for i_child in range(cursor.GetNumberOfChildren()):
+      cursor.ToChild(i_child)
+      collect_unused_leaves(cursor, added_indices, unused_indices)
+      cursor.ToParent()
+
+
+def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, save_mode="appended", split_levels=False, exclude_prefixes=[], include_prefixes=[], origin_translate=[0,0,0], scale=1, plane_2D="XY"):
   """
   Create a HTG containing all block information
   Creating a HTG for actual block data is not possible and very expensive as each point in a hypertreegrid cannot be further divided
 
-    w_obj       - Required  : Object representeing the wabbit data or List of objects
-    save_file   - Optional  : save string
-    verbose     - Optional  : verbose flag
-    save_mode   - Optional  : how to encode data - "ascii", "binary" or "appended"
+    w_obj            - Required  : Object representeing the wabbit data or List of objects
+    save_file        - Optional  : save string
+    verbose          - Optional  : verbose flag
+    save_mode        - Optional  : how to encode data - "ascii", "binary" or "appended"
+    origin_translate - Optional  : Ability to move the origin in 3D space, same as in hdf2vtkhdf()
+    scale            - Optional  : Ability to rescale the data in 3D space, same as in hdf2vtkhdf()
+    plane_2D         - Optional  : For 2D data, which plane it is embedded in - "XY", "XZ" or "YZ",
+                                    same convention (and same axis_map) as in hdf2vtkhdf()
   """
   correct_input = False
   if isinstance(w_obj, wabbit_tools.WabbitHDF5file):
@@ -624,19 +823,62 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
           v_data[i_a][i_d].SetNumberOfComponents(dim)
           htg[i_d].GetCellData().AddArray(v_data[i_a][i_d])
 
+    # Figure out how this block's own local axes map onto the global (X, Y, Z) axes - the SAME
+    # convention and axis_map as hdf2vtkhdf(): for 2D data, local axis 2 is the dummy "thickness"
+    # axis (no data varies along it, so the HTG is collapsed to a single point on whichever
+    # global axis it lands on for the chosen plane_2D). This must stay in sync with hdf2vtkhdf().
+    if dim == 2:
+      if plane_2D.upper() == "XY":   axis_map = [0, 1, 2]  # local x->X, local y->Y, thickness->Z
+      elif plane_2D.upper() == "XZ": axis_map = [0, 2, 1]  # local x->X, local y->Z, thickness->Y
+      elif plane_2D.upper() == "YZ": axis_map = [1, 2, 0]  # local x->Y, local y->Z, thickness->X
+    else:
+      axis_map = [0, 1, 2]  # 3D: local (x, y, z) already match global (X, Y, Z)
+    inv_axis_map = [None, None, None]
+    for local_axis, global_slot in enumerate(axis_map): inv_axis_map[global_slot] = local_axis
+
+    # vtkHyperTreeGrid numbers a node's children by combining a per-axis bit with a per-axis
+    # weight, in global (X, Y, Z) order - but a degenerate (1-point, non-subdividing) axis
+    # contributes NO bit at all, so child indices only stay contiguous (0..3 for 2D) if the
+    # weights of the two real axes are 1 and 2, in global-axis order, with the degenerate axis
+    # simply skipped. Naively always using weights (1, 2, 4) for (X, Y, Z) - as if Z were always
+    # the degenerate one - only works for the XY-plane; for XZ/YZ it produces indices like 4 or 5
+    # for a node that only has 4 children, which corrupts the tree (observed as a segfault in
+    # vtk's writer).
+    degenerate_axis = axis_map[2] if dim == 2 else None
+    child_bit_weight = [0, 0, 0]
+    w = 1
+    for global_axis in range(3):
+      if global_axis == degenerate_axis: continue
+      child_bit_weight[global_axis] = w
+      w *= 2
+
     for i_d in range(depth):
-      htg[i_d].SetDimensions([2, 2, dim-1])
+      # a HyperTreeGrid axis with only 1 point does not subdivide - we use this to collapse the
+      # dummy thickness axis of 2D data. (Previously this always thinned out global axis Z,
+      # i.e. it silently assumed the XY-plane; now it thins out whichever global axis the
+      # thickness maps to for the chosen plane_2D.)
+      dimensions = [2, 2, 2]
+      if dim == 2: dimensions[axis_map[2]] = 1
+      htg[i_d].SetDimensions(dimensions)
       htg[i_d].SetBranchFactor(2)
 
     ### Define grid coordinates
     for i_d in range(depth):
       offset = 1.1*np.max(i_wobj.domain_size) * (i_d + (l_min-1)*split_levels)
       for i_dim in range(3):
+        # which local axis (x=0, y=1, thickness/z=2) is embedded into this global axis?
+        local_axis = inv_axis_map[i_dim]
         val_range = vtkDoubleArray()
-        val_range.SetNumberOfValues(2 - (i_dim == dim+1))
-        val_range.SetValue(0, 0 + (i_dim==1)*offset)
-        # if not 2D and we look at Z we set the second direction
-        if i_dim != dim: val_range.SetValue(1, i_wobj.domain_size[i_dim] + (i_dim==1)*offset)
+        if local_axis == 2 and dim == 2:
+          # dummy thickness axis: collapse to a single point, placed purely via origin_translate
+          # (+ the split-levels offset, which - like in hdf2vtkhdf() - is always applied along
+          # global Y, regardless of which local axis Y happens to carry for this plane)
+          val_range.SetNumberOfValues(1)
+          val_range.SetValue(0, (origin_translate[i_dim] + (i_dim==1)*offset) * scale)
+        else:
+          val_range.SetNumberOfValues(2)
+          val_range.SetValue(0, (0 + origin_translate[i_dim] + (i_dim==1)*offset) * scale)
+          val_range.SetValue(1, (i_wobj.domain_size[local_axis] + origin_translate[i_dim] + (i_dim==1)*offset) * scale)
         if i_dim == 0: htg[i_d].SetXCoordinates(val_range)
         elif i_dim == 1: htg[i_d].SetYCoordinates(val_range)
         elif i_dim == 2: htg[i_d].SetZCoordinates(val_range)
@@ -679,12 +921,18 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
 
       # go down the tree
       for i_level in np.arange(level)+1:
-        i_digit = wabbit_tools.tc_get_digit_at_level(treecode, i_level, max_level=i_wobj.max_level, dim=i_wobj.dim)
-        # Y and X are swapped as the TC for 1 changes in Y-direction and for 2 in X-direction
-        Y = i_digit%2
-        X = (i_digit//2)%2
-        Z = (i_digit//4)%2
-        i_digit = X + 2*Y + 4*Z
+        i_digit_raw = wabbit_tools.tc_get_digit_at_level(treecode, i_level, max_level=i_wobj.max_level, dim=i_wobj.dim)
+        # WABBIT's own treecode digit convention: the 1s-bit flips in the local-y direction, the
+        # 2s-bit in local-x, and (3D only) the 4s-bit in local-z. For 2D data the thickness axis
+        # has no treecode bit at all and never subdivides, so its bit is always 0.
+        local_bit = [(i_digit_raw // 2) % 2, i_digit_raw % 2, (i_digit_raw // 4) % 2]
+        # Route each local bit onto whichever global axis it is embedded into for this plane
+        # (same axis_map as above / as hdf2vtkhdf()), then recombine with child_bit_weight -
+        # NOT a fixed (1, 2, 4), since the degenerate axis must contribute no weight at all
+        # (see child_bit_weight comment above for why).
+        global_bit = [0, 0, 0]
+        for local_axis, global_slot in enumerate(axis_map): global_bit[global_slot] = local_bit[local_axis]
+        i_digit = sum(global_bit[a] * child_bit_weight[a] for a in range(3))
 
         for i_d in range(depth):
           if i_level > l_min+i_d and split_levels: continue
@@ -752,6 +1000,19 @@ def hdf2htg(w_obj: wabbit_tools.WabbitHDF5file, save_file=None, verbose=True, sa
       # go up the tree
       for i_d in range(depth): cursor[i_d].ToRoot()
 
+    # hide every leaf that never received real block data (unused siblings created by
+    # SubdivideLeaf(), and whole subtrees a pruned/non-uniform domain never visits)
+    for i_d in range(depth):
+      unused_indices = []
+      collect_unused_leaves(cursor[i_d], block_added[i_d], unused_indices)
+      if len(unused_indices) > 0:
+        n_cells = htg[i_d].GetNumberOfCells()
+        mask = vtkBitArray()
+        mask.SetNumberOfValues(n_cells)
+        for i in range(n_cells): mask.SetValue(i, 0)
+        for idx in unused_indices: mask.SetValue(idx, 1)
+        htg[i_d].SetMask(mask)
+
     # Add the vtkHyperTreeGrid to the multi-block dataset
     for i_d in range(depth):
       multi_block_dataset.SetBlock(i_count, htg[i_d])
@@ -814,6 +1075,11 @@ if __name__ == "__main__":
   parser.add_argument("--cvs-split-levels", help="For overfull CVS grids, divide them by levels", action="store_true")
   parser.add_argument("-m", "--merge-grid", help="Use the merge algorithm to merge full sister blocks", action="store_true")
 
+  parser.add_argument("--low-memory", help="""Read block data for this timestep in small batches (only the blocks a given
+  MPI rank actually needs), instead of loading each variable's entire block array into RAM at once. Slower to prepare (an
+  extra bookkeeping pass to figure out which blocks are needed) but keeps the per-rank memory footprint down - use this if
+  a single timestep does not fit in memory (very large/high-resolution grids, or many local MPI ranks on one node).""", action="store_true")
+
   parser.add_argument("-v", "--verbose", help="Enable verbose output", action="store_true")
 
   parser.add_argument("-t", "--time-bundle", help="Bundle all htg files for different times to one file. Works only for folders as input and for --vtkhdf or --htg1.", action="store_true")
@@ -823,6 +1089,10 @@ if __name__ == "__main__":
   parser.add_argument("--prune-tolerance", help="Allowed maximum deviation from block mean value (defaults to 1e-3)", default=1e-3, type=float)
 
   parser.add_argument("--grid2field", help="List of grid variables that will be additionally saved as field variables. Attention: This can be memory intensive.", nargs='+', default=None, type=str)
+
+  parser.add_argument("--origin", help="Ability to move the origin in 3D space", default=[0, 0, 0], nargs=3, type=float)
+  parser.add_argument("--scale", help="Ability to rescale the data in 3D space", default=1, type=float)
+  parser.add_argument("--2D-plane", help="If the data is 2D, in what plane lies the grid? Options are XY, XZ or YZ", default="XY", type=str)
 
   # parser.add_argument("-n", "--time-by-fname", help="""How shall we know at what time the file is? Sometimes, you'll end up with several
   # files at the same time, which have different file names. Then you'll want to
@@ -953,15 +1223,15 @@ if __name__ == "__main__":
     if args.verbose and mpi_rank == 0: print(f"Time {i_time}, {i_n+1}/{len(time_process)}")
 
     # create hypertreegrid
-    if args.htg1: hdf2htg(time_process[i_time][0], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, split_levels=args.cvs_split_levels)
+    if args.htg1: hdf2htg(time_process[i_time][0], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, split_levels=args.cvs_split_levels, origin_translate=args.origin, scale=args.scale, plane_2D=args.__dict__["2D_plane"])
     elif args.htg:
       for i_wobj in time_process[i_time]:
         save_file = f"{args.outfile}-{i_wobj.var_from_filename(verbose=False)}_{wabbit_tools.time2wabbitstr(i_time)}"
-        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels, exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes)
+        hdf2htg(i_wobj, save_file=save_file, verbose=args.verbose, split_levels=args.cvs_split_levels, exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes, origin_translate=args.origin, scale=args.scale, plane_2D=args.__dict__["2D_plane"])
 
     # create vtkhdf
     if args.vtkhdf:
-      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, prune_tolerance=args.prune_tolerance, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes, grid2field=args.grid2field)
+      hdf2vtkhdf(time_process[i_time], save_file=f"{args.outfile}_{wabbit_tools.time2wabbitstr(i_time)}", verbose=args.verbose, scalars=args.scalars, split_levels=args.cvs_split_levels, merge=args.merge_grid, prune_tolerance=args.prune_tolerance, data_type="CellData" if not args.point_data else "PointData", exclude_prefixes=args.exclude_prefixes, include_prefixes=args.include_prefixes, grid2field=args.grid2field, origin_translate=args.origin, scale=args.scale, plane_2D=args.__dict__["2D_plane"], low_memory=args.low_memory)
 
     # output timing
     if args.verbose and mpi_rank == 0:

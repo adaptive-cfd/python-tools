@@ -38,9 +38,9 @@ if os.path.isfile( jobfile ):
                 iniline = line
             elif "MEMORY=" in line:
                 memline = line
-            elif "--mem-per-core" in line or "MEMPERCORE=" in line:
+            elif ("--mem-per-core" in line and not "MEMPERCORE" in line) or "MEMPERCORE=" in line:
                 # may be set as bash variable (JB: MEMPERCORE=2.0GB)
-                # or in the wabbit call directly (TE: --mem-per-core=2.0gb)
+                # or in the wabbit call directly (TE: --mem-per-core=2.0gb) (but not the same time)
                 # note GB and gb are okay
                 mempercoreline = line
             elif "AUTO_RESUB=" in line:
