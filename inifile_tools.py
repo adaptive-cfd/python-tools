@@ -255,7 +255,7 @@ def check_parameters_for_stupid_errors( file ):
     # loop over all geometries and check if it an insect
     insect_id = 1
     for i_geom, geom in enumerate(geometries):
-        if geom != "Insect": continue
+        if geom.lower() != "insect": continue
 
         # we have an insect, check in what section it is
         insect_section = f"Insect{insect_id}"
@@ -267,7 +267,7 @@ def check_parameters_for_stupid_errors( file ):
             bcolors.err(f"Insect {insect_id} is set but we did not find section [{insect_section}] in the ini file! Check if you have a section for this insect and if it is correctly named.")
             continue
 
-        h_wing = get_ini_parameter( file, insect_section, 'WingThickness', float, 0.0)
+        h_wing = get_ini_parameter( file, insect_section, 'WingThickness', float, default=0.0)
         print(f'\n-- insect {insect_id}')
         if h_wing/dx > 4.5:
             color = bcolors.OKGREEN
@@ -290,7 +290,7 @@ def check_parameters_for_stupid_errors( file ):
             cr2 = bcolors.OKBLUE#'\033[37m'
         if get_ini_parameter(file, insect_section, 'LeftWing2', bool, default=False):
             cl2 = bcolors.OKBLUE#'\033[37m'    
-        if get_ini_parameter(file, insect_section, 'BodyType', str, 'nobody') != "nobody":
+        if get_ini_parameter(file, insect_section, 'BodyType', str, default='nobody') != "nobody":
             cb = bcolors.OKBLUE#'\033[37m'    
         
         print("%s.==-.%s   configuration   %s.-==.%s  " % (cl,coff,cr,coff))
@@ -307,10 +307,10 @@ def check_parameters_for_stupid_errors( file ):
 
         
         # when using insects, we may read various extra files. check if they are present.
-        body_motion   = get_ini_parameter( file, insect_section, 'BodyMotion', str, 'none')[0]
-        wing_motion_L = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, 'none')[0]
-        wing_motion_R = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, 'none')[0]
-        WingShape = get_ini_parameter( file, insect_section, 'WingShape', str, 'none')[0]
+        body_motion   = get_ini_parameter( file, insect_section, 'BodyMotion', str, default='none')
+        wing_motion_L = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, default='none')
+        wing_motion_R = get_ini_parameter( file, insect_section, 'FlappingMotion_left', str, default='none')
+        WingShape = get_ini_parameter( file, insect_section, 'WingShape', str, default='none')
         print("")
         print("")
         print("   BodyMotion           = %s" % (body_motion))
@@ -345,7 +345,7 @@ def check_parameters_for_stupid_errors( file ):
             if not timestepper_free_flight:
                 bcolors.err('Free flight is used but time_step_method does not contain FSI!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
 
-        if get_ini_parameter( file, insect_section, 'BodyType', str, "ellipsoid") == "superSTL":
+        if get_ini_parameter( file, insect_section, 'BodyType', str, default="ellipsoid") == "superSTL":
             bodySTL = root_folder + get_ini_parameter( file, insect_section, 'BodySuperSTLfile', dtype=str, default="not-given")
             if not os.path.isfile(bodySTL):
                 bcolors.err('BodySuperSTLfile file %s not found !' % (bodySTL) )
