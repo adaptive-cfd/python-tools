@@ -135,6 +135,12 @@ def check_parameters_for_stupid_errors( file ):
         N_geometries = 1
     del geometry
     
+    dont_use_pruned_tree_mask = get_ini_parameter( file, 'VPM', 'dont_use_pruned_tree_mask' , bool,  default=False)
+    mask_time_independent_part = get_ini_parameter( file, 'VPM', 'mask_time_independent_part', bool, default=True)
+    
+
+    
+    
     sponged      = get_ini_parameter( file, 'Sponge', 'use_sponge', bool, default=False)
     csponge      = get_ini_parameter( file, 'Sponge', 'C_sponge', float, default=0.0)
     sponge_type  = get_ini_parameter( file, 'Sponge', 'sponge_type', str, default='default')
@@ -516,6 +522,11 @@ def check_parameters_for_stupid_errors( file ):
         bcolors.warn('Level needed for correct crop is: %i, but min_treelevel is %i. This will be automatically adjusted during the simulation.' % (level_needed, jmin))
         
 
+    if penalized:
+        if dont_use_pruned_tree_mask == False and mask_time_independent_part == True :
+            bcolors.err('The feature of generating a mask function on a time independent grid \
+(mostly used for insect bodies in case they are tethered) is currently \
+not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
             
     if penalized and adapt_inicond != 1 and jini < jmax:
         bcolors.err("""It is strongly discouraged to use adapt_inicond=0 when using penalization,
