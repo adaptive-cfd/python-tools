@@ -84,5 +84,7 @@ if __name__ == "__main__":
         bool_similar = False
         print("Files or directories not found, please check the path locations again!")
 
+    print("\n\n")
+
     # return error code
     sys.exit(not bool_similar)

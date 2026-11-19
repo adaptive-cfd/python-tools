@@ -146,6 +146,7 @@ def check_parameters_for_stupid_errors( file ):
     sponge_type  = get_ini_parameter( file, 'Sponge', 'sponge_type', str, default='default')
     L_sponge     = get_ini_parameter( file, 'Sponge', 'L_sponge', default=0.0)
     time_max     = get_ini_parameter( file, 'Time', 'time_max', float)
+    dt_save      = get_ini_parameter( file, 'Time', 'write_time', float)
     time_stepper = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL          = get_ini_parameter( file, 'Time', 'CFL', float, default=0.5)
     CFL_nu       = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2) )
@@ -203,6 +204,13 @@ def check_parameters_for_stupid_errors( file ):
     
     print("dt_CFL= %2.3e" % (CFL*dx/c0))
     print("filter_type= %s filter_freq=%i" % (filter_type, filter_freq))
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    print('\n-- time')
+    print("   Tmax = %2.2f" % (time_max), end="") 
+    print("   CFL = %2.2f" % (CFL), end="") 
+    print("   CFL_eta = %2.2f" % (CFL_eta), end="") 
+    print("   dt_save = %2.3f" % (dt_save), end="") 
+    print("\n")
     
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -327,7 +335,7 @@ def check_parameters_for_stupid_errors( file ):
         
         if body_motion == 'kinematics_loader' or wing_motion_L=='kinematics_loader' or wing_motion_R=='kinematics_loader':
             print( "   kineloader is used !")
-            kineloader_file = get_ini_parameter( file, insect_section, 'infile_kineloader', str, '')
+            kineloader_file = get_ini_parameter( file, insect_section, 'infile_kineloader', str, default='')
             
             if kineloader_file == '':
                 bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )
@@ -336,7 +344,7 @@ def check_parameters_for_stupid_errors( file ):
                 bcolors.err('Kineloader used file not found ! body_motion=%s wing_motion=(%s  %s)\n infile=%s' % (body_motion, wing_motion_L, wing_motion_R, kineloader_file) )
 
         if wing_motion_L=='from_file' or wing_motion_R=='from_file':
-            kineloader_file = get_ini_parameter( file, insect_section, 'infile', str, '')
+            kineloader_file = get_ini_parameter( file, insect_section, 'infile', str, default='')
             print( f"   wing kinematics from file is used ! infile={kineloader_file}")
             if kineloader_file == '':
                 bcolors.err('Kineloader used but no infile given!  body_motion=%s wing_motion=(%s  %s)' % (body_motion, wing_motion_L, wing_motion_R) )

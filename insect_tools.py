@@ -2711,6 +2711,10 @@ def write_polygon_wing(fname, xc, yc, simplify=True):
     f.close()
 
 def convert_to_polygon_wing(fname, fname_out):
+    """
+    Take an existing wing *.ini file and convert it to the polygon wing format.
+    Other settings such as wing thickness and bristles are preserved.
+    """
     import shapely
     import os
     import inifile_tools
@@ -4064,8 +4068,12 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
     
     Work in progress (09/2025, TE)
     """
+    import matplotlib.pyplot as plt
     import inifile_tools
     import wabbit_tools
+    
+    if ax is None:
+        ax = plt.gca()
     
     # find the INI file of the run
     PARAMS = wabbit_tools.find_WABBIT_main_inifile(run_directory)

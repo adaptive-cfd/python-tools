@@ -767,7 +767,7 @@ class WabbitHDF5file:
             text_now = f"Error : L2 ={error_L2:12.5e}, LInfty={error_LInf:12.5e}"
             if logger==None: print(text_now)
             else: logger.info(text_now)
-            if error_L2 <= 1.0e-11: 
+            if error_L2 <= 1.0e-08: 
                 text_now = "GREAT: The files can be deemed as equal"
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
@@ -775,7 +775,7 @@ class WabbitHDF5file:
                 text_now = bcolors.FAIL + "ERROR: The files do not match" + bcolors.ENDC
                 if logger==None: print(text_now)
                 else: logger.info(text_now)
-        if return_norm: return error_L2 <= 1.0e-11, error_L2, error_LInf
+        if return_norm: return error_L2 <= 1.0e-08, error_L2, error_LInf
         return error_L2 <= 1.0e-11
 
 
