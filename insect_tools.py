@@ -1790,8 +1790,9 @@ def visualize_wingpath_chord( fname, psi=0.0, gamma=0.0, beta=0.0, eta_stroke=0.
     if meanflow is not None:
         if max(abs(np.asarray(meanflow))) > 0.0:
             x0, y0 = 0.0, 0.0
-            ax.arrow( x0, y0, meanflow[0], meanflow[2], width=0.000001, head_width=0.025 )
-            ax.text(x0+meanflow[0]*1.1, y0+meanflow[2]*1.1, '$u_\\infty$' )
+            meanflow_abs = np.linalg.norm(meanflow)
+            ax.arrow( x0, y0, meanflow[0]/meanflow_abs, meanflow[2]/meanflow_abs, width=0.000001, head_width=0.025 )
+            ax.text(x0+meanflow[0]/meanflow_abs*1.1, y0+meanflow[2]/meanflow_abs*1.1, '$u_\\infty$' )
 
     if reverse_x_axis:
         ax.invert_xaxis()
@@ -4077,11 +4078,12 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
     
     # find the INI file of the run
     PARAMS = wabbit_tools.find_WABBIT_main_inifile(run_directory)
+    SECTION = 'Insect1'
     
     # extract the kienmatics file name from the main ini file
-    fname_kine = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'FlappingMotion_'+wing, dtype=str)
+    fname_kine = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'FlappingMotion_'+wing, dtype=str)
     if fname_kine == 'from_file':
-        fname_kine = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'infile', dtype=str)
+        fname_kine = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'infile', dtype=str)
         
     elif 'from_file::' in fname_kine:
         fname_kine = fname_kine.replace('from_file::','')
@@ -4093,27 +4095,27 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
     fname_kine = run_directory + '/' + fname_kine
         
     # get stroke plane angle
-    eta = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'eta0', dtype=float)
+    eta = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'eta0', dtype=float)
     
     # get the wing hinge (shoulder)
     if wing == 'left':
-        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_l', dtype=float, vector=True)
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'x_pivot_l', dtype=float, vector=True)
     elif wing == 'right':
-        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_r', dtype=float, vector=True)
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'x_pivot_r', dtype=float, vector=True)
     elif wing == 'left2':
-        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_l2', dtype=float, vector=True)
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'x_pivot_l2', dtype=float, vector=True)
     elif wing == 'right2':
-        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'x_pivot_r2', dtype=float, vector=True)
+        x_pivot_b = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'x_pivot_r2', dtype=float, vector=True)
     
     # time vector for lollipops        
     time = np.linspace(0.0, 1.0, num=N_lollipops, endpoint=False)
     
     # body motion type
-    motion = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'BodyMotion', dtype=str)
+    motion = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'BodyMotion', dtype=str)
     
     if motion == "tethered":
         # tethered flight - body angles are constant
-        yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
+        yawpitchroll_0 = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'yawpitchroll_0', dtype=float, vector=True)
         # constant arrays
         psi, gamma, beta = np.full_like(time, yawpitchroll_0[2]), np.full_like(time, yawpitchroll_0[0]), np.full_like(time, yawpitchroll_0[1])
         
@@ -4121,9 +4123,9 @@ def lollipop_diagram( run_directory, wing='right', ax=None, savePDF=True, savePN
         # used for the EM simulations, here the pitch angle oscillates sinusoidally. we just pass the mean pitch angle
         # to the lollipop diagram.
         # This is the zero-mode of the body angles:
-        yawpitchroll_0  = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_0', dtype=float, vector=True)
-        yawpitchroll_a1 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_a1', dtype=float, vector=True)
-        yawpitchroll_b1 = inifile_tools.get_ini_parameter(PARAMS, 'Insects', 'yawpitchroll_b1', dtype=float, vector=True)
+        yawpitchroll_0  = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'yawpitchroll_0', dtype=float, vector=True)
+        yawpitchroll_a1 = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'yawpitchroll_a1', dtype=float, vector=True)
+        yawpitchroll_b1 = inifile_tools.get_ini_parameter(PARAMS, SECTION, 'yawpitchroll_b1', dtype=float, vector=True)
         
         # even if they are non zero, we set roll and yaw to zero here
         psi   = np.zeros_like(time)
