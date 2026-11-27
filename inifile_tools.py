@@ -135,10 +135,8 @@ def check_parameters_for_stupid_errors( file ):
         N_geometries = 1
     del geometry
     
-    dont_use_pruned_tree_mask = get_ini_parameter( file, 'VPM', 'dont_use_pruned_tree_mask' , bool,  default=False)
     mask_time_independent_part = get_ini_parameter( file, 'VPM', 'mask_time_independent_part', bool, default=True)
     
-
     
     
     sponged      = get_ini_parameter( file, 'Sponge', 'use_sponge', bool, default=False)
@@ -147,6 +145,8 @@ def check_parameters_for_stupid_errors( file ):
     L_sponge     = get_ini_parameter( file, 'Sponge', 'L_sponge', default=0.0)
     time_max     = get_ini_parameter( file, 'Time', 'time_max', float)
     dt_save      = get_ini_parameter( file, 'Time', 'write_time', float)
+    write_method = get_ini_parameter( file, 'Time', 'write_method', str, default="fixed_time").lower()
+    write_freq   = get_ini_parameter( file, 'Time', 'write_freq', int, default=0)
     time_stepper = get_ini_parameter( file, 'Time', 'time_step_method', str, default="RungeKuttaGeneric")
     CFL          = get_ini_parameter( file, 'Time', 'CFL', float, default=0.5)
     CFL_nu       = get_ini_parameter( file, 'Time', 'CFL_nu', float, default=0.99*2.79/(float(dim)*np.pi**2) )
@@ -183,10 +183,9 @@ def check_parameters_for_stupid_errors( file ):
     dxdydz = L[:dim]*(2**-jmax)/bs[:dim]
     if dim == 2: dxdydz = np.append(dxdydz, 0.0)
 
-    print("======================================================================================")
+    print("=======================================================================================")
     print("Bs= %i   g= %i  g_rhs= %i   dim= %i   Jmax= %i   L= %2.2f %s~~> dx= %2.3e   N_equi= %i   N= %i per unit length%s" % 
           (bs[0],g,g_rhs, dim,jmax,L[0],bcolors.OKBLUE, dx, int(L[0]/dx), int(1.0/dx), bcolors.ENDC))
-    print("T_max = %2.2f   CFL        = %2.2f CFL_eta = %2.2f  CFL_nu     = %2.3f   time_stepper= %s" % (time_max, CFL, CFL_eta, CFL_nu, time_stepper))
     
     if ('CDF4' in wavelet and "4th" in discretization) or ('CDF2'in wavelet and '2nd' in discretization) or ('CDF6' in wavelet and '6th' in discretization) or ('CDF8' in wavelet and '8th' in discretization):
         print("discretization=%s %s~~>matches wavelet %s%s" % (discretization, bcolors.OKBLUE, wavelet, bcolors.ENDC))
@@ -209,8 +208,19 @@ def check_parameters_for_stupid_errors( file ):
     print("   Tmax = %2.2f" % (time_max), end="") 
     print("   CFL = %2.2f" % (CFL), end="") 
     print("   CFL_eta = %2.2f" % (CFL_eta), end="") 
-    print("   dt_save = %2.3f" % (dt_save), end="") 
-    print("\n")
+    print("   CFL_nu = %2.3f" % (CFL_nu))
+    col = bcolors.WARNING if write_method != 'fixed_time' else bcolors.OKBLUE
+    txt = " !!! unusual !!!" if write_method != 'fixed_time' else ""
+    print("   write_method = %s%s%s%s" % (col, write_method, txt, bcolors.ENDC), end="")
+    if write_method == 'fixed_time':
+        print("   dt_save = %2.3f %sT%s" % (dt_save,bcolors.OKBLUE, bcolors.ENDC), end="")
+        if dt_save > 0:
+            print("   N_save = %s%i%s" % (bcolors.OKBLUE, int(round(time_max/dt_save)), bcolors.ENDC), end="")
+    else:
+        # fixed_freq / fixed_frequ: output is written every write_freq iterations
+        print("   dt_save = %i it" % (write_freq), end="")
+    print("\n   time_stepper = %s" % (time_stepper))
+
     
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -433,7 +443,7 @@ def check_parameters_for_stupid_errors( file ):
                 
         if time_step_method == 'RungeKuttaChebychev' and refinement_indicator == 'significant':
             bcolors.warn(""" 11/2025: We have encountered problems when combining refinement_indicator=significant and time_step_method=RungeKuttaChebychev.
-            Combining those is no longer recommended - we now recommend you use RungeKuttaGeneric or even consider using refine_everywhere strategy.""")
+            Combining those is no longer recommended - we now recommend you use RungeKuttaGeneric or even consider using refine_everywhere strategy.""")    
     
         x0_insect = get_ini_parameter( file, insect_section, 'x0', float, vector=True, default=L/2.0)
         if any(x0_insect>L_crop_max*L) or any(x0_insect<L_crop_min*L):
@@ -529,13 +539,6 @@ def check_parameters_for_stupid_errors( file ):
     if level_needed > jmin:
         bcolors.warn('Level needed for correct crop is: %i, but min_treelevel is %i. This will be automatically adjusted during the simulation.' % (level_needed, jmin))
         
-
-    if penalized:
-        if dont_use_pruned_tree_mask == False and mask_time_independent_part == True :
-            bcolors.err('The feature of generating a mask function on a time independent grid \
-(mostly used for insect bodies in case they are tethered) is currently \
-not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
-            
     if penalized and adapt_inicond != 1 and jini < jmax:
         bcolors.err("""It is strongly discouraged to use adapt_inicond=0 when using penalization,
           because the initial mask at t=0 is not on the finest level Jmax (highest resolution).
@@ -543,7 +546,7 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
           but that possibility is expensive (full memory required on startup).\n""")
             
     if refinement_indicator == "everywhere":
-        bcolors.warn("Your refinement indicator is EVERYWHERE, which is unusual - are you sure you'd not rather use SIGNIFICANT ?")
+        bcolors.warn("Your refinement indicator is EVERYWHERE, which is unusual - are you sure you'd not rather use SIGNIFICANT ?")   
    
     if time_step_method == "RungeKuttaChebychev":
         if CFL_eta < 999:
@@ -595,8 +598,8 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
         bcolors.warn('Found deprecated parameter: [ACM]::compute_nonlinearity')
     
     if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
-        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
-   
+        bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')   
+    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
         print(type(HIT))
@@ -616,7 +619,7 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
             bcolors.warn("""you use sponge, but mask_time_dependent_part=0! The sponge
             is treated as if it were time dependent because it does not have
             to be at the maximum refinement level.""")
-
+  
 
     if skew_symmetry==1 and dealias==1:
         bcolors.warn("""You use ACM skew symmetry but still have force_maxlevel_dealiasing=1.
@@ -641,6 +644,10 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
     for field_name in field_names:
         if not field_name in list_names and not field_name in list_save_names and not field_name in list_statistics_names:
             bcolors.err('In field_names for saving, you have set %s_ %s _%s but that it might not be a valid choice! (List might not be up to date)' % (bcolors.FAIL,field_name, bcolors.ENDC))
+    if physics_type == 'ACM-new':
+        state_vector_names = ['ux', 'uy', 'uz', 'p'] if dim == 3 else ['ux', 'uy', 'p']
+        if any(name not in [str(f).lower() for f in field_names] for name in state_vector_names):
+            bcolors.warn("Saving::field_names does not contain the entire state vector (%s) - you will NOT be able to restart from the saved files (read_from_files)!" % (", ".join(state_vector_names)))
     
     # ----------------- time statistics section -----------------------------
     if time_statistics:
@@ -695,7 +702,6 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
                 raise ValueError("CRITICAL: read_from_files=1 but infile NOT found! (%s)" % (file))
     else:
         bcolors.info("This simulation is being started from initial condition (and not from file)")
-
 #
 def section_exists( inifile, section ):
     """
