@@ -690,16 +690,19 @@ def check_parameters_for_stupid_errors( file ):
 
         if time_statistics and read_from_files_time_statistics:
             if len(infiles) != dim + 1 + N_time_statistics:
-                raise ValueError(f"You set read_from_files_time_statistics=1 but did not give the right number of input files ({dim+1}+N_time_statistics={N_time_statistics} needed)!")
+                bcolors.err(f"You set read_from_files_time_statistics=1 but did not give the right number of input files ({dim+1}+N_time_statistics={N_time_statistics} needed)!")
         else:
             if len(infiles) != dim + 1:
-                raise ValueError(f"You set read_from_files=1 but did not give the right number of input files ({dim+1} needed)!")
+                bcolors.err(f"You set read_from_files=1 but did not give the right number of input files ({dim+1} needed)!")
 
         for file in infiles:
             file = file.strip().replace('"','').replace("'",'')
-            print(f"Checking for infile = {file}")
-            if not os.path.isfile(file):
-                raise ValueError("CRITICAL: read_from_files=1 but infile NOT found! (%s)" % (file))
+            print(f"Checking for infile = {file} ", end='')
+            if os.path.isfile(file):
+                print("%s%s%s" % (bcolors.OKGREEN, 'found.', bcolors.ENDC))
+            else:
+                print("%s%s%s" % (bcolors.BLINK + bcolors.FAIL, 'NOT FOUND !!', bcolors.ENDC))
+                
     else:
         bcolors.info("This simulation is being started from initial condition (and not from file)")
 #
