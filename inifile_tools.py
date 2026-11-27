@@ -596,6 +596,9 @@ not working properly. Set dont_use_pruned_tree_mask=1 in PARAMS file!\n\n')
     
     if exists_ini_parameter( file, "Blocks", "adapt_mesh" ):
         bcolors.warn('Found deprecated parameter: [Blocks]::adapt_mesh ===> adapt_tree')
+        
+    if exists_ini_parameter(file, "VPM", "dont_use_pruned_tree_mask"):
+        bcolors.warn("Found deprecated parameter: [VPM]::dont_use_pruned_tree_mask.")
    
     HIT = get_ini_parameter( file, 'ACM-new', 'use_HIT_linear_forcing', bool, default=False)
     if HIT:
